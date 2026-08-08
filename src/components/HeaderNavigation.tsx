@@ -46,9 +46,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
               src="https://user19304.na.imgto.link/public/20260807/1000067474.avif" 
               alt="PANCHU Logo" 
               referrerPolicy="no-referrer"
-              className={`h-9 md:h-12 lg:h-14 w-auto object-contain transition-all ${
-                isDark ? 'invert' : ''
-              }`}
+              className="h-9 md:h-12 lg:h-14 w-auto object-contain transition-all"
             />
           </button>
 

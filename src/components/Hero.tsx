@@ -111,7 +111,7 @@ export const Hero: React.FC<HeroProps> = ({
 
       {/* Centered SHOP NOW Sign */}
       {gender !== 'female' && (
-        <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
+        <div className="absolute inset-0 flex items-center justify-center lg:-translate-y-16 z-20 pointer-events-none">
           <button
             onClick={onShopNow}
             className="pointer-events-auto px-8 py-3.5 md:px-12 md:py-4 border border-white/90 bg-black/40 hover:bg-white hover:text-black text-white text-xs md:text-sm tracking-[0.35em] font-mono font-medium uppercase transition-all duration-300 shadow-2xl backdrop-blur-md hover:scale-105 cursor-pointer"

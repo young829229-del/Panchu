@@ -189,7 +189,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </h2>
 
                 <div className="mt-3 text-xl font-mono font-bold text-black flex items-center gap-3">
-                  <span>{product.priceDisplay ? `Price ${product.priceDisplay}` : `$${product.price.toFixed(2)} USD`}</span>
+                  <span>{product.priceDisplay ? `Price ${product.priceDisplay}` : `NPR ${product.price}`}</span>
                   <span className="text-xs font-mono font-normal text-emerald-700 bg-emerald-50 px-2 py-0.5 border border-emerald-200">
                     IN STOCK
                   </span>

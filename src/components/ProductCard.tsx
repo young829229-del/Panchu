@@ -103,7 +103,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <div className={`mt-2 text-base md:text-lg font-mono font-semibold ${
             isDark ? 'text-white' : 'text-black'
           }`}>
-            {product.priceDisplay ? `Price ${product.priceDisplay}` : `$${product.price.toFixed(2)} USD`}
+            {product.priceDisplay ? `Price ${product.priceDisplay}` : `NPR ${product.price}`}
           </div>
 
           {/* Material / Composition Snippet */}

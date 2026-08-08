@@ -99,7 +99,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         SIZE: <span className="font-bold text-black">{item.size}</span>
                       </div>
                       <div className="text-xs font-mono font-bold text-black mt-1">
-                        {item.product.priceDisplay ? `Price ${item.product.priceDisplay}` : `$${(item.product.price * item.quantity).toFixed(2)} USD`}
+                        {item.product.priceDisplay ? `Price ${item.product.priceDisplay}` : `NPR ${item.product.price * item.quantity}`}
                       </div>
                     </div>
 
@@ -133,15 +133,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
               <div className="space-y-1.5 text-xs font-mono text-stone-600">
                 <div className="flex justify-between">
                   <span>SUBTOTAL</span>
-                  <span className="font-bold text-black">{subtotal > 0 ? `$${subtotal.toFixed(2)} USD` : 'Price ××'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>EXPRESS COMPLIMENTARY SHIPPING</span>
-                  <span className="text-emerald-700 font-bold">FREE</span>
+                  <span className="font-bold text-black">{subtotal > 0 ? `NPR ${subtotal}` : 'Price ××'}</span>
                 </div>
                 <div className="flex justify-between text-sm text-black font-bold pt-2 border-t border-stone-200">
-                  <span>TOTAL</span>
-                  <span>${subtotal.toFixed(2)} USD</span>
+                  <span>ESTIMATED TOTAL</span>
+                  <span>NPR {subtotal}</span>
                 </div>
               </div>
 
