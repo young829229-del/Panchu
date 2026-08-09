@@ -61,7 +61,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
       {/* Product Image Section */}
       <div
-        className={`relative w-full aspect-[3/4] overflow-hidden cursor-pointer ${
+        className={`relative w-full aspect-[3/4] sm:aspect-[3/4] md:aspect-[4/5] lg:aspect-[1/1] max-h-[300px] sm:max-h-[340px] md:max-h-[290px] lg:max-h-[240px] xl:max-h-[260px] overflow-hidden cursor-pointer flex items-center justify-center ${
           isDark ? 'bg-neutral-800' : 'bg-stone-50'
         }`}
         onClick={() => onQuickView(product)}

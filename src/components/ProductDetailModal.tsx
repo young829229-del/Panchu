@@ -96,9 +96,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2">
             {/* Left: Product Media Gallery with Touch Swipe */}
-            <div className="bg-stone-100 p-6 flex flex-col justify-between relative border-b md:border-b-0 md:border-r border-stone-200 select-none">
+            <div className="bg-stone-100 p-4 sm:p-6 flex flex-col justify-between relative border-b md:border-b-0 md:border-r border-stone-200 select-none">
               <div 
-                className="relative aspect-[3/4] w-full overflow-hidden bg-stone-200 touch-pan-y cursor-grab active:cursor-grabbing group"
+                className="relative aspect-[3/4] sm:aspect-[3/4] md:aspect-[3/4] lg:aspect-[4/5] w-full max-h-[360px] sm:max-h-[400px] md:max-h-[380px] lg:max-h-[400px] overflow-hidden bg-stone-200 touch-pan-y cursor-grab active:cursor-grabbing group flex items-center justify-center mx-auto"
                 onTouchStart={onTouchStart}
                 onTouchMove={onTouchMove}
                 onTouchEnd={onTouchEnd}

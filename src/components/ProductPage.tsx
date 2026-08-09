@@ -76,7 +76,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({ onAddToCart, onBuyNow,
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-4 md:gap-8 max-w-5xl mx-auto">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:gap-6 lg:gap-8 max-w-md sm:max-w-xl md:max-w-3xl lg:max-w-4xl mx-auto">
             {filteredProducts.map((product) => (
               <ProductCard
                 key={product.id}
