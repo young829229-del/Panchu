@@ -21,11 +21,11 @@ export const Hero: React.FC<HeroProps> = ({
   const isDark = theme === 'dark';
 
   return (
-    <section className={`relative w-full h-[52vh] sm:h-[64vh] md:h-[74vh] lg:h-[84vh] xl:h-[88vh] max-h-[920px] min-h-[360px] sm:min-h-[460px] overflow-hidden ${isDark ? 'bg-neutral-950 text-white' : 'bg-white text-black'} select-none flex flex-col items-center justify-center`}>
+    <section className={`relative w-full h-screen overflow-hidden ${isDark ? 'bg-neutral-950 text-white' : 'bg-white text-black'} select-none flex flex-col items-center justify-center`}>
       {/* Top Banner Control Bar (Gender Switch + Theme Switch) */}
-      <div className="absolute top-4 left-4 right-4 z-30 flex items-center justify-between pointer-events-auto">
+      <div className="absolute top-4 sm:top-6 left-4 right-4 z-30 flex items-center justify-between pointer-events-auto max-w-7xl mx-auto">
         {/* Gender Switch (Male / Female - Icon Signs only) */}
-        <div className={`flex items-center p-1 rounded-full border shadow-lg backdrop-blur-md transition-all ${
+        <div className={`flex items-center p-1 rounded-full border shadow-xl backdrop-blur-md transition-all ${
           isDark ? 'bg-neutral-900/90 border-neutral-700 text-white' : 'bg-white/90 border-stone-200 text-black'
         }`}>
           <button
@@ -67,7 +67,7 @@ export const Hero: React.FC<HeroProps> = ({
         </div>
 
         {/* Light / Dark Mode Toggle (Icon Signs only) */}
-        <div className={`flex items-center p-1 rounded-full border shadow-lg backdrop-blur-md transition-all ${
+        <div className={`flex items-center p-1 rounded-full border shadow-xl backdrop-blur-md transition-all ${
           isDark ? 'bg-neutral-900/90 border-neutral-700 text-white' : 'bg-white/90 border-stone-200 text-black'
         }`}>
           <button
@@ -99,28 +99,35 @@ export const Hero: React.FC<HeroProps> = ({
         </div>
       </div>
 
-      {/* Clean Banner Image */}
-      <div className="w-full h-full cursor-pointer relative" onClick={onShopNow}>
+      {/* Full-Screen Banner Image framed so head is never cut off */}
+      <div className="w-full h-full cursor-pointer relative overflow-hidden" onClick={onShopNow}>
         <img
           src={image}
           alt="PANCHU Campaign Banner"
-          className="w-full h-full object-cover object-top sm:object-center transition-all duration-300"
+          className="w-full h-full object-cover object-[center_10%] sm:object-[center_15%] md:object-[center_20%] lg:object-[center_25%] transition-all duration-300 scale-100 group-hover:scale-105"
           referrerPolicy="no-referrer"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            if (gender === 'female') {
+              target.src = 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1200&q=80';
+            } else {
+              target.src = 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?auto=format&fit=crop&w=1200&q=80';
+            }
+          }}
         />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 pointer-events-none" />
       </div>
 
-      {/* Centered / Independently Adjustable SHOP NOW Sign */}
-      {gender !== 'female' && (
-        <div className="absolute bottom-6 sm:bottom-10 md:bottom-auto md:top-1/2 left-1/2 -translate-x-1/2 md:-translate-y-12 lg:-translate-y-16 xl:-translate-y-20 z-20 pointer-events-none w-full flex justify-center px-4">
-          <button
-            onClick={onShopNow}
-            className="pointer-events-auto px-6 py-3 sm:px-8 sm:py-3.5 md:px-12 md:py-4 border border-white/90 bg-black/40 hover:bg-white hover:text-black text-white text-xs md:text-sm tracking-[0.35em] font-mono font-medium uppercase transition-all duration-300 shadow-2xl backdrop-blur-md hover:scale-105 cursor-pointer"
-            id="hero-shop-now-sign"
-          >
-            SHOP NOW
-          </button>
-        </div>
-      )}
+      {/* SHOP NOW Button - Always visible, centered in middle of banner */}
+      <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none px-4">
+        <button
+          onClick={onShopNow}
+          className="pointer-events-auto px-8 py-3.5 sm:px-10 sm:py-4 border-2 border-white/90 bg-black/60 hover:bg-white hover:text-black text-white text-xs sm:text-sm md:text-base tracking-[0.25em] font-montserrat font-bold uppercase transition-all duration-300 shadow-2xl backdrop-blur-md hover:scale-105 cursor-pointer rounded-none"
+          id="hero-shop-now-sign"
+        >
+          SHOP NOW
+        </button>
+      </div>
     </section>
   );
 };

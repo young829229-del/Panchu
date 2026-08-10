@@ -1,6 +1,7 @@
 import React from 'react';
 import { ShoppingBag, ArrowLeft, Sun, Moon, Flame } from 'lucide-react';
 import { motion } from 'motion/react';
+import { PanchuLogo } from './PanchuLogo';
 
 interface HeaderNavigationProps {
   cartCount: number;
@@ -28,7 +29,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   const isDark = theme === 'dark';
 
   return (
-    <header className={`sticky top-0 z-40 w-full backdrop-blur-md border-b px-6 md:px-12 py-3.5 transition-all duration-300 ${
+    <header className={`sticky top-0 z-40 w-full backdrop-blur-md border-b px-4 sm:px-6 md:px-12 py-2.5 sm:py-3 transition-all duration-300 ${
       isDark 
         ? 'bg-neutral-950/95 border-neutral-800 text-white' 
         : 'bg-white/95 border-stone-200 text-stone-900'
@@ -39,21 +40,16 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
         <div className="flex items-center gap-6">
           <button
             onClick={onGoToHero}
-            className="group flex items-center gap-1 hover:opacity-80 transition-all cursor-pointer py-1"
+            className="group flex items-center gap-1 hover:opacity-85 transition-all cursor-pointer py-0.5"
             id="nav-brand-logo"
           >
-            <img 
-              src="https://user19304.na.imgto.link/public/20260807/1000067474.avif" 
-              alt="PANCHU Logo" 
-              referrerPolicy="no-referrer"
-              className="h-9 md:h-12 lg:h-14 w-auto object-contain transition-all"
-            />
+            <PanchuLogo size="md" />
           </button>
 
           {!isHeroVisible && (
             <button
               onClick={onGoToHero}
-              className={`hidden md:flex items-center gap-1.5 text-xs font-mono tracking-widest hover:opacity-100 transition-colors ${
+              className={`hidden md:flex items-center gap-1.5 text-xs font-montserrat font-semibold tracking-widest hover:opacity-100 transition-colors ${
                 isDark ? 'text-neutral-400 hover:text-white' : 'text-stone-500 hover:text-black'
               }`}
               id="nav-back-to-campaign"
@@ -65,7 +61,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
         </div>
 
         {/* Center: Editorial Label */}
-        <div className={`hidden lg:block text-center font-mono text-xs tracking-[0.3em] uppercase ${
+        <div className={`hidden lg:block text-center font-montserrat font-semibold text-xs tracking-[0.2em] uppercase ${
           isDark ? 'text-neutral-400' : 'text-stone-500'
         }`}>
           PANCHU — ESSENTIALS 2026
@@ -145,7 +141,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
 
           <button
             onClick={onOpenCart}
-            className={`relative flex items-center gap-2 px-3.5 py-1.5 border text-xs font-mono tracking-widest uppercase transition-all duration-300 cursor-pointer ${
+            className={`relative flex items-center gap-2 px-3.5 py-1.5 border text-xs font-montserrat font-bold tracking-widest uppercase transition-all duration-300 cursor-pointer ${
               cartCount > 0
                 ? 'border-red-600 bg-red-600/10 text-red-600 dark:text-red-500 dark:border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.5)]'
                 : isDark

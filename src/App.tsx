@@ -1,15 +1,41 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Hero } from './components/Hero';
 import { HeaderNavigation } from './components/HeaderNavigation';
 import { ProductPage } from './components/ProductPage';
+import { ProductDetailPage } from './components/ProductDetailPage';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
 import { Product, CartItem } from './types';
-import { HERO_MALE_IMAGE, HERO_FEMALE_IMAGE } from './data/products';
+import { ALL_PRODUCTS, HERO_MALE_IMAGE, HERO_FEMALE_IMAGE } from './data/products';
 
 const CART_STORAGE_KEY = 'panchu_cart_items';
 
+// Helper to extract product ID from pathname or hash URL
+function getProductIdFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const path = window.location.pathname;
+  if (path.startsWith('/product/')) {
+    const id = decodeURIComponent(path.replace('/product/', '').trim());
+    if (id) return id;
+  }
+  const hash = window.location.hash;
+  if (hash.startsWith('#/product/')) {
+    const id = decodeURIComponent(hash.replace('#/product/', '').trim());
+    if (id) return id;
+  }
+  return null;
+}
+
+function findProductById(id: string): Product | null {
+  return ALL_PRODUCTS.find(p => p.id === id || p.id.toLowerCase() === id.toLowerCase()) || null;
+}
+
 export default function App() {
+  const [activeProduct, setActiveProduct] = useState<Product | null>(() => {
+    const id = getProductIdFromUrl();
+    return id ? findProductById(id) : null;
+  });
+
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     try {
       const saved = localStorage.getItem(CART_STORAGE_KEY);
@@ -24,6 +50,41 @@ export default function App() {
   const [gender, setGender] = useState<'male' | 'female'>('male');
 
   const catalogRef = useRef<HTMLDivElement>(null);
+  const preloadedImagesRef = useRef<Set<string>>(new Set());
+
+  // Preload full-resolution product images as soon as a product is viewed (or on load)
+  useEffect(() => {
+    const imagesToPreload: string[] = [];
+
+    // Prioritize active product main and gallery images
+    if (activeProduct) {
+      if (activeProduct.image) imagesToPreload.push(activeProduct.image);
+      if (activeProduct.additionalImages) {
+        activeProduct.additionalImages.forEach(img => {
+          if (img) imagesToPreload.push(img);
+        });
+      }
+    }
+
+    // Preload all product images to cache high-res assets in memory
+    ALL_PRODUCTS.forEach(p => {
+      if (p.image) imagesToPreload.push(p.image);
+      if (p.additionalImages) {
+        p.additionalImages.forEach(img => {
+          if (img) imagesToPreload.push(img);
+        });
+      }
+    });
+
+    // Execute preloading using HTMLImageElement
+    imagesToPreload.forEach(src => {
+      if (src && !preloadedImagesRef.current.has(src)) {
+        preloadedImagesRef.current.add(src);
+        const img = new Image();
+        img.src = src;
+      }
+    });
+  }, [activeProduct]);
 
   // Sync cart items to localStorage on change
   useEffect(() => {
@@ -34,15 +95,99 @@ export default function App() {
     }
   }, [cartItems]);
 
+  const prevActiveProductRef = useRef<Product | null>(activeProduct);
+
+  // Set manual scroll restoration to prevent browser from auto-jumping on popstate
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'scrollRestoration' in window.history) {
+      window.history.scrollRestoration = 'manual';
+    }
+  }, []);
+
+  // Synchronous scroll positioning before paint
+  useLayoutEffect(() => {
+    const isReturningFromProduct = prevActiveProductRef.current !== null && activeProduct === null;
+    prevActiveProductRef.current = activeProduct;
+
+    if (activeProduct) {
+      // Opening product detail: start at top of detail page
+      window.scrollTo(0, 0);
+    } else if (isReturningFromProduct) {
+      // Returning from product page to homepage catalog: restore exact saved position
+      const savedScroll = sessionStorage.getItem('panchu_homepage_scroll');
+      if (savedScroll !== null) {
+        const scrollY = parseInt(savedScroll, 10);
+        window.scrollTo(0, scrollY);
+        sessionStorage.removeItem('panchu_homepage_scroll');
+      } else {
+        window.scrollTo(0, 0);
+      }
+    } else {
+      // Fresh initial page load or page refresh: ALWAYS start at very top (main hero banner)
+      sessionStorage.removeItem('panchu_homepage_scroll');
+      window.scrollTo(0, 0);
+    }
+  }, [activeProduct]);
+
+  // Synchronize URL changes on back/forward browser buttons
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const id = getProductIdFromUrl();
+      if (id) {
+        const found = findProductById(id);
+        if (found) {
+          setActiveProduct(found);
+        }
+      } else {
+        setActiveProduct(null);
+      }
+    };
+
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, []);
+
   // Banner Image according to gender selector
   const heroImage = gender === 'male' ? HERO_MALE_IMAGE : HERO_FEMALE_IMAGE;
 
-  // Scroll into view for catalog
+  // Select product and navigate to /product/:id on same page
+  const handleSelectProduct = (product: Product) => {
+    // Record current scroll position before leaving homepage
+    if (!activeProduct) {
+      sessionStorage.setItem('panchu_homepage_scroll', window.scrollY.toString());
+    }
+    const targetPath = '/product/' + product.id;
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({ productId: product.id }, '', targetPath);
+    }
+    setActiveProduct(product);
+  };
+
+  // Back to catalog
+  const handleBackToCatalog = () => {
+    if (window.location.pathname !== '/') {
+      window.history.pushState(null, '', '/');
+    }
+    setActiveProduct(null);
+  };
+
+  // Scroll into view for catalog or return from product detail
   const handleScrollToCatalog = () => {
-    catalogRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (activeProduct) {
+      handleBackToCatalog();
+    } else {
+      catalogRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   const handleGoToHero = () => {
+    if (activeProduct) {
+      handleBackToCatalog();
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -115,26 +260,43 @@ export default function App() {
         isHeroVisible={false}
       />
 
-      {/* Hero Section Banner */}
-      <div className="relative">
-        <Hero
-          image={heroImage}
-          theme={theme}
-          gender={gender}
-          onThemeChange={setTheme}
-          onGenderChange={setGender}
-          onShopNow={handleScrollToCatalog}
-        />
-      </div>
-
-      {/* Product Catalog Page Section */}
-      <div ref={catalogRef}>
-        <ProductPage
+      {/* Dedicated Product Detail View */}
+      {activeProduct && (
+        <ProductDetailPage
+          product={activeProduct}
+          onBack={handleBackToCatalog}
+          onSelectProduct={handleSelectProduct}
           onAddToCart={handleAddToCart}
           onBuyNow={handleBuyNow}
           theme={theme}
           gender={gender}
         />
+      )}
+
+      {/* Main Homepage View (preserved in DOM to avoid back button banner flash) */}
+      <div className={activeProduct ? 'hidden' : 'block'}>
+        {/* Hero Section Banner */}
+        <div className="relative">
+          <Hero
+            image={heroImage}
+            theme={theme}
+            gender={gender}
+            onThemeChange={setTheme}
+            onGenderChange={setGender}
+            onShopNow={handleScrollToCatalog}
+          />
+        </div>
+
+        {/* Product Catalog Page Section */}
+        <div ref={catalogRef}>
+          <ProductPage
+            onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
+            onSelectProduct={handleSelectProduct}
+            theme={theme}
+            gender={gender}
+          />
+        </div>
       </div>
 
       {/* Slide-over Shopping Cart Drawer */}
@@ -157,4 +319,3 @@ export default function App() {
     </div>
   );
 }
-

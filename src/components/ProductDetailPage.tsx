@@ -1,61 +1,34 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import {
-  ALL_PRODUCTS,
-  MALE_PRODUCTS,
-  FEMALE_PRODUCTS,
-  getBestSellingProducts,
-  getSummerCollection,
-  getWinterCollection
-} from '../data/products';
 import { Product } from '../types';
+import { ALL_PRODUCTS } from '../data/products';
 import { ProductCard } from './ProductCard';
 import { ProductImage } from './ProductImage';
-import { MatchPartnerSection } from './MatchPartnerSection';
-import { GetDiscountSection } from './GetDiscountSection';
 import { FooterSection } from './FooterSection';
-import { Check, Plus, Minus, ShoppingBag, ChevronLeft, ChevronRight } from 'lucide-react';
+import { GetDiscountSection } from './GetDiscountSection';
+import { ArrowLeft, Check, Plus, Minus, ShoppingBag, ChevronLeft, ChevronRight } from 'lucide-react';
 
-interface ProductPageProps {
+interface ProductDetailPageProps {
+  product: Product;
+  onBack: () => void;
+  onSelectProduct: (product: Product) => void;
   onAddToCart: (product: Product, size: string, quantity: number) => void;
   onBuyNow: (product: Product, size: string, quantity: number) => void;
-  onSelectProduct?: (product: Product) => void;
   theme?: 'light' | 'dark';
   gender?: 'male' | 'female';
 }
 
-export const ProductPage: React.FC<ProductPageProps> = ({
+export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
+  product,
+  onBack,
+  onSelectProduct,
   onAddToCart,
   onBuyNow,
-  onSelectProduct,
-  theme = 'light',
-  gender = 'male'
+  theme = 'light'
 }) => {
   const isDark = theme === 'dark';
-  const activeGender = gender === 'female' ? 'female' : 'male';
-
-  // Active top featured product
-  const [selectedProduct, setSelectedProduct] = useState<Product>(() => {
-    if (typeof window !== 'undefined') {
-      const path = window.location.pathname;
-      let urlId = '';
-      if (path.startsWith('/product/')) {
-        urlId = decodeURIComponent(path.replace('/product/', '').trim());
-      } else {
-        const params = new URLSearchParams(window.location.search);
-        urlId = params.get('product') || params.get('id') || '';
-      }
-      if (urlId) {
-        const match = ALL_PRODUCTS.find(
-          p => p.id === urlId || p.id.toLowerCase() === urlId.toLowerCase()
-        );
-        if (match) return match;
-      }
-    }
-    return gender === 'female' ? FEMALE_PRODUCTS[0] : MALE_PRODUCTS[0];
-  });
 
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
-  const [selectedSize, setSelectedSize] = useState<string>('M');
+  const [selectedSize, setSelectedSize] = useState<string>(product.sizes[0] || 'M');
   const [quantity, setQuantity] = useState<number>(1);
   const [isAdded, setIsAdded] = useState<boolean>(false);
 
@@ -63,36 +36,29 @@ export const ProductPage: React.FC<ProductPageProps> = ({
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
 
-  // Automatically update featured main product when gender changes
+  // Reset state when active product changes
   useEffect(() => {
-    const hasUrlProduct = typeof window !== 'undefined' && (
-      window.location.pathname.startsWith('/product/') || 
-      new URLSearchParams(window.location.search).has('product')
-    );
-    if (!hasUrlProduct) {
-      const defaultProduct = gender === 'female' ? FEMALE_PRODUCTS[0] : MALE_PRODUCTS[0];
-      setSelectedProduct(defaultProduct);
-      setActiveImageIndex(0);
-      setSelectedSize(defaultProduct.sizes[0] || 'M');
-      setQuantity(1);
-      setIsAdded(false);
-    }
-  }, [gender]);
+    setActiveImageIndex(0);
+    setSelectedSize(product.sizes[0] || 'M');
+    setQuantity(1);
+    setIsAdded(false);
+    window.scrollTo(0, 0);
+  }, [product]);
 
   // Gallery Images array
   const galleryImages = useMemo(() => {
-    const baseImages = (selectedProduct.additionalImages && selectedProduct.additionalImages.length > 0)
-      ? selectedProduct.additionalImages
-      : [selectedProduct.image];
+    const baseImages = (product.additionalImages && product.additionalImages.length > 0)
+      ? product.additionalImages
+      : [product.image];
 
     const valid = baseImages.filter((img): img is string => typeof img === 'string' && img.trim().length > 0);
-    return valid.length > 0 ? valid : [selectedProduct.image];
-  }, [selectedProduct]);
+    return valid.length > 0 ? valid : [product.image];
+  }, [product]);
 
-  // Dynamic collections filtered by gender
-  const bestSellingProducts = useMemo(() => getBestSellingProducts(activeGender), [activeGender]);
-  const summerCollection = useMemo(() => getSummerCollection(activeGender), [activeGender]);
-  const winterCollection = useMemo(() => getWinterCollection(activeGender), [activeGender]);
+  // Recommended Products (same category or general collection excluding current product)
+  const relatedProducts = useMemo(() => {
+    return ALL_PRODUCTS.filter(p => p.id !== product.id && p.gender === product.gender).slice(0, 4);
+  }, [product]);
 
   const handleNextImage = () => {
     setActiveImageIndex(prev => (prev + 1) % galleryImages.length);
@@ -115,36 +81,53 @@ export const ProductPage: React.FC<ProductPageProps> = ({
   const handleTouchEnd = () => {
     if (touchStartX.current === null || touchEndX.current === null) return;
     const diffX = touchStartX.current - touchEndX.current;
-    const minSwipeDistance = 35;
+    const minSwipeDistance = 35; // 35px threshold for horizontal swipe
     if (diffX > minSwipeDistance) {
-      handleNextImage();
+      handleNextImage(); // Swiped Left -> Next
     } else if (diffX < -minSwipeDistance) {
-      handlePrevImage();
+      handlePrevImage(); // Swiped Right -> Previous
     }
     touchStartX.current = null;
     touchEndX.current = null;
   };
 
-  const handleAddToCart = () => {
-    if (!selectedProduct.inStock) return;
-    onAddToCart(selectedProduct, selectedSize, quantity);
+  const handleAddToCartClick = () => {
+    if (!product.inStock) return;
+    onAddToCart(product, selectedSize, quantity);
     setIsAdded(true);
     setTimeout(() => setIsAdded(false), 1500);
   };
 
   const handleBuyNowClick = () => {
-    if (!selectedProduct.inStock) return;
-    onBuyNow(selectedProduct, selectedSize, quantity);
+    if (!product.inStock) return;
+    onBuyNow(product, selectedSize, quantity);
   };
 
   return (
-    <div className={`w-full transition-colors duration-300 ${
+    <div className={`w-full min-h-screen pt-4 transition-colors duration-300 ${
       isDark ? 'bg-neutral-950 text-white' : 'bg-white text-stone-900'
     }`}>
       
-      {/* 1. TOP SECTION — MAIN PRODUCT DETAILS */}
-      <section id="main-product-details" className="w-full py-6 sm:py-10 md:py-12 px-4 sm:px-6 md:px-12 max-w-6xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-10 items-start">
+      {/* Back Navigation Bar */}
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-12 py-4">
+        <button
+          type="button"
+          onClick={onBack}
+          className={`inline-flex items-center gap-2 text-xs font-montserrat font-bold tracking-widest uppercase py-2 px-4 border transition-all cursor-pointer ${
+            isDark 
+              ? 'border-neutral-800 text-neutral-300 hover:bg-white hover:text-black hover:border-white' 
+              : 'border-stone-300 text-stone-700 hover:bg-black hover:text-white hover:border-black'
+          }`}
+          id="back-to-catalog-btn"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>BACK TO COLLECTION</span>
+        </button>
+      </div>
+
+      {/* Main Product Details Section */}
+      <section className="w-full py-6 sm:py-8 px-4 sm:px-6 md:px-12 max-w-6xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-12 items-start">
           
           {/* LEFT: PRODUCT GALLERY */}
           <div className="md:col-span-7 flex flex-col-reverse sm:flex-row gap-3 sm:gap-4 select-none">
@@ -167,7 +150,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                   >
                     <ProductImage
                       src={imgUrl}
-                      alt={`${selectedProduct.name} thumbnail ${idx + 1}`}
+                      alt={`${product.name} thumbnail ${idx + 1}`}
                       className="w-full h-full object-contain object-center p-1"
                     />
                   </button>
@@ -183,8 +166,8 @@ export const ProductPage: React.FC<ProductPageProps> = ({
               onTouchEnd={handleTouchEnd}
             >
               <ProductImage
-                src={galleryImages[activeImageIndex] || selectedProduct.image}
-                alt={selectedProduct.name}
+                src={galleryImages[activeImageIndex] || product.image}
+                alt={product.name}
                 className="w-full h-full object-contain object-center p-2 transition-transform duration-500 group-hover:scale-102"
               />
 
@@ -207,9 +190,9 @@ export const ProductPage: React.FC<ProductPageProps> = ({
               </button>
 
               {/* Badge if present */}
-              {selectedProduct.badge && (
+              {product.badge && (
                 <div className="absolute top-3 left-3 bg-red-600 text-white font-montserrat font-bold text-[10px] tracking-widest px-2.5 py-1 uppercase z-10">
-                  {selectedProduct.badge}
+                  {product.badge}
                 </div>
               )}
 
@@ -236,23 +219,23 @@ export const ProductPage: React.FC<ProductPageProps> = ({
           </div>
 
           {/* RIGHT: PRODUCT INFO & SELECTION */}
-          <div className="md:col-span-5 flex flex-col space-y-5">
+          <div className="md:col-span-5 flex flex-col space-y-6">
             <div>
               {/* Product Subtitle */}
-              {selectedProduct.subtitle && (
+              {product.subtitle && (
                 <div className="text-[10px] font-montserrat tracking-[0.2em] text-red-600 font-bold uppercase mb-1">
-                  {selectedProduct.subtitle}
+                  {product.subtitle}
                 </div>
               )}
 
               {/* Product Title */}
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-montserrat font-semibold tracking-tight text-black dark:text-white uppercase leading-snug">
-                {selectedProduct.name}
+              <h1 className="text-2xl sm:text-3xl font-montserrat font-bold tracking-tight text-black dark:text-white uppercase leading-snug">
+                {product.name}
               </h1>
 
               {/* Price */}
               <div className="mt-3 text-2xl lg:text-3xl font-montserrat font-semibold text-black dark:text-white">
-                Rs {selectedProduct.price > 0 ? selectedProduct.price.toLocaleString() : (selectedProduct.priceDisplay || '1,850')}
+                Rs {product.price > 0 ? product.price.toLocaleString() : (product.priceDisplay || '1,850')}
               </div>
             </div>
 
@@ -267,7 +250,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
-                {selectedProduct.sizes.map(size => {
+                {product.sizes.map(size => {
                   const isSelected = selectedSize === size;
                   return (
                     <button
@@ -315,7 +298,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
 
             {/* Action Buttons: Add To Bag & Buy Now */}
             <div className="space-y-2.5 pt-2">
-              {!selectedProduct.inStock ? (
+              {!product.inStock ? (
                 <button
                   disabled
                   className="w-full py-4 bg-stone-200 dark:bg-neutral-800 text-stone-500 dark:text-neutral-500 text-xs font-montserrat font-bold tracking-widest uppercase cursor-not-allowed rounded-none"
@@ -326,13 +309,12 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                 <div className="flex flex-col gap-2">
                   <button
                     type="button"
-                    onClick={handleAddToCart}
+                    onClick={handleAddToCartClick}
                     className={`w-full py-4 px-6 text-xs font-montserrat font-bold tracking-widest uppercase transition-all duration-200 cursor-pointer shadow-lg flex items-center justify-center gap-2 rounded-none ${
                       isAdded
                         ? 'bg-emerald-600 text-white border-emerald-600'
                         : 'bg-black text-white dark:bg-white dark:text-black hover:bg-neutral-800 dark:hover:bg-neutral-200'
                     }`}
-                    id="add-to-cart-top-btn"
                   >
                     {isAdded ? <Check className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
                     <span>{isAdded ? 'ADDED TO BAG' : 'ADD TO BAG'}</span>
@@ -342,7 +324,6 @@ export const ProductPage: React.FC<ProductPageProps> = ({
                     type="button"
                     onClick={handleBuyNowClick}
                     className="w-full py-3.5 px-6 text-xs font-montserrat font-bold tracking-widest uppercase transition-all duration-200 cursor-pointer border border-black dark:border-white text-black dark:text-white hover:bg-black hover:text-white dark:hover:bg-white dark:hover:text-black rounded-none"
-                    id="buy-now-top-btn"
                   >
                     BUY IT NOW
                   </button>
@@ -352,19 +333,19 @@ export const ProductPage: React.FC<ProductPageProps> = ({
 
             {/* Product Details Description */}
             <div className="pt-4 border-t border-stone-200 dark:border-neutral-800 space-y-2 text-xs font-inter text-stone-600 dark:text-neutral-300">
-              <p className="leading-relaxed">{selectedProduct.description}</p>
+              <p className="leading-relaxed">{product.description}</p>
               
-              {selectedProduct.details && selectedProduct.details.length > 0 && (
+              {product.details && product.details.length > 0 && (
                 <ul className="list-disc list-inside space-y-1 pl-1 text-[11px] text-stone-500 dark:text-neutral-400">
-                  {selectedProduct.details.map((detail, idx) => (
+                  {product.details.map((detail, idx) => (
                     <li key={idx}>{detail}</li>
                   ))}
                 </ul>
               )}
 
-              {selectedProduct.composition && (
+              {product.composition && (
                 <p className="font-inter text-[11px] text-stone-500 dark:text-neutral-400 pt-1">
-                  <strong className="text-black dark:text-white uppercase font-montserrat font-semibold">Composition:</strong> {selectedProduct.composition}
+                  <strong className="text-black dark:text-white uppercase font-montserrat font-semibold">Composition:</strong> {product.composition}
                 </p>
               )}
             </div>
@@ -374,101 +355,38 @@ export const ProductPage: React.FC<ProductPageProps> = ({
         </div>
       </section>
 
-      {/* 2. BEST SELLING PRODUCTS SECTION */}
-      <section id="best-selling" className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${
-        isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-stone-50 border-stone-200'
-      }`}>
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="text-left space-y-2">
-            <h2 className={`text-3xl sm:text-4xl md:text-5xl font-bebas uppercase tracking-wider ${
-              isDark ? 'text-white' : 'text-black'
-            }`}>
-              BEST SELLING PRODUCTS
-            </h2>
-            <div className={`w-12 h-0.5 ${isDark ? 'bg-white' : 'bg-black'}`} />
+      {/* Recommended Products Section */}
+      {relatedProducts.length > 0 && (
+        <section className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${
+          isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-stone-50 border-stone-200'
+        }`}>
+          <div className="max-w-7xl mx-auto space-y-8">
+            <div className="text-center space-y-2">
+              <h2 className={`text-3xl sm:text-4xl font-bebas uppercase tracking-wider ${
+                isDark ? 'text-white' : 'text-black'
+              }`}>
+                YOU MAY ALSO LIKE
+              </h2>
+              <div className={`w-12 h-0.5 mx-auto ${isDark ? 'bg-white' : 'bg-black'}`} />
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
+              {relatedProducts.map((p) => (
+                <ProductCard
+                  key={`related-${p.id}`}
+                  product={p}
+                  onSelectProduct={onSelectProduct}
+                  onAddToCart={onAddToCart}
+                  onBuyNow={onBuyNow}
+                  theme={theme}
+                />
+              ))}
+            </div>
           </div>
+        </section>
+      )}
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
-            {bestSellingProducts.map((product) => (
-              <ProductCard
-                key={`bestseller-${product.id}`}
-                product={product}
-                onSelectProduct={onSelectProduct}
-                onAddToCart={onAddToCart}
-                onBuyNow={onBuyNow}
-                theme={theme}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 3. SUMMER COLLECTION SECTION */}
-      <section id="summer-collection" className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${
-        isDark ? 'bg-neutral-950 border-neutral-800' : 'bg-white border-stone-200'
-      }`}>
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="text-left space-y-2">
-            <h2 className={`text-3xl sm:text-4xl md:text-5xl font-bebas uppercase tracking-wider ${
-              isDark ? 'text-white' : 'text-black'
-            }`}>
-              SUMMER COLLECTION
-            </h2>
-            <div className={`w-12 h-0.5 ${isDark ? 'bg-white' : 'bg-black'}`} />
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
-            {summerCollection.map((product) => (
-              <ProductCard
-                key={`summer-${product.id}`}
-                product={product}
-                onSelectProduct={onSelectProduct}
-                onAddToCart={onAddToCart}
-                onBuyNow={onBuyNow}
-                theme={theme}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 4. WINTER COLLECTION SECTION */}
-      <section id="winter-collection" className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${
-        isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-stone-50 border-stone-200'
-      }`}>
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="text-left space-y-2">
-            <h2 className={`text-3xl sm:text-4xl md:text-5xl font-bebas uppercase tracking-wider ${
-              isDark ? 'text-white' : 'text-black'
-            }`}>
-              WINTER COLLECTION
-            </h2>
-            <div className={`w-12 h-0.5 ${isDark ? 'bg-white' : 'bg-black'}`} />
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
-            {winterCollection.map((product) => (
-              <ProductCard
-                key={`winter-${product.id}`}
-                product={product}
-                onSelectProduct={onSelectProduct}
-                onAddToCart={onAddToCart}
-                onBuyNow={onBuyNow}
-                theme={theme}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* 5. MATCH WITH YOUR PARTNER SECTION */}
-      <MatchPartnerSection
-        onSelectProduct={onSelectProduct}
-        theme={theme}
-        gender={gender}
-      />
-
-      {/* 3. GET DISCOUNT & FOOTER */}
+      {/* Get Discount & Footer */}
       <GetDiscountSection theme={theme} />
       <FooterSection theme={theme} />
     </div>

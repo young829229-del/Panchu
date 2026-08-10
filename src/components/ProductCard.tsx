@@ -1,119 +1,103 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Product } from '../types';
-import { Eye, ArrowRight } from 'lucide-react';
+import { ProductImage } from './ProductImage';
+import { Eye } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface ProductCardProps {
   product: Product;
-  onAddToCart: (product: Product, size: string, quantity: number) => void;
-  onBuyNow: (product: Product, size: string, quantity: number) => void;
-  onQuickView: (product: Product) => void;
+  onSelectProduct?: (product: Product) => void;
+  onAddToCart?: (product: Product, size: string, quantity: number) => void;
+  onBuyNow?: (product: Product, size: string, quantity: number) => void;
   theme?: 'light' | 'dark';
 }
 
 export const ProductCard: React.FC<ProductCardProps> = ({
   product,
-  onQuickView,
+  onSelectProduct,
   theme = 'light'
 }) => {
   const isDark = theme === 'dark';
-  const [, setIsHovered] = useState<boolean>(false);
+  const productUrl = `/product/${product.id}`;
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (onSelectProduct) {
+      onSelectProduct(product);
+    } else {
+      window.history.pushState({ productId: product.id }, '', productUrl);
+      window.dispatchEvent(new Event('popstate'));
+    }
+  };
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-50px' }}
-      transition={{ duration: 0.5 }}
+      transition={{ duration: 0.4 }}
       className={`group relative border flex flex-col justify-between transition-all duration-300 shadow-sm hover:shadow-xl ${
         isDark 
           ? 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-white' 
           : 'bg-white border-stone-200 hover:border-black text-stone-900'
       }`}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       id={`product-card-${product.id}`}
     >
-      {/* Badge Overlay */}
-      {product.badge && (
-        <div className={`absolute top-4 left-4 z-10 text-[10px] font-mono tracking-widest px-2.5 py-1 uppercase ${
-          isDark ? 'bg-white text-black' : 'bg-black text-white'
-        }`}>
-          "{product.badge}"
-        </div>
-      )}
-
-      {/* Quick View Button on Hover */}
-      <div className="absolute top-4 right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-        <button
-          onClick={() => onQuickView(product)}
-          className={`p-2 rounded-none border transition-colors cursor-pointer shadow-md ${
+      {/* Quick View Button -> Opens Product Detail Page on Website (Same Tab) */}
+      <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+        <a
+          href={productUrl}
+          onClick={handleClick}
+          className={`p-2 rounded-none border transition-colors cursor-pointer shadow-md inline-flex items-center justify-center ${
             isDark 
               ? 'bg-neutral-800 text-white border-neutral-600 hover:bg-white hover:text-black' 
               : 'bg-white text-black border-black hover:bg-black hover:text-white'
           }`}
-          title="Quick View"
+          title="View Product Details"
           id={`quick-view-btn-${product.id}`}
         >
           <Eye className="w-4 h-4" />
-        </button>
+        </a>
       </div>
 
-      {/* Product Image Section */}
-      <div
-        className={`relative w-full aspect-[3/4] sm:aspect-[3/4] md:aspect-[4/5] lg:aspect-[1/1] max-h-[300px] sm:max-h-[340px] md:max-h-[290px] lg:max-h-[240px] xl:max-h-[260px] overflow-hidden cursor-pointer flex items-center justify-center ${
-          isDark ? 'bg-neutral-800' : 'bg-stone-50'
+      {/* Product Image Link -> Opens Page on Website (Same Tab) */}
+      <a
+        href={productUrl}
+        onClick={handleClick}
+        className={`relative w-full aspect-square overflow-hidden block cursor-pointer ${
+          isDark ? 'bg-neutral-800' : 'bg-stone-100'
         }`}
-        onClick={() => onQuickView(product)}
       >
-        <img
+        <ProductImage
           src={product.image}
           alt={product.name}
-          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out"
-          referrerPolicy="no-referrer"
+          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out"
         />
         <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-      </div>
+      </a>
 
       {/* Content & Details */}
-      <div className={`p-6 flex flex-col flex-grow justify-between border-t ${
+      <div className={`p-4 sm:p-5 flex flex-col flex-grow justify-between border-t ${
         isDark ? 'border-neutral-800' : 'border-stone-100'
       }`}>
         <div>
-          {/* Subtitle / Category */}
-          {product.subtitle && (
-            <div className={`text-[10px] font-mono tracking-widest uppercase mb-1 ${
-              isDark ? 'text-neutral-400' : 'text-stone-500'
-            }`}>
-              {product.subtitle}
-            </div>
-          )}
-
-          {/* Product Name */}
-          <h3
-            onClick={() => onQuickView(product)}
-            className={`text-sm md:text-base font-bold font-sans tracking-tight cursor-pointer hover:underline uppercase leading-snug line-clamp-2 ${
+          {/* Product Name Link -> Opens Page on Website (Same Tab) */}
+          <a
+            href={productUrl}
+            onClick={handleClick}
+            className={`block text-xs sm:text-sm font-montserrat font-semibold tracking-tight hover:underline uppercase leading-snug line-clamp-2 ${
               isDark ? 'text-white' : 'text-black'
             }`}
           >
             {product.name}
-          </h3>
+          </a>
 
           {/* Price */}
-          <div className={`mt-2 text-base md:text-lg font-mono font-semibold ${
+          <div className={`mt-1.5 text-sm sm:text-base font-montserrat font-semibold ${
             isDark ? 'text-white' : 'text-black'
           }`}>
-            {product.priceDisplay ? `Price ${product.priceDisplay}` : `NPR ${product.price}`}
+            Rs {product.price > 0 ? product.price.toLocaleString() : (product.priceDisplay || '1,850')}
           </div>
-
-          {/* Material / Composition Snippet */}
-          {product.composition && (
-            <p className={`mt-2 text-xs font-mono line-clamp-2 ${
-              isDark ? 'text-neutral-400' : 'text-stone-500'
-            }`}>
-              {product.composition}
-            </p>
-          )}
         </div>
       </div>
     </motion.div>

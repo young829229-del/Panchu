@@ -99,7 +99,7 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                         SIZE: <span className="font-bold text-black">{item.size}</span>
                       </div>
                       <div className="text-xs font-mono font-bold text-black mt-1">
-                        {item.product.priceDisplay ? `Price ${item.product.priceDisplay}` : `NPR ${item.product.price * item.quantity}`}
+                        NPR {(item.product.price * item.quantity).toLocaleString()}
                       </div>
                     </div>
 
