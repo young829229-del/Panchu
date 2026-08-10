@@ -45,23 +45,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     const deliveryLocationLabel = formData.deliveryOption === 'inside' ? 'Inside Valley (NPR 100)' : 'Outside Valley (NPR 150)';
 
     // Customer details string
-    const customerDetailsText = `- Name: ${formData.name.trim()}\n- Phone: ${formData.phone.trim()}\n- Location: ${formData.location.trim()} (${deliveryLocationLabel})\n- Address: ${formData.address.trim()}`;
+    const customerDetailsText = `• Customer Details\n\nName - ${formData.name.trim()}\nPhone - ${formData.phone.trim()}\nLocation - ${formData.location.trim()} (${deliveryLocationLabel})\nAddress - ${formData.address.trim()}`;
 
     // Order items string
     const orderItemsDetails = items.map(item => {
       const itemPrice = item.product.price > 0 
-        ? `NPR ${item.product.price * item.quantity}` 
-        : (item.product.priceDisplay ? `NPR ${item.product.priceDisplay}` : 'NPR 0');
-      return `- Product: ${item.product.name}\n- Size: ${item.size}\n- Quantity: ${item.quantity}\n- Price: ${itemPrice}`;
+        ? (item.product.price * item.quantity)
+        : (item.product.priceDisplay ? item.product.priceDisplay : 0);
+      return `Product - ${item.product.name}\nSize - ${item.size}\nQuantity - ${item.quantity}\nPrice - NPR ${itemPrice}`;
     }).join('\n\n');
 
-    // Total string
-    const formattedTotal = subtotal > 0 
-      ? `NPR ${totalAmount}` 
-      : (items[0]?.product.priceDisplay ? `NPR ${items[0].product.priceDisplay}` : 'NPR 0');
-
-    // Complete WhatsApp order message format
-    const fullMessage = `🛍️ PANCHU — NEW ORDER\n\nOrder #: ${orderNum}\n\nCustomer Details\n\n${customerDetailsText}\n\nOrder Details\n\n${orderItemsDetails}\n\nSubtotal: NPR ${subtotal}\nDelivery Charge: NPR ${deliveryCharge}\nTotal: ${formattedTotal}`;
+    // Complete WhatsApp order message format matching user template
+    const fullMessage = `🛍️ PANCHU — NEW ORDER\n\nOrder #: ${orderNum}\n\n${customerDetailsText}\n\n• Order Details\n\n${orderItemsDetails}\n\nSubtotal - NPR ${subtotal}\nDelivery Charge - NPR ${deliveryCharge}\nTotal - NPR ${totalAmount}`;
 
     setCreatedOrderNum(orderNum);
     setCreatedOrderMessage(fullMessage);
