@@ -91,45 +91,14 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           </button>
 
           <div className="grid grid-cols-1 md:grid-cols-2">
-            {/* Left: Product Media Gallery with Touch Swipe */}
-            <div className="bg-stone-100 p-4 sm:p-6 flex flex-col justify-between relative border-b md:border-b-0 md:border-r border-stone-200 select-none">
-              <div 
-                className="relative aspect-square w-full max-h-[400px] overflow-hidden bg-stone-200 touch-pan-y cursor-grab active:cursor-grabbing group flex items-center justify-center mx-auto"
-                onTouchStart={onTouchStart}
-                onTouchMove={onTouchMove}
-                onTouchEnd={onTouchEnd}
-              >
+            {/* Left: Product Media Gallery */}
+            <div className="p-4 sm:p-6 flex flex-col justify-between relative border-b md:border-b-0 md:border-r border-stone-200 select-none">
+              <div className="relative w-full overflow-hidden">
                 <ProductImage
                   src={images[activeImageIndex]}
                   alt={product.name}
-                  className="w-full h-full object-cover object-center"
+                  className="w-full h-auto block object-contain"
                 />
-
-                {/* Left/Right Navigation Arrows for Images */}
-                {images.length > 1 && (
-                  <>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handlePrevImage();
-                      }}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 p-2 bg-black/60 hover:bg-black text-white transition-all rounded-full opacity-80 hover:opacity-100 cursor-pointer z-10"
-                      title="Previous image"
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleNextImage();
-                      }}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-black/60 hover:bg-black text-white transition-all rounded-full opacity-80 hover:opacity-100 cursor-pointer z-10"
-                      title="Next image"
-                    >
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
-                  </>
-                )}
               </div>
 
               {/* Thumbnails if multiple images */}
@@ -164,7 +133,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                   </span>
                 </div>
 
-                <p className="mt-4 text-xs md:text-sm font-inter text-stone-600 leading-relaxed">
+                <p className="mt-4 text-xs md:text-sm font-inter text-stone-900 font-medium leading-relaxed">
                   {product.description}
                 </p>
               </div>

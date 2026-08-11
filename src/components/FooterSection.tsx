@@ -5,13 +5,24 @@ import { PanchuLogo } from './PanchuLogo';
 
 interface FooterSectionProps {
   theme?: 'light' | 'dark';
+  onOpenTerms?: () => void;
 }
 
 type ModalType = 'legal' | 'terms' | 'privacy' | 'returns' | 'contact' | null;
 
-export const FooterSection: React.FC<FooterSectionProps> = ({ theme = 'light' }) => {
+export const FooterSection: React.FC<FooterSectionProps> = ({ theme = 'light', onOpenTerms }) => {
   const isDark = theme === 'dark';
   const [activeModal, setActiveModal] = useState<ModalType>(null);
+
+  const handleTermsClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (onOpenTerms) {
+      onOpenTerms();
+    } else {
+      window.history.pushState(null, '', '/terms');
+      window.dispatchEvent(new Event('popstate'));
+    }
+  };
 
   const closeModal = () => setActiveModal(null);
 
@@ -26,14 +37,14 @@ export const FooterSection: React.FC<FooterSectionProps> = ({ theme = 'light' })
           <div className="flex flex-col items-center md:items-start gap-2">
             <PanchuLogo size="lg" />
             <p className={`text-[10px] font-inter tracking-widest ${isDark ? 'text-neutral-500' : 'text-stone-400'}`}>
-              © 2026 PANCHU™. ALL RIGHTS RESERVED.
+              © 2026 PANCHU. ALL RIGHTS RESERVED.
             </p>
           </div>
 
           {/* Legal / Policy Links */}
           <div className="flex flex-wrap items-center justify-center gap-6 text-xs font-montserrat font-semibold uppercase tracking-widest">
             <button
-              onClick={() => setActiveModal('legal')}
+              onClick={handleTermsClick}
               className={`hover:text-red-600 transition-colors cursor-pointer ${
                 isDark ? 'text-neutral-400' : 'text-stone-600'
               }`}
@@ -41,7 +52,7 @@ export const FooterSection: React.FC<FooterSectionProps> = ({ theme = 'light' })
               Legal
             </button>
             <button
-              onClick={() => setActiveModal('terms')}
+              onClick={handleTermsClick}
               className={`hover:text-red-600 transition-colors cursor-pointer ${
                 isDark ? 'text-neutral-400' : 'text-stone-600'
               }`}
@@ -57,7 +68,7 @@ export const FooterSection: React.FC<FooterSectionProps> = ({ theme = 'light' })
               Privacy Policy
             </button>
             <button
-              onClick={() => setActiveModal('returns')}
+              onClick={handleTermsClick}
               className={`hover:text-red-600 transition-colors cursor-pointer ${
                 isDark ? 'text-neutral-400' : 'text-stone-600'
               }`}
@@ -101,7 +112,7 @@ export const FooterSection: React.FC<FooterSectionProps> = ({ theme = 'light' })
                     <Shield className="w-4 h-4" />
                     <span>LEGAL NOTICE</span>
                   </div>
-                  <h3 className="text-xl font-bold font-sans uppercase">PANCHU™ LEGAL STATEMENT</h3>
+                  <h3 className="text-xl font-bold font-sans uppercase">PANCHU LEGAL STATEMENT</h3>
                   <p className="text-xs font-sans text-stone-600 leading-relaxed">
                     All graphics, product designs, branding trademarks, and content published under the PANCHU brand are protected by copyright laws. Unauthorized reproduction or commercial use is strictly prohibited.
                   </p>

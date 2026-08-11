@@ -13,10 +13,10 @@ export const PanchuLogo: React.FC<PanchuLogoProps> = ({
 
   // Height map for the logo container
   const heightClasses = {
-    sm: 'h-8 sm:h-10',
-    md: 'h-11 sm:h-14 md:h-16',
-    lg: 'h-14 sm:h-20',
-    xl: 'h-20 sm:h-28'
+    sm: 'h-9 sm:h-11',
+    md: 'h-13 sm:h-16 md:h-18',
+    lg: 'h-16 sm:h-22',
+    xl: 'h-22 sm:h-30'
   }[size];
 
   const mainTextSizes = {

@@ -3,6 +3,7 @@ import { Hero } from './components/Hero';
 import { HeaderNavigation } from './components/HeaderNavigation';
 import { ProductPage } from './components/ProductPage';
 import { ProductDetailPage } from './components/ProductDetailPage';
+import { TermsPage } from './components/TermsPage';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
 import { Product, CartItem } from './types';
@@ -26,6 +27,11 @@ function getProductIdFromUrl(): string | null {
   return null;
 }
 
+function isTermsUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.pathname === '/terms' || window.location.hash === '#terms';
+}
+
 function findProductById(id: string): Product | null {
   return ALL_PRODUCTS.find(p => p.id === id || p.id.toLowerCase() === id.toLowerCase()) || null;
 }
@@ -35,6 +41,8 @@ export default function App() {
     const id = getProductIdFromUrl();
     return id ? findProductById(id) : null;
   });
+
+  const [isTermsOpen, setIsTermsOpen] = useState<boolean>(() => isTermsUrl());
 
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     try {
@@ -109,8 +117,8 @@ export default function App() {
     const isReturningFromProduct = prevActiveProductRef.current !== null && activeProduct === null;
     prevActiveProductRef.current = activeProduct;
 
-    if (activeProduct) {
-      // Opening product detail: start at top of detail page
+    if (activeProduct || isTermsOpen) {
+      // Opening product detail or terms: start at top of page
       window.scrollTo(0, 0);
     } else if (isReturningFromProduct) {
       // Returning from product page to homepage catalog: restore exact saved position
@@ -127,11 +135,18 @@ export default function App() {
       sessionStorage.removeItem('panchu_homepage_scroll');
       window.scrollTo(0, 0);
     }
-  }, [activeProduct]);
+  }, [activeProduct, isTermsOpen]);
 
   // Synchronize URL changes on back/forward browser buttons
   useEffect(() => {
     const handleUrlChange = () => {
+      if (isTermsUrl()) {
+        setIsTermsOpen(true);
+        setActiveProduct(null);
+        return;
+      }
+      setIsTermsOpen(false);
+
       const id = getProductIdFromUrl();
       if (id) {
         const found = findProductById(id);
@@ -164,6 +179,7 @@ export default function App() {
     if (window.location.pathname !== targetPath) {
       window.history.pushState({ productId: product.id }, '', targetPath);
     }
+    setIsTermsOpen(false);
     setActiveProduct(product);
   };
 
@@ -172,12 +188,21 @@ export default function App() {
     if (window.location.pathname !== '/') {
       window.history.pushState(null, '', '/');
     }
+    setIsTermsOpen(false);
     setActiveProduct(null);
+  };
+
+  const handleOpenTerms = () => {
+    if (window.location.pathname !== '/terms') {
+      window.history.pushState(null, '', '/terms');
+    }
+    setActiveProduct(null);
+    setIsTermsOpen(true);
   };
 
   // Scroll into view for catalog or return from product detail
   const handleScrollToCatalog = () => {
-    if (activeProduct) {
+    if (activeProduct || isTermsOpen) {
       handleBackToCatalog();
     } else {
       catalogRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -185,13 +210,13 @@ export default function App() {
   };
 
   const handleGoToHero = () => {
-    if (activeProduct) {
+    if (activeProduct || isTermsOpen) {
       handleBackToCatalog();
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Cart operations
+  // Cart operations - "Add to Cart" adds item silently WITHOUT opening cart/checkout
   const handleAddToCart = (product: Product, size: string, quantity: number) => {
     setCartItems(prev => {
       const existingIndex = prev.findIndex(
@@ -206,8 +231,7 @@ export default function App() {
         return [...prev, { product, size, quantity }];
       }
     });
-
-    setIsCartOpen(true);
+    // Do NOT automatically open cart drawer on "Add to Cart" as requested
   };
 
   const handleUpdateQuantity = (productId: string, size: string, quantity: number) => {
@@ -260,8 +284,16 @@ export default function App() {
         isHeroVisible={false}
       />
 
+      {/* Dedicated Terms Page View */}
+      {isTermsOpen && (
+        <TermsPage
+          onBack={handleBackToCatalog}
+          theme={theme}
+        />
+      )}
+
       {/* Dedicated Product Detail View */}
-      {activeProduct && (
+      {!isTermsOpen && activeProduct && (
         <ProductDetailPage
           product={activeProduct}
           onBack={handleBackToCatalog}
@@ -274,7 +306,7 @@ export default function App() {
       )}
 
       {/* Main Homepage View (preserved in DOM to avoid back button banner flash) */}
-      <div className={activeProduct ? 'hidden' : 'block'}>
+      <div className={(activeProduct || isTermsOpen) ? 'hidden' : 'block'}>
         {/* Hero Section Banner */}
         <div className="relative">
           <Hero
@@ -295,6 +327,7 @@ export default function App() {
             onSelectProduct={handleSelectProduct}
             theme={theme}
             gender={gender}
+            onOpenTerms={handleOpenTerms}
           />
         </div>
       </div>

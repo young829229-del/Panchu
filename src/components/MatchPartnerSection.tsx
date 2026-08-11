@@ -55,44 +55,48 @@ export const MatchPartnerSection: React.FC<MatchPartnerSectionProps> = ({
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.4 }}
-                className={`group relative border flex flex-col justify-between overflow-hidden shadow-sm hover:shadow-xl transition-all ${
-                  isDark 
-                    ? 'bg-neutral-950 border-neutral-800 hover:border-neutral-500 text-white' 
-                    : 'bg-white border-stone-200 hover:border-black text-stone-900'
-                }`}
+                className="group relative flex flex-col justify-between transition-all"
               >
-                {/* Image Link -> Opens in same tab */}
-                <a
-                  href={productUrl}
-                  onClick={handleClick}
-                  className="relative w-full aspect-square overflow-hidden bg-stone-100 block cursor-pointer"
-                >
-                  <ProductImage
-                    src={item.image}
-                    alt={item.title}
-                    className="w-full h-full object-cover object-center transition-all duration-500 ease-out group-hover:scale-105"
-                  />
+                {/* Image Frame */}
+                <div className={`relative w-full aspect-square overflow-hidden border transition-all ${
+                  isDark 
+                    ? 'bg-neutral-900 border-neutral-800 hover:border-neutral-600' 
+                    : 'bg-stone-100 border-stone-200 hover:border-black'
+                }`}>
+                  <a
+                    href={productUrl}
+                    onClick={handleClick}
+                    className="w-full h-full block cursor-pointer"
+                  >
+                    <ProductImage
+                      src={item.image}
+                      alt={item.title}
+                      className="w-full h-full object-cover object-center transition-all duration-500 ease-out group-hover:scale-105"
+                    />
 
-                  {/* Gender / Partner Label Badge */}
-                  <div className={`absolute top-3 left-3 text-white font-montserrat font-semibold text-[9px] tracking-widest px-2 py-1 uppercase backdrop-blur-xs flex items-center gap-1.5 z-10 ${
-                    item.isCoupleImage ? 'bg-red-600' : 'bg-black/80'
-                  }`}>
-                    <span>{item.label}</span>
-                  </div>
-                </a>
+                    {/* Gender / Partner Label Badge */}
+                    <div className={`absolute top-3 left-3 text-white font-montserrat font-semibold text-[9px] tracking-widest px-2 py-1 uppercase backdrop-blur-xs flex items-center gap-1.5 z-10 ${
+                      item.isCoupleImage ? 'bg-red-600' : 'bg-black/80'
+                    }`}>
+                      <span>{item.label}</span>
+                    </div>
+                  </a>
+                </div>
 
-                {/* Info Box */}
-                <div className="p-4 flex flex-col justify-between flex-grow border-t border-stone-200/50">
+                {/* Info Box - Outside Image Frame */}
+                <div className="mt-2.5 sm:mt-3 flex flex-col justify-between flex-grow">
                   <div>
                     <a
                       href={productUrl}
                       onClick={handleClick}
                       className="block hover:underline"
                     >
-                      <h3 className="text-xs sm:text-sm font-montserrat font-semibold uppercase tracking-tight line-clamp-1">
+                      <h3 className={`text-xs sm:text-sm font-montserrat font-semibold uppercase tracking-tight line-clamp-1 ${
+                        isDark ? 'text-white' : 'text-stone-900'
+                      }`}>
                         {item.title}
                       </h3>
-                      <div className="mt-1.5 text-xs sm:text-sm font-montserrat font-semibold text-red-600">
+                      <div className="mt-1 text-xs sm:text-sm font-montserrat font-semibold text-red-600">
                         Rs {item.price.toLocaleString()}
                       </div>
                     </a>
@@ -101,7 +105,7 @@ export const MatchPartnerSection: React.FC<MatchPartnerSectionProps> = ({
                   <a
                     href={productUrl}
                     onClick={handleClick}
-                    className="mt-3 text-[10px] font-montserrat font-semibold text-stone-400 uppercase tracking-widest flex items-center gap-1 hover:text-black dark:hover:text-white"
+                    className="mt-2 text-[10px] font-montserrat font-semibold text-stone-400 uppercase tracking-widest flex items-center gap-1 hover:text-black dark:hover:text-white"
                   >
                     <span>VIEW COLLECTION →</span>
                   </a>

@@ -10,6 +10,14 @@ export const GetDiscountSection: React.FC<GetDiscountSectionProps> = ({ theme = 
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [discountCode, setDiscountCode] = useState('');
+
+  const generateUniqueCode = () => {
+    const digit = Math.floor(Math.random() * 10);
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const letter = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+    return `PNXM${digit}${letter}`;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +34,7 @@ export const GetDiscountSection: React.FC<GetDiscountSectionProps> = ({ theme = 
     }
 
     setError('');
+    setDiscountCode(generateUniqueCode());
     setIsSubscribed(true);
   };
 
@@ -44,8 +53,8 @@ export const GetDiscountSection: React.FC<GetDiscountSectionProps> = ({ theme = 
 
         {isSubscribed ? (
           <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 font-inter text-xs flex items-center justify-center gap-2 max-w-md mx-auto">
-            <Check className="w-4 h-4" />
-            <span>Success! Use code <strong>PANCHU5</strong> at checkout for 5% off.</span>
+            <Check className="w-4 h-4 flex-shrink-0" />
+            <span>Success! Your unique 5% OFF code is <strong className="font-mono text-sm tracking-widest">{discountCode}</strong>. Use it at checkout!</span>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-2">

@@ -27,11 +27,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     phone: '',
     location: '',
     address: '',
-    deliveryOption: 'inside' // 'inside' = NPR 100, 'outside' = NPR 150
+    deliveryOption: 'inside_door' // 'inside_door' = 100, 'outside_office' = 150, 'outside_door' = 180
   });
 
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
-  const deliveryCharge = formData.deliveryOption === 'inside' ? 100 : 150;
+  const deliveryCharge = formData.deliveryOption === 'inside_door' 
+    ? 100 
+    : formData.deliveryOption === 'outside_door' 
+      ? 180 
+      : 150;
   const totalAmount = subtotal + deliveryCharge;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -42,7 +46,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     const orderNum = `#${randomDigits}`;
 
     // Delivery region string
-    const deliveryLocationLabel = formData.deliveryOption === 'inside' ? 'Inside Valley (NPR 100)' : 'Outside Valley (NPR 150)';
+    const deliveryLocationLabel = formData.deliveryOption === 'inside_door'
+      ? 'Inside Valley (NPR 100)'
+      : formData.deliveryOption === 'outside_door'
+        ? 'Outside Valley - Home Door Delivery (NPR 180)'
+        : 'Outside Valley - Standard Office Delivery (NPR 150)';
 
     // Customer details string
     const customerDetailsText = `• Customer Details\n\nName - ${formData.name.trim()}\nPhone - ${formData.phone.trim()}\nLocation - ${formData.location.trim()} (${deliveryLocationLabel})\nAddress - ${formData.address.trim()}`;
@@ -145,7 +153,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
           ) : (
             <div>
               <div className="border-b border-stone-200 pb-4 mb-5">
-                <div className="text-xs font-mono tracking-[0.25em] text-stone-500 uppercase">PANCHU™ CHECKOUT</div>
+                <div className="text-xs font-mono tracking-[0.25em] text-stone-500 uppercase">PANCHU CHECKOUT</div>
                 <h2 className="text-xl md:text-2xl font-extrabold font-sans text-black uppercase mt-1">
                   WHATSAPP ORDER DETAILS
                 </h2>
@@ -206,8 +214,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     onChange={e => setFormData({ ...formData, deliveryOption: e.target.value })}
                     className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50 cursor-pointer"
                   >
-                    <option value="inside">Inside Valley (Kathmandu / Lalitpur / Bhaktapur) — NPR 100</option>
-                    <option value="outside">Outside Valley (Standard Shipping) — NPR 150</option>
+                    <option value="inside_door">Inside Valley (Home Door Delivery) — NPR 100</option>
+                    <option value="outside_office">Outside Valley (Standard Office Delivery) — NPR 150</option>
+                    <option value="outside_door">Outside Valley (Home Door Delivery) — NPR 180</option>
                   </select>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

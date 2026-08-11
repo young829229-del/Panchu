@@ -36,68 +36,65 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: '-50px' }}
       transition={{ duration: 0.4 }}
-      className={`group relative border flex flex-col justify-between transition-all duration-300 shadow-sm hover:shadow-xl ${
-        isDark 
-          ? 'bg-neutral-900 border-neutral-800 hover:border-neutral-500 text-white' 
-          : 'bg-white border-stone-200 hover:border-black text-stone-900'
-      }`}
+      className="group relative flex flex-col justify-between transition-all duration-300"
       id={`product-card-${product.id}`}
     >
-      {/* Quick View Button -> Opens Product Detail Page on Website (Same Tab) */}
-      <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-        <a
-          href={productUrl}
-          onClick={handleClick}
-          className={`p-2 rounded-none border transition-colors cursor-pointer shadow-md inline-flex items-center justify-center ${
-            isDark 
-              ? 'bg-neutral-800 text-white border-neutral-600 hover:bg-white hover:text-black' 
-              : 'bg-white text-black border-black hover:bg-black hover:text-white'
-          }`}
-          title="View Product Details"
-          id={`quick-view-btn-${product.id}`}
-        >
-          <Eye className="w-4 h-4" />
-        </a>
-      </div>
-
-      {/* Product Image Link -> Opens Page on Website (Same Tab) */}
-      <a
-        href={productUrl}
-        onClick={handleClick}
-        className={`relative w-full aspect-square overflow-hidden block cursor-pointer ${
-          isDark ? 'bg-neutral-800' : 'bg-stone-100'
-        }`}
-      >
-        <ProductImage
-          src={product.image}
-          alt={product.name}
-          className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out"
-        />
-        <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-      </a>
-
-      {/* Content & Details */}
-      <div className={`p-4 sm:p-5 flex flex-col flex-grow justify-between border-t ${
-        isDark ? 'border-neutral-800' : 'border-stone-100'
+      {/* Product Image Frame */}
+      <div className={`relative w-full aspect-square overflow-hidden border transition-all duration-300 ${
+        isDark 
+          ? 'bg-neutral-900 border-neutral-800 hover:border-neutral-600' 
+          : 'bg-stone-100 border-stone-200 hover:border-black'
       }`}>
-        <div>
-          {/* Product Name Link -> Opens Page on Website (Same Tab) */}
+        {/* Quick View Button -> Opens Product Detail Page on Website (Same Tab) */}
+        <div className="absolute top-3 right-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
           <a
             href={productUrl}
             onClick={handleClick}
-            className={`block text-xs sm:text-sm font-montserrat font-semibold tracking-tight hover:underline uppercase leading-snug line-clamp-2 ${
-              isDark ? 'text-white' : 'text-black'
+            className={`p-2 rounded-none border transition-colors cursor-pointer shadow-md inline-flex items-center justify-center ${
+              isDark 
+                ? 'bg-neutral-800 text-white border-neutral-600 hover:bg-white hover:text-black' 
+                : 'bg-white text-black border-black hover:bg-black hover:text-white'
             }`}
+            title="View Product Details"
+            id={`quick-view-btn-${product.id}`}
           >
-            {product.name}
+            <Eye className="w-4 h-4" />
           </a>
+        </div>
 
-          {/* Price */}
-          <div className={`mt-1.5 text-sm sm:text-base font-montserrat font-semibold ${
+        {/* Product Image Link -> Opens Page on Website (Same Tab) */}
+        <a
+          href={productUrl}
+          onClick={handleClick}
+          className="w-full h-full block cursor-pointer"
+        >
+          <ProductImage
+            src={product.image}
+            alt={product.name}
+            className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-500 ease-out"
+          />
+          <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+        </a>
+      </div>
+
+      {/* Content & Details - Outside Product Image Frame */}
+      <div className="mt-2.5 sm:mt-3 flex flex-col">
+        {/* Product Name Link -> Opens Page on Website (Same Tab) */}
+        <a
+          href={productUrl}
+          onClick={handleClick}
+          className={`block text-xs sm:text-sm font-montserrat font-semibold tracking-tight hover:underline uppercase leading-snug line-clamp-2 ${
             isDark ? 'text-white' : 'text-black'
-          }`}>
-            Rs {product.price > 0 ? product.price.toLocaleString() : (product.priceDisplay || '1,850')}
-          </div>
+          }`}
+        >
+          {product.name}
+        </a>
+
+        {/* Price */}
+        <div className={`mt-1 text-sm sm:text-base font-montserrat font-semibold ${
+          isDark ? 'text-white' : 'text-black'
+        }`}>
+          Rs {product.price > 0 ? product.price.toLocaleString() : (product.priceDisplay || '1,850')}
         </div>
       </div>
     </motion.div>
