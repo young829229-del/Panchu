@@ -29,7 +29,7 @@ function getProductIdFromUrl(): string | null {
 
 function isTermsUrl(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.location.pathname === '/terms' || window.location.hash === '#terms';
+  return window.location.pathname === '/terms' || window.location.hash === '#terms' || window.location.hash.includes('contact');
 }
 
 function findProductById(id: string): Product | null {
@@ -192,12 +192,21 @@ export default function App() {
     setActiveProduct(null);
   };
 
-  const handleOpenTerms = () => {
-    if (window.location.pathname !== '/terms') {
-      window.history.pushState(null, '', '/terms');
+  const handleOpenTerms = (section?: string) => {
+    const hash = section ? `#${section}` : '';
+    if (window.location.pathname !== '/terms' || window.location.hash !== hash) {
+      window.history.pushState(null, '', `/terms${hash}`);
     }
     setActiveProduct(null);
     setIsTermsOpen(true);
+  };
+
+  const handleOpenContact = () => {
+    handleOpenTerms('contact');
+  };
+
+  const handleOpenPrivacy = () => {
+    handleOpenTerms('privacy');
   };
 
   // Scroll into view for catalog or return from product detail
@@ -302,6 +311,9 @@ export default function App() {
           onBuyNow={handleBuyNow}
           theme={theme}
           gender={gender}
+          onOpenTerms={handleOpenTerms}
+          onOpenContact={handleOpenContact}
+          onOpenPrivacy={handleOpenPrivacy}
         />
       )}
 
@@ -328,6 +340,8 @@ export default function App() {
             theme={theme}
             gender={gender}
             onOpenTerms={handleOpenTerms}
+            onOpenContact={handleOpenContact}
+            onOpenPrivacy={handleOpenPrivacy}
           />
         </div>
       </div>

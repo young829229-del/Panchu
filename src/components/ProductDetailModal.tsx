@@ -93,11 +93,11 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2">
             {/* Left: Product Media Gallery */}
             <div className="p-4 sm:p-6 flex flex-col justify-between relative border-b md:border-b-0 md:border-r border-stone-200 select-none">
-              <div className="relative w-full overflow-hidden">
+              <div className="relative aspect-square w-full max-w-[420px] mx-auto overflow-hidden bg-stone-100 dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-sm">
                 <ProductImage
                   src={images[activeImageIndex]}
                   alt={product.name}
-                  className="w-full h-auto block object-contain"
+                  className="w-full h-full object-cover object-center"
                 />
               </div>
 

@@ -21,7 +21,9 @@ interface ProductPageProps {
   onSelectProduct?: (product: Product) => void;
   theme?: 'light' | 'dark';
   gender?: 'male' | 'female';
-  onOpenTerms?: () => void;
+  onOpenTerms?: (section?: string) => void;
+  onOpenContact?: () => void;
+  onOpenPrivacy?: () => void;
 }
 
 export const ProductPage: React.FC<ProductPageProps> = ({
@@ -30,7 +32,9 @@ export const ProductPage: React.FC<ProductPageProps> = ({
   onSelectProduct,
   theme = 'light',
   gender = 'male',
-  onOpenTerms
+  onOpenTerms,
+  onOpenContact,
+  onOpenPrivacy
 }) => {
   const isDark = theme === 'dark';
   const activeGender = gender === 'female' ? 'female' : 'male';
@@ -139,6 +143,16 @@ export const ProductPage: React.FC<ProductPageProps> = ({
     onBuyNow(selectedProduct, selectedSize, quantity);
   };
 
+  // Scroll smoothly down to price and size options
+  const handleImageClick = () => {
+    const optionsEl = document.getElementById('home-product-options');
+    if (optionsEl) {
+      optionsEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      window.scrollBy({ top: 280, behavior: 'smooth' });
+    }
+  };
+
   return (
     <div className={`w-full transition-colors duration-300 ${
       isDark ? 'bg-neutral-950 text-white' : 'bg-white text-stone-900'
@@ -151,12 +165,16 @@ export const ProductPage: React.FC<ProductPageProps> = ({
           {/* LEFT: PRODUCT GALLERY */}
           <div className="md:col-span-7 flex flex-col gap-3 select-none">
             
-            {/* Main Product Image Container - Fits complete original image with zero gaps or black bars */}
-            <div className="relative w-full overflow-hidden">
+            {/* Main Product Image Container - Clean Image with Click-to-Scroll */}
+            <div 
+              onClick={handleImageClick}
+              className="relative aspect-square w-full max-w-[500px] mx-auto overflow-hidden bg-stone-100 dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-sm cursor-pointer group/img"
+              title="Click image to view price & size selection"
+            >
               <ProductImage
                 src={galleryImages[activeImageIndex] || selectedProduct.image}
                 alt={selectedProduct.name}
-                className="w-full h-auto block object-contain"
+                className="w-full h-full object-cover object-center group-hover/img:scale-105 transition-transform duration-500 ease-out"
               />
 
               {/* Badge if present */}
@@ -198,11 +216,11 @@ export const ProductPage: React.FC<ProductPageProps> = ({
           </div>
 
           {/* RIGHT: PRODUCT INFO & SELECTION */}
-          <div className="md:col-span-5 flex flex-col space-y-5">
+          <div id="home-product-options" className="md:col-span-5 flex flex-col space-y-5 pt-1">
             <div>
               {/* Product Subtitle */}
               {selectedProduct.subtitle && (
-                <div className="text-[10px] font-montserrat tracking-[0.2em] text-red-600 font-bold uppercase mb-1">
+                <div className="text-lg sm:text-xl md:text-2xl font-montserrat tracking-[0.2em] text-red-600 font-bold uppercase mb-2">
                   {selectedProduct.subtitle}
                 </div>
               )}
@@ -336,15 +354,15 @@ export const ProductPage: React.FC<ProductPageProps> = ({
             </div>
 
             {/* Product Details Description */}
-            <div className={`pt-4 border-t space-y-2 text-xs font-inter font-medium ${
+            <div className={`pt-4 border-t space-y-3 font-inter font-medium ${
               isDark ? 'border-neutral-800 text-neutral-200' : 'border-stone-200 text-stone-900'
             }`}>
-              <p className={`leading-relaxed ${
+              <p className={`leading-relaxed text-sm sm:text-base md:text-lg ${
                 isDark ? 'text-stone-100' : 'text-black'
               }`}>{selectedProduct.description}</p>
               
               {selectedProduct.details && selectedProduct.details.length > 0 && (
-                <ul className={`list-disc list-inside space-y-1 pl-1 text-xs ${
+                <ul className={`list-disc list-inside space-y-1.5 pl-1 text-sm sm:text-base ${
                   isDark ? 'text-neutral-300' : 'text-stone-900'
                 }`}>
                   {selectedProduct.details.map((detail, idx) => (
@@ -354,7 +372,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
               )}
 
               {selectedProduct.composition && (
-                <p className={`font-inter text-xs pt-1 ${
+                <p className={`font-inter text-sm sm:text-base pt-1 ${
                   isDark ? 'text-neutral-300' : 'text-stone-900'
                 }`}>
                   <strong className={`uppercase font-montserrat font-bold ${
@@ -465,7 +483,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
 
       {/* 3. GET DISCOUNT & FOOTER */}
       <GetDiscountSection theme={theme} />
-      <FooterSection theme={theme} onOpenTerms={onOpenTerms} />
+      <FooterSection theme={theme} onOpenTerms={onOpenTerms} onOpenContact={onOpenContact} onOpenPrivacy={onOpenPrivacy} />
     </div>
   );
 };

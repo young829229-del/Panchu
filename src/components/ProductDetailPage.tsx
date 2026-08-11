@@ -15,6 +15,9 @@ interface ProductDetailPageProps {
   onBuyNow: (product: Product, size: string, quantity: number) => void;
   theme?: 'light' | 'dark';
   gender?: 'male' | 'female';
+  onOpenTerms?: (section?: string) => void;
+  onOpenContact?: () => void;
+  onOpenPrivacy?: () => void;
 }
 
 export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
@@ -23,7 +26,10 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   onSelectProduct,
   onAddToCart,
   onBuyNow,
-  theme = 'light'
+  theme = 'light',
+  onOpenTerms,
+  onOpenContact,
+  onOpenPrivacy
 }) => {
   const isDark = theme === 'dark';
 
@@ -103,33 +109,49 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     onBuyNow(product, selectedSize, quantity);
   };
 
+  // Scroll smoothly down to price & size options section
+  const handleImageClick = () => {
+    const optionsEl = document.getElementById('product-options-section');
+    if (optionsEl) {
+      optionsEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      window.scrollBy({ top: 250, behavior: 'smooth' });
+    }
+  };
+
   return (
-    <div className={`w-full min-h-screen pt-4 transition-colors duration-300 ${
+    <div className={`w-full min-h-screen transition-colors duration-300 ${
       isDark ? 'bg-neutral-950 text-white' : 'bg-white text-stone-900'
     }`}>
       
-      {/* Back Navigation Bar */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 md:px-12 py-4">
-        <button
-          type="button"
-          onClick={onBack}
-          className={`inline-flex items-center gap-2 text-xs font-montserrat font-bold tracking-widest uppercase py-2 px-4 border transition-all cursor-pointer ${
-            isDark 
-              ? 'border-neutral-800 text-neutral-300 hover:bg-white hover:text-black hover:border-white' 
-              : 'border-stone-300 text-stone-700 hover:bg-black hover:text-white hover:border-black'
-          }`}
-          id="back-to-catalog-btn"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          <span>BACK TO COLLECTION</span>
-        </button>
+      {/* Back Navigation Bar - Sticky at top for quick return */}
+      <div className={`sticky top-[57px] z-30 transition-colors border-b backdrop-blur-md px-4 sm:px-6 md:px-12 py-3 ${
+        isDark 
+          ? 'bg-neutral-950/90 border-neutral-800' 
+          : 'bg-white/90 border-stone-200'
+      }`}>
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <button
+            type="button"
+            onClick={onBack}
+            className={`inline-flex items-center gap-2 text-xs font-montserrat font-bold tracking-widest uppercase py-2 px-4 border transition-all cursor-pointer ${
+              isDark 
+                ? 'border-neutral-800 text-neutral-300 hover:bg-white hover:text-black hover:border-white' 
+                : 'border-stone-300 text-stone-700 hover:bg-black hover:text-white hover:border-black'
+            }`}
+            id="back-to-catalog-btn"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>BACK TO COLLECTION</span>
+          </button>
 
-        {/* Dynamic Section / Collection Subtitle */}
-        {product.subtitle && (
-          <div className="text-[10px] font-montserrat tracking-[0.2em] text-red-600 font-bold uppercase mt-3">
-            {product.subtitle}
-          </div>
-        )}
+          {/* Dynamic Section / Collection Subtitle */}
+          {product.subtitle && (
+            <div className="hidden sm:block text-xs font-montserrat tracking-[0.2em] text-red-600 font-bold uppercase">
+              {product.subtitle}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Main Product Details Section */}
@@ -139,12 +161,16 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
           {/* LEFT: PRODUCT GALLERY */}
           <div className="md:col-span-7 flex flex-col gap-3 select-none">
             
-            {/* Main Product Image Container - Fits complete original image with zero gaps or black bars */}
-            <div className="relative w-full overflow-hidden">
+            {/* Main Product Image Container - Clean Image with Click-to-Scroll */}
+            <div 
+              onClick={handleImageClick}
+              className="relative aspect-square w-full max-w-[500px] mx-auto overflow-hidden bg-stone-100 dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-sm cursor-pointer group/img"
+              title="Click image to view price & size selection"
+            >
               <ProductImage
                 src={galleryImages[activeImageIndex] || product.image}
                 alt={product.name}
-                className="w-full h-auto block object-contain"
+                className="w-full h-full object-cover object-center group-hover/img:scale-105 transition-transform duration-500 ease-out"
               />
 
               {/* Badge if present */}
@@ -186,7 +212,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
           </div>
 
           {/* RIGHT: PRODUCT INFO & SELECTION */}
-          <div className="md:col-span-5 flex flex-col space-y-6">
+          <div id="product-options-section" className="md:col-span-5 flex flex-col space-y-6 pt-1">
             <div>
               {/* Product Title */}
               <h1 className={`text-2xl sm:text-3xl font-montserrat font-bold tracking-tight uppercase leading-snug ${
@@ -315,17 +341,17 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
             </div>
 
             {/* Product Details Description */}
-            <div className={`pt-4 border-t space-y-2.5 text-xs font-inter ${
+            <div className={`pt-4 border-t space-y-3 font-inter ${
               isDark ? 'border-neutral-800 text-neutral-200' : 'border-stone-200 text-stone-900'
             }`}>
-              <p className={`leading-relaxed font-medium text-xs sm:text-sm ${
+              <p className={`leading-relaxed font-medium text-sm sm:text-base md:text-lg ${
                 isDark ? 'text-stone-100' : 'text-black'
               }`}>
                 {product.description}
               </p>
               
               {product.details && product.details.length > 0 && (
-                <ul className={`list-disc list-inside space-y-1 pl-1 text-xs font-medium ${
+                <ul className={`list-disc list-inside space-y-1.5 pl-1 text-sm sm:text-base font-medium ${
                   isDark ? 'text-neutral-300' : 'text-stone-900'
                 }`}>
                   {product.details.map((detail, idx) => (
@@ -335,7 +361,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
               )}
 
               {product.composition && (
-                <p className={`font-inter text-xs pt-1 ${
+                <p className={`font-inter text-sm sm:text-base pt-1 ${
                   isDark ? 'text-neutral-300' : 'text-stone-900'
                 }`}>
                   <strong className={`uppercase font-montserrat font-bold ${
@@ -385,7 +411,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
 
       {/* Get Discount & Footer */}
       <GetDiscountSection theme={theme} />
-      <FooterSection theme={theme} />
+      <FooterSection theme={theme} onOpenTerms={onOpenTerms} onOpenContact={onOpenContact} onOpenPrivacy={onOpenPrivacy} />
     </div>
   );
 };

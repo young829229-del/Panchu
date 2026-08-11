@@ -11,7 +11,36 @@ interface TermsPageProps {
 
 export const TermsPage: React.FC<TermsPageProps> = ({ onBack, theme = 'dark' }) => {
   useEffect(() => {
-    window.scrollTo(0, 0);
+    const hash = window.location.hash;
+    if (hash === '#contact' || hash.includes('contact')) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById('contact-section');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    } else if (hash === '#privacy' || hash.includes('privacy')) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById('privacy-section');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    } else if (hash === '#returns' || hash.includes('returns')) {
+      const timer = setTimeout(() => {
+        const el = document.getElementById('returns-section');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+      return () => clearTimeout(timer);
+    } else {
+      window.scrollTo(0, 0);
+    }
   }, []);
 
   return (
@@ -50,7 +79,7 @@ export const TermsPage: React.FC<TermsPageProps> = ({ onBack, theme = 'dark' }) 
         <div className="space-y-10 sm:space-y-12 text-xs sm:text-sm text-neutral-300 font-inter leading-relaxed uppercase tracking-wide">
           
           {/* RETURNS & REFUNDS */}
-          <section className="space-y-3">
+          <section id="returns-section" className="space-y-3">
             <h2 className="text-sm sm:text-base font-montserrat font-black text-white uppercase tracking-widest text-left border-b border-neutral-800/60 pb-2">
               RETURNS &amp; REFUNDS
             </h2>
@@ -240,8 +269,20 @@ export const TermsPage: React.FC<TermsPageProps> = ({ onBack, theme = 'dark' }) 
             </div>
           </section>
 
+          {/* PRIVACY POLICY */}
+          <section id="privacy-section" className="space-y-3 pt-2">
+            <h2 className="text-sm sm:text-base font-montserrat font-black text-white uppercase tracking-widest text-left border-b border-neutral-800/60 pb-2">
+              PRIVACY POLICY
+            </h2>
+            <div className="space-y-3 pt-1">
+              <p>
+                We value your privacy. Customer details provided during order placement (Name, Phone number, and Shipping Address) are strictly used for order fulfillment and delivery communication.
+              </p>
+            </div>
+          </section>
+
           {/* CONTACT */}
-          <section className="space-y-3 pt-2">
+          <section id="contact-section" className="space-y-3 pt-2">
             <h2 className="text-sm sm:text-base font-montserrat font-black text-white uppercase tracking-widest text-left border-b border-neutral-800/60 pb-2">
               CONTACT
             </h2>
@@ -280,7 +321,16 @@ export const TermsPage: React.FC<TermsPageProps> = ({ onBack, theme = 'dark' }) 
 
       {/* Footer / Subscription */}
       <GetDiscountSection theme="dark" />
-      <FooterSection theme="dark" onOpenTerms={() => window.scrollTo(0, 0)} />
+      <FooterSection 
+        theme="dark" 
+        onOpenTerms={() => window.scrollTo({ top: 0, behavior: 'smooth' })} 
+        onOpenContact={() => {
+          document.getElementById('contact-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }}
+        onOpenPrivacy={() => {
+          document.getElementById('privacy-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }}
+      />
     </div>
   );
 };
