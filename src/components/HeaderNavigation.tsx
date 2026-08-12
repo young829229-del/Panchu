@@ -45,19 +45,6 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
           >
             <PanchuLogo size="md" />
           </button>
-
-          {!isHeroVisible && (
-            <button
-              onClick={onGoToHero}
-              className={`hidden md:flex items-center gap-1.5 text-xs font-montserrat font-semibold tracking-widest hover:opacity-100 transition-colors ${
-                isDark ? 'text-neutral-400 hover:text-white' : 'text-stone-500 hover:text-black'
-              }`}
-              id="nav-back-to-campaign"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>CAMPAIGN</span>
-            </button>
-          )}
         </div>
 
         {/* Center: Editorial Label */}
