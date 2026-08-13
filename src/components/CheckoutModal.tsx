@@ -27,12 +27,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     phone: '',
     location: '',
     address: '',
-    deliveryOption: 'inside_door' // 'inside_door' = 100, 'outside_office' = 150, 'outside_door' = 180
+    deliveryOption: 'inside_door' // 'inside_door' = 120, 'outside_office' = 150, 'outside_door' = 180
   });
 
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const deliveryCharge = formData.deliveryOption === 'inside_door' 
-    ? 100 
+    ? 120 
     : formData.deliveryOption === 'outside_door' 
       ? 180 
       : 150;
@@ -47,7 +47,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
     // Delivery region string
     const deliveryLocationLabel = formData.deliveryOption === 'inside_door'
-      ? 'Inside Valley (NPR 100)'
+      ? 'Inside Valley (NPR 120)'
       : formData.deliveryOption === 'outside_door'
         ? 'Outside Valley - Home Door Delivery (NPR 180)'
         : 'Outside Valley - Standard Office Delivery (NPR 150)';
@@ -214,7 +214,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     onChange={e => setFormData({ ...formData, deliveryOption: e.target.value })}
                     className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50 cursor-pointer"
                   >
-                    <option value="inside_door">Inside Valley (Home Door Delivery) — NPR 100</option>
+                    <option value="inside_door">Inside Valley (Home Door Delivery) — NPR 120</option>
                     <option value="outside_office">Outside Valley (Standard Office Delivery) — NPR 150</option>
                     <option value="outside_door">Outside Valley (Home Door Delivery) — NPR 180</option>
                   </select>

@@ -104,7 +104,7 @@ export const Hero: React.FC<HeroProps> = ({
         <img
           src={image}
           alt="PANCHU Campaign Banner"
-          className="w-full h-full object-cover object-[center_10%] sm:object-[center_15%] md:object-[center_20%] lg:object-[center_25%] transition-all duration-300 scale-100 group-hover:scale-105"
+          className="w-full h-full object-cover object-[center_10%] sm:object-[center_15%] md:object-top lg:object-top transition-all duration-300 scale-100 group-hover:scale-105"
           referrerPolicy="no-referrer"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
