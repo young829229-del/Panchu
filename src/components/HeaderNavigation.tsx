@@ -37,11 +37,12 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
         
         {/* Left: Brand / Hero Return */}
-        <div className="flex items-center gap-6">
+        <div className="flex items-center">
           <button
             onClick={onGoToHero}
-            className="group flex items-center gap-1 hover:opacity-85 transition-all cursor-pointer py-0.5"
+            className="group flex items-center hover:opacity-85 transition-opacity cursor-pointer p-0.5"
             id="nav-brand-logo"
+            aria-label="PANCHU Home"
           >
             <PanchuLogo size="md" />
           </button>
