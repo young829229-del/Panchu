@@ -17,7 +17,7 @@ export const PanchuLogo: React.FC<PanchuLogoProps> = ({
   // Height map for responsive scaling across all screen sizes (Aspect ratio ~ 3.02:1)
   const heightClasses = {
     sm: 'h-5 sm:h-6',
-    md: 'h-6 sm:h-7 md:h-8 lg:h-8.5',
+    md: 'h-6 sm:h-6 md:h-6 lg:h-6',
     lg: 'h-8 sm:h-10 md:h-11',
     xl: 'h-12 sm:h-16 md:h-20'
   }[size];

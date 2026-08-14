@@ -101,24 +101,18 @@ export const Hero: React.FC<HeroProps> = ({
 
       {/* Hero Banner Container */}
       <div className="w-full h-full cursor-pointer relative overflow-hidden flex items-center justify-center group" onClick={onShopNow}>
-        {/* Subtle Ambient Background for Desktop to fill widescreen without harsh borders */}
-        <div 
-          className="hidden md:block absolute inset-0 bg-cover bg-center filter blur-2xl opacity-25 scale-110 pointer-events-none"
-          style={{ backgroundImage: `url(${image})` }}
-        />
-
-        {/* Main Banner Image */}
+        {/* Main Banner Image - Responsive Wide Landscape for Desktop / Portrait for Mobile */}
         <img
           src={image}
           alt="PANCHU Campaign Banner"
-          className="w-full h-full object-cover object-[center_10%] sm:object-[center_15%] md:object-contain md:max-h-full md:w-auto relative z-10 transition-all duration-300 scale-100 group-hover:scale-105"
+          className="w-full h-full object-cover object-[center_12%] sm:object-[center_15%] md:object-[center_18%] lg:object-[center_20%] transition-transform duration-500 scale-100 group-hover:scale-105"
           referrerPolicy="no-referrer"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
             if (gender === 'female') {
-              target.src = 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1200&q=80';
+              target.src = 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1600&q=80';
             } else {
-              target.src = 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?auto=format&fit=crop&w=1200&q=80';
+              target.src = 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?auto=format&fit=crop&w=1600&q=80';
             }
           }}
         />
