@@ -21,7 +21,7 @@ export const Hero: React.FC<HeroProps> = ({
   const isDark = theme === 'dark';
 
   return (
-    <section className={`relative w-full h-screen overflow-hidden ${isDark ? 'bg-neutral-950 text-white' : 'bg-white text-black'} select-none flex flex-col items-center justify-center`}>
+    <section className={`relative w-full h-screen md:h-[calc(100dvh-52px)] overflow-hidden ${isDark ? 'bg-neutral-950 text-white' : 'bg-white text-black'} select-none flex flex-col items-center justify-center`}>
       {/* Top Banner Control Bar (Gender Switch + Theme Switch) */}
       <div className="absolute top-4 sm:top-6 left-4 right-4 z-30 flex items-center justify-between pointer-events-auto max-w-7xl mx-auto">
         {/* Gender Switch (Male / Female - Icon Signs only) */}
@@ -99,12 +99,19 @@ export const Hero: React.FC<HeroProps> = ({
         </div>
       </div>
 
-      {/* Full-Screen Banner Image framed so head is never cut off */}
-      <div className="w-full h-full cursor-pointer relative overflow-hidden" onClick={onShopNow}>
+      {/* Hero Banner Container */}
+      <div className="w-full h-full cursor-pointer relative overflow-hidden flex items-center justify-center group" onClick={onShopNow}>
+        {/* Subtle Ambient Background for Desktop to fill widescreen without harsh borders */}
+        <div 
+          className="hidden md:block absolute inset-0 bg-cover bg-center filter blur-2xl opacity-25 scale-110 pointer-events-none"
+          style={{ backgroundImage: `url(${image})` }}
+        />
+
+        {/* Main Banner Image */}
         <img
           src={image}
           alt="PANCHU Campaign Banner"
-          className="w-full h-full object-cover object-[center_10%] sm:object-[center_15%] md:object-top lg:object-top transition-all duration-300 scale-100 group-hover:scale-105"
+          className="w-full h-full object-cover object-[center_10%] sm:object-[center_15%] md:object-contain md:max-h-full md:w-auto relative z-10 transition-all duration-300 scale-100 group-hover:scale-105"
           referrerPolicy="no-referrer"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
@@ -115,7 +122,7 @@ export const Hero: React.FC<HeroProps> = ({
             }
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 z-10 pointer-events-none" />
       </div>
 
       {/* SHOP NOW Button - Always visible, centered in middle of banner */}
