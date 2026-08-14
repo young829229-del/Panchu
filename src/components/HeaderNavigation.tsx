@@ -29,7 +29,7 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   const isDark = theme === 'dark';
 
   return (
-    <header className={`sticky top-0 z-40 w-full backdrop-blur-md border-b px-4 sm:px-6 md:px-12 py-2.5 sm:py-3 md:py-1.5 lg:py-1 transition-all duration-300 ${
+    <header className={`sticky top-0 z-40 w-full backdrop-blur-md border-b px-4 sm:px-6 lg:px-8 py-3 sm:py-4 transition-all duration-300 ${
       isDark 
         ? 'bg-neutral-950/95 border-neutral-800 text-white' 
         : 'bg-white/95 border-stone-200 text-stone-900'
