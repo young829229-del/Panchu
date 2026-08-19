@@ -16,17 +16,17 @@ export const PanchuLogo: React.FC<PanchuLogoProps> = ({
 }) => {
   // Height map for responsive scaling across all screen sizes (Aspect ratio ~ 3.02:1)
   const heightClasses = {
-    sm: 'h-4.5 sm:h-5',
-    md: 'h-5 sm:h-5.5 md:h-6.5 lg:h-7',
-    lg: 'h-7 sm:h-8 md:h-9',
-    xl: 'h-10 sm:h-13 md:h-16'
+    sm: 'h-4 sm:h-4.5',
+    md: 'h-4.5 sm:h-5 md:h-5.5 lg:h-6',
+    lg: 'h-6 sm:h-7 md:h-8',
+    xl: 'h-9 sm:h-11 md:h-14'
   }[size];
 
   return (
     <div className={`inline-flex items-center select-none text-red-600 ${className}`} aria-label="PANCHU">
       <svg
         viewBox="0 0 640 212"
-        className={`${heightClasses} w-auto max-w-full fill-current transition-transform duration-200`}
+        className={`${heightClasses} w-auto max-w-full fill-current`}
         preserveAspectRatio="xMidYMid meet"
         role="img"
       >

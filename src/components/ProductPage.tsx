@@ -21,9 +21,12 @@ interface ProductPageProps {
   onSelectProduct?: (product: Product) => void;
   theme?: 'light' | 'dark';
   gender?: 'male' | 'female';
+  products?: Product[];
   onOpenTerms?: (section?: string) => void;
   onOpenContact?: () => void;
   onOpenPrivacy?: () => void;
+  onOpenAdmin?: () => void;
+  onOpenAccount?: () => void;
 }
 
 export const ProductPage: React.FC<ProductPageProps> = ({
@@ -32,12 +35,29 @@ export const ProductPage: React.FC<ProductPageProps> = ({
   onSelectProduct,
   theme = 'light',
   gender = 'male',
+  products,
   onOpenTerms,
   onOpenContact,
-  onOpenPrivacy
+  onOpenPrivacy,
+  onOpenAdmin,
+  onOpenAccount
 }) => {
   const isDark = theme === 'dark';
   const activeGender = gender === 'female' ? 'female' : 'male';
+
+  const currentAllProducts = useMemo(() => {
+    return products && products.length > 0 ? products : ALL_PRODUCTS;
+  }, [products]);
+
+  const currentMaleProducts = useMemo(() => {
+    const list = currentAllProducts.filter(p => p.gender === 'male' || p.gender === 'unisex');
+    return list.length > 0 ? list : MALE_PRODUCTS;
+  }, [currentAllProducts]);
+
+  const currentFemaleProducts = useMemo(() => {
+    const list = currentAllProducts.filter(p => p.gender === 'female' || p.gender === 'unisex');
+    return list.length > 0 ? list : FEMALE_PRODUCTS;
+  }, [currentAllProducts]);
 
   // Active top featured product
   const [selectedProduct, setSelectedProduct] = useState<Product>(() => {
@@ -51,13 +71,13 @@ export const ProductPage: React.FC<ProductPageProps> = ({
         urlId = params.get('product') || params.get('id') || '';
       }
       if (urlId) {
-        const match = ALL_PRODUCTS.find(
+        const match = currentAllProducts.find(
           p => p.id === urlId || p.id.toLowerCase() === urlId.toLowerCase()
         );
         if (match) return match;
       }
     }
-    return gender === 'female' ? FEMALE_PRODUCTS[0] : MALE_PRODUCTS[0];
+    return gender === 'female' ? currentFemaleProducts[0] : currentMaleProducts[0];
   });
 
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
@@ -69,36 +89,58 @@ export const ProductPage: React.FC<ProductPageProps> = ({
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
 
-  // Automatically update featured main product when gender changes
+  // Automatically update featured main product when gender changes or products load
   useEffect(() => {
     const hasUrlProduct = typeof window !== 'undefined' && (
       window.location.pathname.startsWith('/product/') || 
       new URLSearchParams(window.location.search).has('product')
     );
     if (!hasUrlProduct) {
-      const defaultProduct = gender === 'female' ? FEMALE_PRODUCTS[0] : MALE_PRODUCTS[0];
-      setSelectedProduct(defaultProduct);
-      setActiveImageIndex(0);
-      setSelectedSize(defaultProduct.sizes[0] || 'M');
-      setQuantity(1);
-      setIsAdded(false);
+      const defaultProduct = gender === 'female' ? currentFemaleProducts[0] : currentMaleProducts[0];
+      if (defaultProduct) {
+        setSelectedProduct(defaultProduct);
+        setActiveImageIndex(0);
+        setSelectedSize(defaultProduct.sizes?.[0] || 'M');
+        setQuantity(1);
+        setIsAdded(false);
+      }
     }
-  }, [gender]);
+  }, [gender, currentFemaleProducts, currentMaleProducts]);
 
   // Gallery Images array
   const galleryImages = useMemo(() => {
     const baseImages = (selectedProduct.additionalImages && selectedProduct.additionalImages.length > 0)
       ? selectedProduct.additionalImages
-      : [selectedProduct.image];
+      : (selectedProduct.images && selectedProduct.images.length > 0 ? selectedProduct.images : [selectedProduct.image]);
 
     const valid = baseImages.filter((img): img is string => typeof img === 'string' && img.trim().length > 0);
     return valid.length > 0 ? valid : [selectedProduct.image];
   }, [selectedProduct]);
 
   // Dynamic collections filtered by gender
-  const bestSellingProducts = useMemo(() => getBestSellingProducts(activeGender), [activeGender]);
-  const summerCollection = useMemo(() => getSummerCollection(activeGender), [activeGender]);
-  const winterCollection = useMemo(() => getWinterCollection(activeGender), [activeGender]);
+  const bestSellingProducts = useMemo(() => {
+    if (products && products.length > 0) {
+      const list = products.filter(p => (p.gender === activeGender || p.gender === 'unisex') && (p.bestSelling || p.badge?.toLowerCase().includes('best') || p.id.includes('bestselling')));
+      return list.length > 0 ? list.slice(0, 4) : products.filter(p => p.gender === activeGender || p.gender === 'unisex').slice(0, 4);
+    }
+    return getBestSellingProducts(activeGender);
+  }, [products, activeGender]);
+
+  const summerCollection = useMemo(() => {
+    if (products && products.length > 0) {
+      const list = products.filter(p => (p.gender === activeGender || p.gender === 'unisex') && (p.collection?.toLowerCase().includes('summer') || p.id.includes('summer')));
+      return list.length > 0 ? list.slice(0, 4) : products.filter(p => p.gender === activeGender || p.gender === 'unisex').slice(0, 4);
+    }
+    return getSummerCollection(activeGender);
+  }, [products, activeGender]);
+
+  const winterCollection = useMemo(() => {
+    if (products && products.length > 0) {
+      const list = products.filter(p => (p.gender === activeGender || p.gender === 'unisex') && (p.collection?.toLowerCase().includes('winter') || p.id.includes('winter')));
+      return list.length > 0 ? list.slice(0, 4) : products.filter(p => p.gender === activeGender || p.gender === 'unisex').slice(0, 4);
+    }
+    return getWinterCollection(activeGender);
+  }, [products, activeGender]);
 
   const handleNextImage = () => {
     setActiveImageIndex(prev => (prev + 1) % galleryImages.length);
@@ -483,7 +525,14 @@ export const ProductPage: React.FC<ProductPageProps> = ({
 
       {/* 3. GET DISCOUNT & FOOTER */}
       <GetDiscountSection theme={theme} />
-      <FooterSection theme={theme} onOpenTerms={onOpenTerms} onOpenContact={onOpenContact} onOpenPrivacy={onOpenPrivacy} />
+      <FooterSection
+        theme={theme}
+        onOpenTerms={onOpenTerms}
+        onOpenContact={onOpenContact}
+        onOpenPrivacy={onOpenPrivacy}
+        onOpenAdmin={onOpenAdmin}
+        onOpenAccount={onOpenAccount}
+      />
     </div>
   );
 };

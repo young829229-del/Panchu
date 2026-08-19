@@ -8,11 +8,20 @@ interface FooterSectionProps {
   onOpenTerms?: (section?: string) => void;
   onOpenContact?: () => void;
   onOpenPrivacy?: () => void;
+  onOpenAdmin?: () => void;
+  onOpenAccount?: () => void;
 }
 
 type ModalType = 'legal' | 'terms' | 'privacy' | 'returns' | 'contact' | null;
 
-export const FooterSection: React.FC<FooterSectionProps> = ({ theme = 'light', onOpenTerms, onOpenContact, onOpenPrivacy }) => {
+export const FooterSection: React.FC<FooterSectionProps> = ({
+  theme = 'light',
+  onOpenTerms,
+  onOpenContact,
+  onOpenPrivacy,
+  onOpenAdmin,
+  onOpenAccount
+}) => {
   const isDark = theme === 'dark';
   const [activeModal, setActiveModal] = useState<ModalType>(null);
 
@@ -101,6 +110,40 @@ export const FooterSection: React.FC<FooterSectionProps> = ({ theme = 'light', o
                 }`}
               >
                 Contact
+              </button>
+              {onOpenAccount && (
+                <>
+                  <span className={isDark ? 'text-neutral-700' : 'text-stone-300'}>|</span>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onOpenAccount();
+                    }}
+                    className={`hover:text-red-600 transition-colors cursor-pointer whitespace-nowrap ${
+                      isDark ? 'text-neutral-400' : 'text-stone-600'
+                    }`}
+                  >
+                    Account
+                  </button>
+                </>
+              )}
+              <span className={isDark ? 'text-neutral-700' : 'text-stone-300'}>|</span>
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (onOpenAdmin) {
+                    onOpenAdmin();
+                  } else {
+                    window.history.pushState(null, '', '/admin');
+                    window.dispatchEvent(new Event('popstate'));
+                  }
+                }}
+                className={`hover:text-red-600 transition-colors cursor-pointer whitespace-nowrap ${
+                  isDark ? 'text-neutral-500' : 'text-stone-400'
+                }`}
+                title="Panchu Admin Portal"
+              >
+                Admin
               </button>
             </div>
 

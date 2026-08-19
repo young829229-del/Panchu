@@ -15,9 +15,12 @@ interface ProductDetailPageProps {
   onBuyNow: (product: Product, size: string, quantity: number) => void;
   theme?: 'light' | 'dark';
   gender?: 'male' | 'female';
+  products?: Product[];
   onOpenTerms?: (section?: string) => void;
   onOpenContact?: () => void;
   onOpenPrivacy?: () => void;
+  onOpenAdmin?: () => void;
+  onOpenAccount?: () => void;
 }
 
 export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
@@ -27,9 +30,12 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   onAddToCart,
   onBuyNow,
   theme = 'light',
+  products,
   onOpenTerms,
   onOpenContact,
-  onOpenPrivacy
+  onOpenPrivacy,
+  onOpenAdmin,
+  onOpenAccount
 }) => {
   const isDark = theme === 'dark';
 
@@ -55,7 +61,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   const galleryImages = useMemo(() => {
     const baseImages = (product.additionalImages && product.additionalImages.length > 0)
       ? product.additionalImages
-      : [product.image];
+      : (product.images && product.images.length > 0 ? product.images : [product.image]);
 
     const valid = baseImages.filter((img): img is string => typeof img === 'string' && img.trim().length > 0);
     return valid.length > 0 ? valid : [product.image];
@@ -63,8 +69,9 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
 
   // Recommended Products (same category or general collection excluding current product)
   const relatedProducts = useMemo(() => {
-    return ALL_PRODUCTS.filter(p => p.id !== product.id && p.gender === product.gender).slice(0, 4);
-  }, [product]);
+    const sourceList = products && products.length > 0 ? products : ALL_PRODUCTS;
+    return sourceList.filter(p => p.id !== product.id && p.gender === product.gender).slice(0, 4);
+  }, [product, products]);
 
   const handleNextImage = () => {
     setActiveImageIndex(prev => (prev + 1) % galleryImages.length);
@@ -411,7 +418,14 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
 
       {/* Get Discount & Footer */}
       <GetDiscountSection theme={theme} />
-      <FooterSection theme={theme} onOpenTerms={onOpenTerms} onOpenContact={onOpenContact} onOpenPrivacy={onOpenPrivacy} />
+      <FooterSection
+        theme={theme}
+        onOpenTerms={onOpenTerms}
+        onOpenContact={onOpenContact}
+        onOpenPrivacy={onOpenPrivacy}
+        onOpenAdmin={onOpenAdmin}
+        onOpenAccount={onOpenAccount}
+      />
     </div>
   );
 };

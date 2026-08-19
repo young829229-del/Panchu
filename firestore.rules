@@ -1,0 +1,102 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isPrimaryAdmin() {
+      return isSignedIn() && 
+        (request.auth.token.email == 'young829229@gmail.com' || 
+         request.auth.token.email == 'Young829229@gmail.com');
+    }
+
+    function isAdmin() {
+      return isPrimaryAdmin() || 
+        (isSignedIn() && (
+          request.auth.token.admin == true ||
+          exists(/databases/$(database)/documents/admin_users/$(request.auth.uid)) ||
+          exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        ));
+    }
+
+    function isValidProduct(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.price is number && data.price >= 0;
+    }
+
+    function isValidOrder(data) {
+      return data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 64 &&
+             data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 100 &&
+             data.phone is string && data.phone.size() > 0 && data.phone.size() <= 30 &&
+             data.address is string && data.address.size() > 0 && data.address.size() <= 300 &&
+             data.items is list && data.items.size() > 0 && data.items.size() <= 50 &&
+             data.subtotal is number && data.subtotal >= 0 &&
+             data.total is number && data.total >= 0 &&
+             data.status == 'Pending';
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Products Collection: Public read, Admin write, customer stock updates on order
+    match /products/{productId} {
+      allow read, get, list: if true;
+      allow create, delete: if isAdmin() && isValidId(productId);
+      allow update: if isValidId(productId) && (
+        isAdmin() ||
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['stock', 'inStock', 'updatedAt'])
+        )
+      );
+    }
+
+    // Orders Collection: Public create, Admin full access, Customer read own orders
+    match /orders/{orderId} {
+      allow create: if isValidId(orderId) && isValidOrder(incoming());
+      allow read, get: if isAdmin() || (isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.customerEmail == request.auth.token.email));
+      allow list: if isAdmin() || isSignedIn();
+      allow update, delete: if isAdmin();
+    }
+
+    // Users Collection: Customer profile documents
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isAdmin();
+    }
+
+    // Admin Users Collection: Signed-in users can check admin role, Admins can write
+    match /admin_users/{adminUserId} {
+      allow read, get, list: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Admins Collection: Backwards compatibility
+    match /admins/{adminId} {
+      allow read, get, list: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // System connection test doc
+    match /system/{docId} {
+      allow read, get, list: if true;
+    }
+  }
+}
+

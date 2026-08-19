@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { CartItem } from '../types';
-import { X, CheckCircle2, MessageCircle, ArrowRight, ShoppingBag } from 'lucide-react';
+import { CartItem, OrderItem } from '../types';
+import { X, CheckCircle2, MessageCircle, ArrowRight, ShoppingBag, Loader2, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { createFirestoreOrder } from '../services/firebaseService';
+import { getSavedCheckoutDetails, saveCustomerDetailsFromCheckout } from '../services/customerStorage';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -19,11 +21,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   if (!isOpen) return null;
 
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string>('');
   const [createdOrderNum, setCreatedOrderNum] = useState<string>('');
   const [createdOrderMessage, setCreatedOrderMessage] = useState<string>('');
 
   const [formData, setFormData] = useState({
     name: '',
+    email: '',
     phone: '',
     location: '',
     address: '',
@@ -38,46 +43,86 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       : 150;
   const totalAmount = subtotal + deliveryCharge;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage('');
+    setIsSubmitting(true);
 
-    // Generate unique order number e.g. #282
-    const randomDigits = Math.floor(100 + Math.random() * 900);
-    const orderNum = `#${randomDigits}`;
+    try {
+      // Generate unique order number e.g. #282
+      const randomDigits = Math.floor(100 + Math.random() * 900);
+      const orderNum = `#${randomDigits}`;
 
-    // Delivery region string
-    const deliveryLocationLabel = formData.deliveryOption === 'inside_door'
-      ? 'Inside Valley (NPR 120)'
-      : formData.deliveryOption === 'outside_door'
-        ? 'Outside Valley - Home Door Delivery (NPR 180)'
-        : 'Outside Valley - Standard Office Delivery (NPR 150)';
+      // Map cart items to standard OrderItem format
+      const orderItems: OrderItem[] = items.map(item => ({
+        productId: item.product.id || (item.product as any).productId || '',
+        productName: item.product.name,
+        image: item.product.image || '',
+        selectedSize: item.size,
+        quantity: item.quantity,
+        price: item.product.price
+      }));
 
-    // Customer details string
-    const customerDetailsText = `• Customer Details\n\nName - ${formData.name.trim()}\nPhone - ${formData.phone.trim()}\nLocation - ${formData.location.trim()} (${deliveryLocationLabel})\nAddress - ${formData.address.trim()}`;
+      // 1. Create order in Firestore & reduce size-specific stock atomically
+      const result = await createFirestoreOrder({
+        orderId: orderNum,
+        customerName: formData.name.trim(),
+        customerEmail: formData.email.trim(),
+        phone: formData.phone.trim(),
+        address: formData.address.trim(),
+        location: formData.location.trim(),
+        deliveryOption: formData.deliveryOption,
+        items: orderItems,
+        subtotal: subtotal,
+        deliveryFee: deliveryCharge,
+        total: totalAmount
+      });
 
-    // Order items string
-    const orderItemsDetails = items.map(item => {
-      const itemPrice = item.product.price > 0 
-        ? (item.product.price * item.quantity)
-        : (item.product.priceDisplay ? item.product.priceDisplay : 0);
-      return `Product - ${item.product.name}\nSize - ${item.size}\nQuantity - ${item.quantity}\nPrice - NPR ${itemPrice}`;
-    }).join('\n\n');
+      if (!result.success) {
+        setErrorMessage(result.error || 'Failed to submit order. Please try again.');
+        setIsSubmitting(false);
+        return;
+      }
 
-    // Complete WhatsApp order message format matching user template
-    const fullMessage = `🛍️ PANCHU — NEW ORDER\n\nOrder #: ${orderNum}\n\n${customerDetailsText}\n\n• Order Details\n\n${orderItemsDetails}\n\nSubtotal - NPR ${subtotal}\nDelivery Charge - NPR ${deliveryCharge}\nTotal - NPR ${totalAmount}`;
+      // 2. Delivery region string
+      const deliveryLocationLabel = formData.deliveryOption === 'inside_door'
+        ? 'Inside Valley (NPR 120)'
+        : formData.deliveryOption === 'outside_door'
+          ? 'Outside Valley - Home Door Delivery (NPR 180)'
+          : 'Outside Valley - Standard Office Delivery (NPR 150)';
 
-    setCreatedOrderNum(orderNum);
-    setCreatedOrderMessage(fullMessage);
+      // 3. Customer details string
+      const customerDetailsText = `• Customer Details\n\nName - ${formData.name.trim()}\nPhone - ${formData.phone.trim()}\nLocation - ${formData.location.trim()} (${deliveryLocationLabel})\nAddress - ${formData.address.trim()}`;
 
-    // Destination store WhatsApp number: 970-6374074 -> 9706374074
-    const storeWhatsAppNumber = '9706374074';
-    const whatsappUrl = `https://wa.me/${storeWhatsAppNumber}?text=${encodeURIComponent(fullMessage)}`;
+      // 4. Order items string
+      const orderItemsDetails = items.map(item => {
+        const itemPrice = item.product.price > 0 
+          ? (item.product.price * item.quantity)
+          : (item.product.priceDisplay ? item.product.priceDisplay : 0);
+        return `Product - ${item.product.name}\nSize - ${item.size}\nQuantity - ${item.quantity}\nPrice - NPR ${itemPrice}`;
+      }).join('\n\n');
 
-    // Open WhatsApp
-    window.open(whatsappUrl, '_blank');
+      // 5. Complete WhatsApp order message format matching user template
+      const fullMessage = `🛍️ PANCHU — NEW ORDER\n\nOrder #: ${orderNum}\n\n${customerDetailsText}\n\n• Order Details\n\n${orderItemsDetails}\n\nSubtotal - NPR ${subtotal}\nDelivery Charge - NPR ${deliveryCharge}\nTotal - NPR ${totalAmount}`;
 
-    setIsSuccess(true);
-    onClearCart();
+      setCreatedOrderNum(orderNum);
+      setCreatedOrderMessage(fullMessage);
+
+      // Destination store WhatsApp number: 970-6374074 -> 9706374074
+      const storeWhatsAppNumber = '9706374074';
+      const whatsappUrl = `https://wa.me/${storeWhatsAppNumber}?text=${encodeURIComponent(fullMessage)}`;
+
+      // 6. Open WhatsApp directly
+      window.open(whatsappUrl, '_blank');
+
+      setIsSuccess(true);
+      onClearCart();
+    } catch (err: any) {
+      console.error('Checkout submit error:', err);
+      setErrorMessage(err?.message || 'An unexpected error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleReopenWhatsApp = () => {
@@ -118,13 +163,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
               <div>
                 <span className="text-xs font-mono tracking-[0.25em] text-emerald-700 font-bold uppercase">
-                  ORDER {createdOrderNum} GENERATED
+                  ORDER {createdOrderNum} RECORDED & GENERATED
                 </span>
                 <h2 className="text-2xl md:text-3xl font-extrabold font-sans text-black uppercase mt-1">
                   WHATSAPP ORDER OPENED
                 </h2>
                 <p className="mt-2 text-xs md:text-sm font-sans text-stone-600 max-w-md mx-auto">
-                  Your order message has been sent to WhatsApp line <span className="font-bold text-black">+970 6374074</span>.
+                  Your order has been recorded in our Firebase system and forwarded to WhatsApp line <span className="font-bold text-black">+970 6374074</span>.
                 </p>
               </div>
 
@@ -158,6 +203,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   WHATSAPP ORDER DETAILS
                 </h2>
               </div>
+
+              {/* Error Banner */}
+              {errorMessage && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-mono flex items-start gap-2 rounded">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{errorMessage}</span>
+                </div>
+              )}
 
               {/* Items Summary */}
               <div className="mb-5 p-4 bg-stone-50 border border-stone-200">
@@ -251,6 +304,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1">
+                      EMAIL ADDRESS <span className="text-stone-400 font-normal">(OPTIONAL)</span>
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="e.g. name@example.com"
+                      value={formData.email}
+                      onChange={e => setFormData({ ...formData, email: e.target.value })}
+                      className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1">
                       LOCATION / CITY <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -262,30 +327,40 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                       className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50"
                     />
                   </div>
+                </div>
 
-                  <div>
-                    <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1">
-                      FULL ADDRESS <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Ward 4, New Baneshwor"
-                      value={formData.address}
-                      onChange={e => setFormData({ ...formData, address: e.target.value })}
-                      className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50"
-                    />
-                  </div>
+                <div>
+                  <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1">
+                    FULL ADDRESS <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Ward 4, New Baneshwor"
+                    value={formData.address}
+                    onChange={e => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50"
+                  />
                 </div>
 
                 <button
                   type="submit"
-                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-mono font-bold tracking-[0.2em] uppercase transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-lg hover:shadow-emerald-600/30"
+                  disabled={isSubmitting}
+                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800/70 text-white text-xs font-mono font-bold tracking-[0.2em] uppercase transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-lg hover:shadow-emerald-600/30"
                   id="confirm-whatsapp-order-btn"
                 >
-                  <MessageCircle className="w-4.5 h-4.5 fill-white" />
-                  <span>CONFIRM ORDER ON WHATSAPP</span>
-                  <ArrowRight className="w-4 h-4 ml-1" />
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4.5 h-4.5 animate-spin text-white" />
+                      <span>SAVING ORDER TO FIREBASE...</span>
+                    </>
+                  ) : (
+                    <>
+                      <MessageCircle className="w-4.5 h-4.5 fill-white" />
+                      <span>CONFIRM ORDER ON WHATSAPP</span>
+                      <ArrowRight className="w-4 h-4 ml-1" />
+                    </>
+                  )}
                 </button>
               </form>
             </div>
@@ -295,3 +370,4 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     </AnimatePresence>
   );
 };
+

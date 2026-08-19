@@ -1,13 +1,23 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { Hero } from './components/Hero';
 import { HeaderNavigation } from './components/HeaderNavigation';
 import { ProductPage } from './components/ProductPage';
 import { ProductDetailPage } from './components/ProductDetailPage';
 import { TermsPage } from './components/TermsPage';
+import { AdminDashboard } from './components/AdminDashboard';
+import { CustomerAccountPage } from './components/CustomerAccountPage';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
 import { Product, CartItem } from './types';
 import { ALL_PRODUCTS, HERO_MALE_IMAGE, HERO_FEMALE_IMAGE } from './data/products';
+import { subscribeProducts, seedInitialProductsIfEmpty } from './services/firebaseService';
+import { auth } from './firebase';
+import {
+  CustomerProfile,
+  getActiveCustomer,
+  purgeAdminFromStorage
+} from './services/customerStorage';
 
 const CART_STORAGE_KEY = 'panchu_cart_items';
 
@@ -32,17 +42,29 @@ function isTermsUrl(): boolean {
   return window.location.pathname === '/terms' || window.location.hash === '#terms' || window.location.hash.includes('contact');
 }
 
-function findProductById(id: string): Product | null {
-  return ALL_PRODUCTS.find(p => p.id === id || p.id.toLowerCase() === id.toLowerCase()) || null;
+function isAdminUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.pathname === '/admin' || window.location.hash === '#admin' || window.location.hash.startsWith('#/admin');
+}
+
+function isAccountUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.location.pathname === '/account' || window.location.hash === '#account' || window.location.hash.startsWith('#/account');
 }
 
 export default function App() {
+  const [products, setProducts] = useState<Product[]>(ALL_PRODUCTS);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(() => getActiveCustomer());
+  const [isAdminOpen, setIsAdminOpen] = useState<boolean>(() => isAdminUrl());
+  const [isTermsOpen, setIsTermsOpen] = useState<boolean>(() => isTermsUrl());
+  const [isAccountOpen, setIsAccountOpen] = useState<boolean>(() => isAccountUrl());
+
   const [activeProduct, setActiveProduct] = useState<Product | null>(() => {
     const id = getProductIdFromUrl();
-    return id ? findProductById(id) : null;
+    if (!id) return null;
+    return ALL_PRODUCTS.find(p => p.id === id || p.id.toLowerCase() === id.toLowerCase()) || null;
   });
-
-  const [isTermsOpen, setIsTermsOpen] = useState<boolean>(() => isTermsUrl());
 
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
     try {
@@ -60,6 +82,43 @@ export default function App() {
   const catalogRef = useRef<HTMLDivElement>(null);
   const preloadedImagesRef = useRef<Set<string>>(new Set());
 
+  // Subscribe to real-time Firebase products collection & auto-seed if empty
+  useEffect(() => {
+    // Seed initial products to Firestore if empty
+    seedInitialProductsIfEmpty(ALL_PRODUCTS).catch(err => {
+      console.warn('Initial product check/seed:', err);
+    });
+
+    const unsubscribe = subscribeProducts((liveProducts) => {
+      if (liveProducts && liveProducts.length > 0) {
+        setProducts(liveProducts);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  // Update active product reference if products list refreshes
+  useEffect(() => {
+    if (activeProduct) {
+      const updated = products.find(p => p.id === activeProduct.id);
+      if (updated) {
+        setActiveProduct(updated);
+      }
+    }
+  }, [products]);
+
+  // Global Firebase Auth state listener (strictly for Admin / Owner)
+  useEffect(() => {
+    purgeAdminFromStorage();
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Preload full-resolution product images as soon as a product is viewed (or on load)
   useEffect(() => {
     const imagesToPreload: string[] = [];
@@ -75,7 +134,7 @@ export default function App() {
     }
 
     // Preload all product images to cache high-res assets in memory
-    ALL_PRODUCTS.forEach(p => {
+    products.forEach(p => {
       if (p.image) imagesToPreload.push(p.image);
       if (p.additionalImages) {
         p.additionalImages.forEach(img => {
@@ -92,7 +151,7 @@ export default function App() {
         img.src = src;
       }
     });
-  }, [activeProduct]);
+  }, [activeProduct, products]);
 
   // Sync cart items to localStorage on change
   useEffect(() => {
@@ -117,8 +176,8 @@ export default function App() {
     const isReturningFromProduct = prevActiveProductRef.current !== null && activeProduct === null;
     prevActiveProductRef.current = activeProduct;
 
-    if (activeProduct || isTermsOpen) {
-      // Opening product detail or terms: start at top of page
+    if (activeProduct || isTermsOpen || isAdminOpen || isAccountOpen) {
+      // Opening product detail, admin, terms, or account: start at top of page
       window.scrollTo(0, 0);
     } else if (isReturningFromProduct) {
       // Returning from product page to homepage catalog: restore exact saved position
@@ -135,11 +194,29 @@ export default function App() {
       sessionStorage.removeItem('panchu_homepage_scroll');
       window.scrollTo(0, 0);
     }
-  }, [activeProduct, isTermsOpen]);
+  }, [activeProduct, isTermsOpen, isAdminOpen, isAccountOpen]);
 
   // Synchronize URL changes on back/forward browser buttons
   useEffect(() => {
     const handleUrlChange = () => {
+      if (isAdminUrl()) {
+        setIsAdminOpen(true);
+        setIsAccountOpen(false);
+        setIsTermsOpen(false);
+        setActiveProduct(null);
+        return;
+      }
+      setIsAdminOpen(false);
+
+      if (isAccountUrl()) {
+        setIsAccountOpen(true);
+        setIsAdminOpen(false);
+        setIsTermsOpen(false);
+        setActiveProduct(null);
+        return;
+      }
+      setIsAccountOpen(false);
+
       if (isTermsUrl()) {
         setIsTermsOpen(true);
         setActiveProduct(null);
@@ -149,7 +226,7 @@ export default function App() {
 
       const id = getProductIdFromUrl();
       if (id) {
-        const found = findProductById(id);
+        const found = products.find(p => p.id === id || p.id.toLowerCase() === id.toLowerCase());
         if (found) {
           setActiveProduct(found);
         }
@@ -164,7 +241,7 @@ export default function App() {
       window.removeEventListener('popstate', handleUrlChange);
       window.removeEventListener('hashchange', handleUrlChange);
     };
-  }, []);
+  }, [products]);
 
   // Banner Image according to gender selector
   const heroImage = gender === 'male' ? HERO_MALE_IMAGE : HERO_FEMALE_IMAGE;
@@ -180,15 +257,19 @@ export default function App() {
       window.history.pushState({ productId: product.id }, '', targetPath);
     }
     setIsTermsOpen(false);
+    setIsAdminOpen(false);
+    setIsAccountOpen(false);
     setActiveProduct(product);
   };
 
-  // Back to catalog
+  // Back to catalog / homepage
   const handleBackToCatalog = () => {
-    if (window.location.pathname !== '/') {
+    if (window.location.pathname !== '/' || window.location.hash) {
       window.history.pushState(null, '', '/');
     }
     setIsTermsOpen(false);
+    setIsAdminOpen(false);
+    setIsAccountOpen(false);
     setActiveProduct(null);
   };
 
@@ -198,7 +279,19 @@ export default function App() {
       window.history.pushState(null, '', `/terms${hash}`);
     }
     setActiveProduct(null);
+    setIsAdminOpen(false);
+    setIsAccountOpen(false);
     setIsTermsOpen(true);
+  };
+
+  const handleOpenAdmin = () => {
+    if (window.location.pathname !== '/admin') {
+      window.history.pushState(null, '', '/admin');
+    }
+    setActiveProduct(null);
+    setIsTermsOpen(false);
+    setIsAccountOpen(false);
+    setIsAdminOpen(true);
   };
 
   const handleOpenContact = () => {
@@ -209,9 +302,19 @@ export default function App() {
     handleOpenTerms('privacy');
   };
 
+  const handleOpenAccount = () => {
+    if (window.location.pathname !== '/account') {
+      window.history.pushState(null, '', '/account');
+    }
+    setActiveProduct(null);
+    setIsTermsOpen(false);
+    setIsAdminOpen(false);
+    setIsAccountOpen(true);
+  };
+
   // Scroll into view for catalog or return from product detail
   const handleScrollToCatalog = () => {
-    if (activeProduct || isTermsOpen) {
+    if (activeProduct || isTermsOpen || isAdminOpen || isAccountOpen) {
       handleBackToCatalog();
     } else {
       catalogRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -219,7 +322,7 @@ export default function App() {
   };
 
   const handleGoToHero = () => {
-    if (activeProduct || isTermsOpen) {
+    if (activeProduct || isTermsOpen || isAdminOpen || isAccountOpen) {
       handleBackToCatalog();
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -240,7 +343,6 @@ export default function App() {
         return [...prev, { product, size, quantity }];
       }
     });
-    // Do NOT automatically open cart drawer on "Add to Cart" as requested
   };
 
   const handleUpdateQuantity = (productId: string, size: string, quantity: number) => {
@@ -280,21 +382,44 @@ export default function App() {
     <div className={`w-full min-h-screen font-sans selection:bg-black selection:text-white transition-colors duration-300 ${
       theme === 'dark' ? 'bg-neutral-950 text-white' : 'bg-white text-stone-900'
     }`}>
-      {/* Sticky Header Navigation */}
-      <HeaderNavigation
-        cartCount={totalCartCount}
-        onOpenCart={() => setIsCartOpen(true)}
-        onGoToHero={handleGoToHero}
-        onScrollToCatalog={handleScrollToCatalog}
-        theme={theme}
-        gender={gender}
-        onThemeChange={setTheme}
-        onGenderChange={setGender}
-        isHeroVisible={false}
-      />
+      {/* Sticky Header Navigation (hidden on standalone auth/admin pages for immersive full-screen cloud view) */}
+      {!isAdminOpen && !isAccountOpen && (
+        <HeaderNavigation
+          cartCount={totalCartCount}
+          onOpenCart={() => setIsCartOpen(true)}
+          onGoToHero={handleGoToHero}
+          onScrollToCatalog={handleScrollToCatalog}
+          onOpenAccount={handleOpenAccount}
+          currentUser={currentUser}
+          activeCustomer={activeCustomer}
+          theme={theme}
+          gender={gender}
+          onThemeChange={setTheme}
+          onGenderChange={setGender}
+          isHeroVisible={false}
+        />
+      )}
+
+      {/* Dedicated Admin / Owner Portal View */}
+      {isAdminOpen && (
+        <AdminDashboard
+          onBack={handleBackToCatalog}
+          onBackToStore={handleBackToCatalog}
+          theme={theme}
+        />
+      )}
+
+      {/* Dedicated Customer Account Page View (Matching Reference Cloud Design) */}
+      {isAccountOpen && (
+        <CustomerAccountPage
+          onBackToStore={handleBackToCatalog}
+          onCustomerSessionChange={setActiveCustomer}
+          theme={theme}
+        />
+      )}
 
       {/* Dedicated Terms Page View */}
-      {isTermsOpen && (
+      {!isAdminOpen && !isAccountOpen && isTermsOpen && (
         <TermsPage
           onBack={handleBackToCatalog}
           theme={theme}
@@ -302,9 +427,10 @@ export default function App() {
       )}
 
       {/* Dedicated Product Detail View */}
-      {!isTermsOpen && activeProduct && (
+      {!isAdminOpen && !isAccountOpen && !isTermsOpen && activeProduct && (
         <ProductDetailPage
           product={activeProduct}
+          products={products}
           onBack={handleBackToCatalog}
           onSelectProduct={handleSelectProduct}
           onAddToCart={handleAddToCart}
@@ -314,11 +440,13 @@ export default function App() {
           onOpenTerms={handleOpenTerms}
           onOpenContact={handleOpenContact}
           onOpenPrivacy={handleOpenPrivacy}
+          onOpenAdmin={handleOpenAdmin}
+          onOpenAccount={handleOpenAccount}
         />
       )}
 
       {/* Main Homepage View (preserved in DOM to avoid back button banner flash) */}
-      <div className={(activeProduct || isTermsOpen) ? 'hidden' : 'block'}>
+      <div className={(activeProduct || isTermsOpen || isAdminOpen || isAccountOpen) ? 'hidden' : 'block'}>
         {/* Hero Section Banner */}
         <div className="relative">
           <Hero
@@ -334,6 +462,7 @@ export default function App() {
         {/* Product Catalog Page Section */}
         <div ref={catalogRef}>
           <ProductPage
+            products={products}
             onAddToCart={handleAddToCart}
             onBuyNow={handleBuyNow}
             onSelectProduct={handleSelectProduct}
@@ -342,6 +471,8 @@ export default function App() {
             onOpenTerms={handleOpenTerms}
             onOpenContact={handleOpenContact}
             onOpenPrivacy={handleOpenPrivacy}
+            onOpenAdmin={handleOpenAdmin}
+            onOpenAccount={handleOpenAccount}
           />
         </div>
       </div>

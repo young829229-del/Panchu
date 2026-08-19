@@ -1,0 +1,88 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "A Panchu catalog product item with size-specific stock",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 200 },
+        "subtitle": { "type": "string", "maxLength": 100 },
+        "price": { "type": "number" },
+        "MRP": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "priceDisplay": { "type": "string", "maxLength": 50 },
+        "description": { "type": "string", "maxLength": 3000 },
+        "category": { "type": "string", "maxLength": 100 },
+        "collection": { "type": "string", "maxLength": 100 },
+        "gender": { "type": "string", "enum": ["male", "female", "unisex"] },
+        "image": { "type": "string", "maxLength": 1000 },
+        "images": { "type": "array", "maxLength": 10 },
+        "additionalImages": { "type": "array", "maxLength": 10 },
+        "sizes": { "type": "array", "maxLength": 10 },
+        "stock": { "type": "object" },
+        "featured": { "type": "boolean" },
+        "bestSelling": { "type": "boolean" },
+        "badge": { "type": "string", "maxLength": 50 },
+        "active": { "type": "boolean" },
+        "inStock": { "type": "boolean" },
+        "details": { "type": "array", "maxLength": 20 },
+        "composition": { "type": "string", "maxLength": 200 },
+        "color": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["name", "price", "active", "inStock"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A customer order submitted for WhatsApp fulfillment",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "maxLength": 64 },
+        "customerName": { "type": "string", "maxLength": 100 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "address": { "type": "string", "maxLength": 300 },
+        "location": { "type": "string", "maxLength": 100 },
+        "deliveryOption": { "type": "string", "maxLength": 50 },
+        "items": { "type": "array", "maxLength": 50 },
+        "subtotal": { "type": "number" },
+        "deliveryFee": { "type": "number" },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["Pending", "Confirmed", "Shipped", "Delivered"] },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["orderId", "customerName", "phone", "address", "items", "subtotal", "total", "status"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Authorized Panchu admin user account",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 150 },
+        "role": { "type": "string", "enum": ["admin"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Catalog products readable by all visitors and managed by admins"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Guest and customer orders created upon checkout and viewed by admins"
+    },
+    "/admin_users/{adminUserId}": {
+      "schema": "Admin",
+      "description": "Panchu administrator role accounts"
+    },
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "Panchu administrator role accounts"
+    }
+  }
+}

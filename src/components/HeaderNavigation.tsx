@@ -1,13 +1,18 @@
 import React from 'react';
-import { ShoppingBag, ArrowLeft, Sun, Moon, Flame } from 'lucide-react';
+import { ShoppingBag, ArrowLeft, Sun, Moon, Flame, User as UserIcon } from 'lucide-react';
 import { motion } from 'motion/react';
+import { User } from 'firebase/auth';
 import { PanchuLogo } from './PanchuLogo';
+import { ActiveCustomerSession } from '../services/customerStorage';
 
 interface HeaderNavigationProps {
   cartCount: number;
   onOpenCart: () => void;
   onGoToHero: () => void;
   onScrollToCatalog?: () => void;
+  onOpenAccount?: () => void;
+  currentUser?: User | null;
+  activeCustomer?: ActiveCustomerSession | null;
   theme?: 'light' | 'dark';
   gender?: 'male' | 'female';
   onThemeChange?: (theme: 'light' | 'dark') => void;
@@ -20,6 +25,9 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
   onOpenCart,
   onGoToHero,
   onScrollToCatalog,
+  onOpenAccount,
+  currentUser = null,
+  activeCustomer = null,
   theme = 'light',
   gender = 'male',
   onThemeChange,
@@ -125,6 +133,35 @@ export const HeaderNavigation: React.FC<HeaderNavigationProps> = ({
                 </svg>
               </button>
             </div>
+          )}
+
+          {/* Customer Account Trigger */}
+          {onOpenAccount && (
+            <button
+              onClick={onOpenAccount}
+              className={`p-2 rounded-full border transition-all duration-300 cursor-pointer flex items-center justify-center ${
+                activeCustomer || currentUser
+                  ? 'border-red-500/80 bg-red-500/10 text-red-600 dark:text-red-400 shadow-xs'
+                  : isDark
+                    ? 'border-neutral-800 bg-neutral-900 text-stone-300 hover:text-white hover:border-neutral-700'
+                    : 'border-stone-200 bg-stone-50 text-stone-600 hover:text-black hover:border-stone-300'
+              }`}
+              title={activeCustomer ? `@${activeCustomer.username}` : (currentUser ? (currentUser.displayName || currentUser.email || 'My Account') : 'Sign In / Account')}
+              id="nav-account-trigger"
+              aria-label="Customer Account"
+            >
+              {activeCustomer ? (
+                <div className="w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-sans font-bold flex items-center justify-center">
+                  {activeCustomer.username[0].toUpperCase()}
+                </div>
+              ) : currentUser ? (
+                <div className="w-4 h-4 rounded-full bg-red-600 text-white text-[10px] font-mono font-bold flex items-center justify-center">
+                  {currentUser.displayName ? currentUser.displayName[0].toUpperCase() : (currentUser.email?.[0].toUpperCase() || 'U')}
+                </div>
+              ) : (
+                <UserIcon className="w-4 h-4" />
+              )}
+            </button>
           )}
 
           <button
