@@ -169,7 +169,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   WHATSAPP ORDER OPENED
                 </h2>
                 <p className="mt-2 text-xs md:text-sm font-sans text-stone-600 max-w-md mx-auto">
-                  Your order has been recorded in our Firebase system and forwarded to WhatsApp line <span className="font-bold text-black">+970 6374074</span>.
+                  Your order has been recorded and forwarded to WhatsApp line <span className="font-bold text-black">+970 6374074</span>.
                 </p>
               </div>
 
@@ -200,7 +200,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               <div className="border-b border-stone-200 pb-4 mb-5">
                 <div className="text-xs font-mono tracking-[0.25em] text-stone-500 uppercase">PANCHU CHECKOUT</div>
                 <h2 className="text-xl md:text-2xl font-extrabold font-sans text-black uppercase mt-1">
-                  WHATSAPP ORDER DETAILS
+                  ORDER DETAILS
                 </h2>
               </div>
 
@@ -352,7 +352,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-4.5 h-4.5 animate-spin text-white" />
-                      <span>SAVING ORDER TO FIREBASE...</span>
+                      <span>PROCESSING ORDER...</span>
                     </>
                   ) : (
                     <>

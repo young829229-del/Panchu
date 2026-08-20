@@ -24,12 +24,12 @@ const CART_STORAGE_KEY = 'panchu_cart_items';
 // Helper to extract product ID from pathname or hash URL
 function getProductIdFromUrl(): string | null {
   if (typeof window === 'undefined') return null;
-  const path = window.location.pathname;
+  const path = window.location.pathname.replace(/\/+$/, '');
   if (path.startsWith('/product/')) {
     const id = decodeURIComponent(path.replace('/product/', '').trim());
     if (id) return id;
   }
-  const hash = window.location.hash;
+  const hash = window.location.hash.replace(/\/+$/, '');
   if (hash.startsWith('#/product/')) {
     const id = decodeURIComponent(hash.replace('#/product/', '').trim());
     if (id) return id;
@@ -39,17 +39,23 @@ function getProductIdFromUrl(): string | null {
 
 function isTermsUrl(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.location.pathname === '/terms' || window.location.hash === '#terms' || window.location.hash.includes('contact');
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  const hash = window.location.hash.toLowerCase();
+  return path === '/terms' || hash === '#terms' || hash.includes('contact') || hash.includes('privacy');
 }
 
 function isAdminUrl(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.location.pathname === '/admin' || window.location.hash === '#admin' || window.location.hash.startsWith('#/admin');
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  const hash = window.location.hash.toLowerCase();
+  return path === '/admin' || hash === '#admin' || hash.startsWith('#/admin') || hash.startsWith('#admin');
 }
 
 function isAccountUrl(): boolean {
   if (typeof window === 'undefined') return false;
-  return window.location.pathname === '/account' || window.location.hash === '#account' || window.location.hash.startsWith('#/account');
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  const hash = window.location.hash.toLowerCase();
+  return path === '/account' || hash === '#account' || hash.startsWith('#/account') || hash.startsWith('#account');
 }
 
 export default function App() {

@@ -1,0 +1,180 @@
+import React from 'react';
+import {
+  ShoppingBag,
+  History,
+  Tag,
+  Package,
+  Boxes,
+  MessageSquare,
+  Settings,
+  Flame,
+  Radio
+} from 'lucide-react';
+
+export type AdminTab = 'live_orders' | 'order_history' | 'offers' | 'products' | 'stock' | 'messages' | 'settings' | 'summary';
+
+interface AdminSidebarProps {
+  activeTab: AdminTab;
+  onSelectTab: (tab: AdminTab) => void;
+  pendingCount: number;
+  productsCount: number;
+  isBusyMode: boolean;
+  onToggleBusyMode: () => void;
+  onBackToStore?: () => void;
+  onCloseMobile?: () => void;
+}
+
+export const AdminSidebar: React.FC<AdminSidebarProps> = ({
+  activeTab,
+  onSelectTab,
+  pendingCount,
+  productsCount,
+  isBusyMode,
+  onToggleBusyMode,
+  onBackToStore,
+  onCloseMobile
+}) => {
+  const navItems: {
+    id: AdminTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: number | string;
+    badgeColor?: string;
+  }[] = [
+    {
+      id: 'live_orders',
+      label: 'Live Orders',
+      icon: Radio,
+      badge: pendingCount > 0 ? pendingCount : undefined,
+      badgeColor: 'bg-[#ff4d4f] text-white'
+    },
+    {
+      id: 'order_history',
+      label: 'Order History',
+      icon: History
+    },
+    {
+      id: 'offers',
+      label: 'Offers',
+      icon: Tag
+    },
+    {
+      id: 'products',
+      label: 'Products',
+      icon: Package,
+      badge: productsCount > 0 ? productsCount : undefined
+    },
+    {
+      id: 'stock',
+      label: 'Stock',
+      icon: Boxes
+    },
+    {
+      id: 'messages',
+      label: 'Message',
+      icon: MessageSquare
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      icon: Settings
+    }
+  ];
+
+  return (
+    <aside className="w-64 shrink-0 flex flex-col justify-between p-6 border-r border-stone-100 bg-white">
+      <div>
+        {/* Brand Logo matching reference */}
+        <div className="flex items-center justify-between mb-8 px-2">
+          <button
+            onClick={onBackToStore}
+            type="button"
+            className="flex items-center gap-2.5 cursor-pointer text-left group"
+            title="Back to Storefront"
+          >
+            <div className="w-8 h-8 rounded-full bg-[#ff4d4f]/10 flex items-center justify-center text-[#ff4d4f] group-hover:scale-105 transition-transform">
+              <Flame className="w-4.5 h-4.5 fill-[#ff4d4f]" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-lg font-bold tracking-tight text-stone-900 font-sans group-hover:text-[#ff4d4f] transition-colors">
+                bringova
+              </span>
+              <span className="text-[9px] font-mono uppercase tracking-widest text-stone-400 -mt-1">
+                PANCHU ADMIN
+              </span>
+            </div>
+          </button>
+        </div>
+
+        {/* Navigation Items */}
+        <nav className="space-y-1.5">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  onSelectTab(item.id);
+                  if (onCloseMobile) onCloseMobile();
+                }}
+                type="button"
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-2xl text-xs font-sans font-medium transition-all cursor-pointer relative ${
+                  isActive
+                    ? 'bg-[#fff1f0] text-[#e04f4f] font-semibold shadow-xs'
+                    : 'text-stone-500 hover:text-stone-800 hover:bg-stone-50'
+                }`}
+              >
+                {/* Active left indicator */}
+                {isActive && (
+                  <span className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-[#ff4d4f] rounded-r-full" />
+                )}
+
+                <div className="flex items-center gap-3">
+                  <Icon
+                    className={`w-4.5 h-4.5 transition-colors ${
+                      isActive ? 'text-[#ff4d4f]' : 'text-stone-400 group-hover:text-stone-600'
+                    }`}
+                  />
+                  <span>{item.label}</span>
+                </div>
+
+                {item.badge !== undefined && (
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                      item.badgeColor || 'bg-stone-100 text-stone-600'
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Bottom Busy Mode Switch matching reference */}
+      <div className="pt-6 border-t border-stone-100">
+        <div className="flex items-center justify-between px-3 py-2">
+          <span className="text-xs font-medium text-stone-700 font-sans">Busy Mode</span>
+          <button
+            type="button"
+            onClick={onToggleBusyMode}
+            className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${
+              isBusyMode ? 'bg-[#18181b]' : 'bg-stone-200'
+            }`}
+            aria-label="Toggle Busy Mode"
+          >
+            <div
+              className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform ${
+                isBusyMode ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+    </aside>
+  );
+};

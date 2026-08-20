@@ -43,7 +43,7 @@ export interface OrderItem {
   price: number;
 }
 
-export type OrderStatus = 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered';
+export type OrderStatus = 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered' | 'Collected' | 'Cancelled';
 
 export interface Order {
   id?: string;
