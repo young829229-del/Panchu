@@ -108,7 +108,7 @@ export async function sendGmailEmail(options: {
     throw new Error('Gmail is not connected. Please connect your Google account with Gmail permissions first.');
   }
 
-  const senderEmail = connectedUserEmail || auth.currentUser?.email || 'young829229@gmail.com';
+  const senderEmail = connectedUserEmail || auth.currentUser?.email || 'panchuknows999@gmail.com';
   const senderDisplayName = options.fromName || 'PANCHU Official';
 
   const boundary = `__boundary_${Date.now()}__`;
@@ -350,7 +350,7 @@ export function buildOrderEmailHtml(order: Order, type: 'confirmation' | 'shippe
           <tr>
             <td style="padding: 24px 32px; background-color: #18181b; text-align: center; color: #a1a1aa; font-size: 12px;">
               <p style="margin: 0 0 6px 0; color: #ffffff; font-weight: 600;">PANCHU CLOTHING</p>
-              <p style="margin: 0; line-height: 1.5;">For questions regarding your order, reply directly to this email or contact support at young829229@gmail.com.</p>
+              <p style="margin: 0; line-height: 1.5;">For questions regarding your order, reply directly to this email or contact support at panchuknows999@gmail.com.</p>
             </td>
           </tr>
         </table>

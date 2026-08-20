@@ -4,20 +4,14 @@ import {
   Bell,
   ChevronDown,
   LogOut,
-  UserCheck,
   Shield,
-  X,
-  ExternalLink,
-  Check,
-  Mail
+  X
 } from 'lucide-react';
 import { Order } from '../../types';
 
 interface AdminTopHeaderProps {
   searchQuery: string;
   onSearchChange: (val: string) => void;
-  isOpenForOrder: boolean;
-  onToggleOpenForOrder: () => void;
   adminName: string;
   adminEmail: string;
   onSignOut: () => void;
@@ -28,8 +22,6 @@ interface AdminTopHeaderProps {
 export const AdminTopHeader: React.FC<AdminTopHeaderProps> = ({
   searchQuery,
   onSearchChange,
-  isOpenForOrder,
-  onToggleOpenForOrder,
   adminName,
   adminEmail,
   onSignOut,
@@ -57,10 +49,11 @@ export const AdminTopHeader: React.FC<AdminTopHeaderProps> = ({
   }, []);
 
   const pendingCount = recentOrders.filter(o => o.status === 'Pending').length;
+  const displayName = adminName || 'PANCHU Admin';
 
   return (
     <header className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pb-6 border-b border-stone-100">
-      {/* Search Bar matching reference */}
+      {/* Search Bar */}
       <div className="relative flex-1 max-w-md">
         <div className="relative flex items-center bg-[#faf9f8] hover:bg-[#f5f3f2] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#ff4d4f]/20 rounded-2xl px-3.5 py-2.5 border border-stone-200/60 transition-all">
           <Search className="w-4 h-4 text-stone-400 shrink-0 mr-2.5" />
@@ -68,7 +61,7 @@ export const AdminTopHeader: React.FC<AdminTopHeaderProps> = ({
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search"
+            placeholder="Search orders, customers, phone numbers..."
             className="w-full bg-transparent text-xs font-sans text-stone-800 placeholder-stone-400 focus:outline-none"
           />
           {searchQuery && (
@@ -82,31 +75,9 @@ export const AdminTopHeader: React.FC<AdminTopHeaderProps> = ({
         </div>
       </div>
 
-      {/* Right Controls matching reference */}
-      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-5">
+      {/* Right Controls */}
+      <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4">
         
-        {/* Open For Order Toggle */}
-        <div className="flex items-center gap-2.5">
-          <span className="text-xs font-medium text-stone-700 font-sans whitespace-nowrap">
-            Open For Order
-          </span>
-          <button
-            type="button"
-            onClick={onToggleOpenForOrder}
-            className={`w-10 h-5.5 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
-              isOpenForOrder ? 'bg-[#52c41a]' : 'bg-stone-300'
-            }`}
-            aria-label="Toggle Open For Order"
-            title={isOpenForOrder ? 'Store is accepting new orders' : 'Store is paused'}
-          >
-            <div
-              className={`bg-white w-4.5 h-4.5 rounded-full shadow-sm transform transition-transform ${
-                isOpenForOrder ? 'translate-x-4.5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
-
         {/* Notifications Icon Button */}
         <div className="relative" ref={notifRef}>
           <button
@@ -125,14 +96,14 @@ export const AdminTopHeader: React.FC<AdminTopHeaderProps> = ({
           {showNotifications && (
             <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-stone-100 p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
               <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-                <span className="text-xs font-bold text-stone-900 font-sans">Live Order Alerts</span>
+                <span className="text-xs font-bold text-stone-900 font-sans">Order Notifications</span>
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600">
                   {pendingCount} Pending
                 </span>
               </div>
 
               <div className="py-2 max-h-64 overflow-y-auto divide-y divide-stone-50">
-                {recentOrders.slice(0, 5).map((ord) => (
+                {recentOrders.slice(0, 6).map((ord) => (
                   <div
                     key={ord.id || ord.orderId}
                     onClick={() => {
@@ -149,15 +120,15 @@ export const AdminTopHeader: React.FC<AdminTopHeaderProps> = ({
                     </div>
                     <p className="text-xs text-stone-600 truncate mt-0.5">{ord.customerName}</p>
                     <div className="flex justify-between items-center mt-1 text-[11px]">
-                      <span className="text-stone-500">{ord.items.length} item(s)</span>
-                      <span className="font-semibold text-stone-900">Rs {ord.total}</span>
+                      <span className="text-stone-500">{ord.items?.length || 1} item(s)</span>
+                      <span className="font-semibold text-stone-900">Rs {ord.total?.toLocaleString()}</span>
                     </div>
                   </div>
                 ))}
 
                 {recentOrders.length === 0 && (
                   <div className="py-6 text-center text-xs text-stone-400">
-                    No recent orders recorded yet.
+                    No orders recorded yet.
                   </div>
                 )}
               </div>
@@ -172,23 +143,13 @@ export const AdminTopHeader: React.FC<AdminTopHeaderProps> = ({
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="flex items-center gap-2.5 p-1 sm:pl-2 sm:pr-3 rounded-full hover:bg-stone-50 transition-colors cursor-pointer border border-transparent hover:border-stone-200/60"
           >
-            {/* Profile Avatar matching reference image */}
-            <div className="w-8 h-8 rounded-full overflow-hidden bg-[#e04f4f]/10 border border-stone-200 flex items-center justify-center shrink-0">
-              <img
-                src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80"
-                alt={adminName}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLElement).style.display = 'none';
-                }}
-              />
-              <span className="text-xs font-bold text-[#e04f4f] uppercase">
-                {adminName.charAt(0) || 'A'}
-              </span>
+            {/* Profile Avatar */}
+            <div className="w-8 h-8 rounded-full bg-[#ff4d4f] text-white flex items-center justify-center font-bold text-xs shadow-2xs shrink-0">
+              {displayName.charAt(0).toUpperCase()}
             </div>
 
             <span className="hidden md:inline-block text-xs font-medium text-stone-800 font-sans truncate max-w-[130px]">
-              {adminName || 'Lubomír Dvořák'}
+              {displayName}
             </span>
 
             <ChevronDown className="w-3.5 h-3.5 text-stone-400" />
@@ -198,11 +159,11 @@ export const AdminTopHeader: React.FC<AdminTopHeaderProps> = ({
           {showProfileMenu && (
             <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-stone-100 p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
               <div className="px-3 py-2 border-b border-stone-100">
-                <p className="text-xs font-bold text-stone-900 truncate">{adminName}</p>
-                <p className="text-[11px] text-stone-500 truncate mt-0.5">{adminEmail}</p>
-                <span className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-mono font-medium">
+                <p className="text-xs font-bold text-stone-900 truncate">{displayName}</p>
+                <p className="text-[11px] text-stone-500 truncate mt-0.5">{adminEmail || 'admin@panchu.com'}</p>
+                <span className="inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-mono font-medium">
                   <Shield className="w-3 h-3" />
-                  <span>Authenticated Super Admin</span>
+                  <span>Authenticated Admin</span>
                 </span>
               </div>
 

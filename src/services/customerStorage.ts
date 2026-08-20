@@ -32,9 +32,7 @@ export function isUserAdminIdentifier(identifier?: string | null): boolean {
     normalized === adminEmailNorm ||
     normalized === 'admin' ||
     normalized === 'owner' ||
-    normalized === 'panchu_admin' ||
-    normalized === 'young829229' ||
-    normalized === 'young829229@gmail.com'
+    normalized === 'panchu_admin'
   );
 }
 

@@ -141,7 +141,7 @@ export const OrderSummaryView: React.FC<OrderSummaryViewProps> = ({ orders, onBa
           <div className="space-y-4">
             <div>
               <div className="flex justify-between text-xs font-medium text-stone-700 mb-1">
-                <span>Delivery (Door / Road)</span>
+                <span>Standard Delivery</span>
                 <span className="text-[#ff4d4f] font-bold">{deliveryOrders} ({totalOrders > 0 ? Math.round((deliveryOrders / totalOrders) * 100) : 0}%)</span>
               </div>
               <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden">
@@ -154,7 +154,7 @@ export const OrderSummaryView: React.FC<OrderSummaryViewProps> = ({ orders, onBa
 
             <div>
               <div className="flex justify-between text-xs font-medium text-stone-700 mb-1">
-                <span>Collection / Pickup</span>
+                <span>Store Pickup / Direct</span>
                 <span className="text-stone-800 font-bold">{collectionOrders} ({totalOrders > 0 ? Math.round((collectionOrders / totalOrders) * 100) : 0}%)</span>
               </div>
               <div className="w-full bg-stone-100 h-2 rounded-full overflow-hidden">

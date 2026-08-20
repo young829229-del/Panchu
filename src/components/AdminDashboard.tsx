@@ -47,6 +47,7 @@ import { OrderSummaryView } from './admin/OrderSummaryView';
 import { OrderDetailsDrawer } from './admin/OrderDetailsDrawer';
 import { OffersView } from './admin/OffersView';
 import { StockView } from './admin/StockView';
+import { ProductEditorView } from './admin/ProductEditorView';
 
 import {
   Shield,
@@ -113,7 +114,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [authError, setAuthError] = useState<string>('');
 
   // Active Tab & Subtab
-  const [activeTab, setActiveTab] = useState<AdminTab>('order_history');
+  const [activeTab, setActiveTab] = useState<AdminTab>('orders');
   const [orderSubTab, setOrderSubTab] = useState<OrderSubTab>('all');
 
   // Realtime Data
@@ -126,8 +127,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Top Controls & Toggles
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [isOpenForOrder, setIsOpenForOrder] = useState<boolean>(true);
-  const [isBusyMode, setIsBusyMode] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
   // Gmail Integration State
@@ -585,6 +584,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
   }
 
+  // Full-Screen Dedicated Product Editor Page
+  if (editingProduct) {
+    return (
+      <ProductEditorView
+        product={editingProduct}
+        isNew={!editingProduct.id}
+        onSave={async (updatedProductData, newFiles) => {
+          setIsSavingProduct(true);
+          setProductSaveError('');
+          try {
+            await saveProductToFirestore(updatedProductData, newFiles);
+            setEditingProduct(null);
+          } catch (err: any) {
+            setProductSaveError(err.message || 'Failed to save product');
+            throw err;
+          } finally {
+            setIsSavingProduct(false);
+          }
+        }}
+        onDelete={handleDeleteProduct}
+        onBack={() => {
+          setEditingProduct(null);
+          setProductSaveError('');
+        }}
+        isSaving={isSavingProduct}
+        errorMessage={productSaveError}
+      />
+    );
+  }
+
   const pendingCount = orders.filter((o) => o.status === 'Pending').length;
 
   return (
@@ -613,20 +642,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </button>
       </div>
 
-      {/* Full-height Sidebar with Panchu Logo & exact reference layout */}
+      {/* Full-height Sidebar with Panchu Logo */}
       <div className={`${isMobileSidebarOpen ? 'block' : 'hidden'} md:block fixed md:sticky top-0 z-40 inset-y-0 left-0 bg-white shadow-xl md:shadow-none h-screen`}>
         <AdminSidebar
           activeTab={activeTab}
           onSelectTab={(tab) => {
             setActiveTab(tab);
-            if (tab === 'order_history') {
+            if (tab === 'orders' || tab === 'order_history') {
               setOrderSubTab('all');
             }
           }}
           pendingCount={pendingCount}
           productsCount={products.length}
-          isBusyMode={isBusyMode}
-          onToggleBusyMode={() => setIsBusyMode(!isBusyMode)}
           onBackToStore={handleBack}
           onCloseMobile={() => setIsMobileSidebarOpen(false)}
         />
@@ -648,9 +675,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           <AdminTopHeader
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
-            isOpenForOrder={isOpenForOrder}
-            onToggleOpenForOrder={() => setIsOpenForOrder(!isOpenForOrder)}
-            adminName={currentUser?.displayName || 'Lubomír Dvořák'}
+            adminName={currentUser?.displayName || 'Admin'}
             adminEmail={currentUser?.email || ADMIN_EMAIL_PRIMARY}
             onSignOut={handleLogout}
             recentOrders={orders}
@@ -660,8 +685,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           {/* Dynamic Content Views */}
           <div className="mt-6 flex-1">
             
-            {/* VIEW 1: ORDER HISTORY (Default & Primary View Matching Reference) */}
-            {activeTab === 'order_history' && (
+            {/* VIEW 1: ORDERS (Primary View) */}
+            {(activeTab === 'orders' || activeTab === 'order_history') && (
               <>
                 {orderSubTab === 'summary' ? (
                   <OrderSummaryView
@@ -682,36 +707,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </>
             )}
 
-            {/* VIEW 2: LIVE ORDERS */}
-            {activeTab === 'live_orders' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h1 className="text-xl sm:text-2xl font-bold font-sans text-stone-900">
-                      Live Incoming Orders
-                    </h1>
-                    <p className="text-xs text-stone-500 font-sans mt-0.5">
-                      Real-time customer submissions requiring immediate kitchen or warehouse dispatch.
-                    </p>
-                  </div>
-                  <span className="px-3 py-1 bg-[#ff4d4f] text-white text-xs font-bold rounded-full font-mono">
-                    {pendingCount} Active
-                  </span>
-                </div>
-
-                <OrderHistoryTable
-                  orders={orders.filter(o => o.status === 'Pending' || o.status === 'Confirmed')}
-                  searchQuery={searchQuery}
-                  onUpdateStatus={handleUpdateOrderStatus}
-                  onOpenEmailModal={handleOpenOrderEmailModal}
-                  onSelectOrder={(ord) => setSelectedOrder(ord)}
-                  currentSubTab="all"
-                  onChangeSubTab={setOrderSubTab}
-                />
-              </div>
-            )}
-
-            {/* VIEW 3: OFFERS */}
+            {/* VIEW 2: OFFERS */}
             {activeTab === 'offers' && <OffersView />}
 
             {/* VIEW 4: PRODUCTS */}
@@ -968,170 +964,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         onUpdateStatus={handleUpdateOrderStatus}
         onOpenEmailModal={handleOpenOrderEmailModal}
       />
-
-      {/* MODAL 2: PRODUCT EDIT & IMAGE UPLOAD MODAL */}
-      {isProductModalOpen && editingProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs overflow-y-auto">
-          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-stone-100 p-6 md:p-8 my-8 max-h-[90vh] overflow-y-auto space-y-5">
-            <button
-              onClick={() => setIsProductModalOpen(false)}
-              className="absolute top-6 right-6 p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="border-b border-stone-100 pb-3">
-              <span className="text-[10px] font-mono font-bold text-[#ff4d4f] uppercase tracking-wider">
-                {editingProduct.id ? 'EDIT PRODUCT' : 'NEW PRODUCT'}
-              </span>
-              <h2 className="text-lg font-bold font-sans text-stone-900 uppercase mt-0.5">
-                {editingProduct.name || 'Untitled Product'}
-              </h2>
-            </div>
-
-            {productSaveError && (
-              <div className="p-3 bg-red-50 rounded-xl text-red-700 text-xs">{productSaveError}</div>
-            )}
-
-            <form onSubmit={handleSaveProduct} className="space-y-4 text-xs font-sans">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1">Product Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={editingProduct.name || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none"
-                    placeholder="OVERSIZED BOX TEE"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1">Subtitle / Edition</label>
-                  <input
-                    type="text"
-                    value={editingProduct.subtitle || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, subtitle: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none"
-                    placeholder="ESSENTIALS 2026"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1">Price (NPR) *</label>
-                  <input
-                    type="number"
-                    required
-                    value={editingProduct.price || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, price: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1">MRP (NPR)</label>
-                  <input
-                    type="number"
-                    value={editingProduct.MRP || editingProduct.originalPrice || ''}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, MRP: Number(e.target.value), originalPrice: Number(e.target.value) })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1">Category</label>
-                  <select
-                    value={editingProduct.category || 'TEES'}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 focus:outline-none bg-white"
-                  >
-                    <option value="TEES">TEES</option>
-                    <option value="HOODIES">HOODIES</option>
-                    <option value="JACKETS">JACKETS</option>
-                    <option value="PANTS">PANTS</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Sizes stock */}
-              <div className="p-4 bg-[#faf9f8] rounded-2xl border border-stone-100 space-y-2">
-                <span className="text-[11px] font-bold text-stone-700 block">Size Inventory</span>
-                <div className="grid grid-cols-4 gap-2">
-                  {(editingProduct.sizes || ['S', 'M', 'L', 'XL']).map((sz) => (
-                    <div key={sz} className="p-2 rounded-xl bg-white border border-stone-200 text-center">
-                      <span className="font-bold block text-[10px] text-stone-500">{sz}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={editingProduct.stock?.[sz] ?? 10}
-                        onChange={(e) => {
-                          const stock = { ...(editingProduct.stock || {}) };
-                          stock[sz] = Math.max(0, parseInt(e.target.value) || 0);
-                          setEditingProduct({ ...editingProduct, stock });
-                        }}
-                        className="w-full text-center font-bold text-xs mt-1 border-t pt-1 focus:outline-none"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Image upload */}
-              <div className="p-4 bg-[#faf9f8] rounded-2xl border border-stone-100 space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] font-bold text-stone-700">Product Images</span>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-3 py-1.5 rounded-xl bg-[#ff4d4f] text-white text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Upload Image</span>
-                  </button>
-                </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-
-                <div className="flex gap-2 overflow-x-auto py-1">
-                  {(editingProduct.images || []).map((url, idx) => (
-                    <img key={idx} src={url} alt="" className="w-14 h-16 object-cover rounded-xl border border-stone-200" />
-                  ))}
-                  {imagePreviewUrls.map((prev, idx) => (
-                    <img key={`new-${idx}`} src={prev} alt="" className="w-14 h-16 object-cover rounded-xl border-2 border-[#ff4d4f]" />
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsProductModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-stone-200 text-stone-600"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSavingProduct}
-                  className="px-5 py-2 rounded-xl bg-stone-900 text-white font-medium hover:bg-black"
-                >
-                  {isSavingProduct ? 'Saving to Firebase...' : 'Save Product'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* MODAL 3: GMAIL DISPATCH MODAL */}
       {isEmailModalOpen && (

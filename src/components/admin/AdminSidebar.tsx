@@ -1,26 +1,21 @@
 import React from 'react';
 import {
   ShoppingBag,
-  History,
   Tag,
   Package,
   Boxes,
   MessageSquare,
-  Settings,
-  Flame,
-  Radio
+  Settings
 } from 'lucide-react';
 import { PanchuLogo } from '../PanchuLogo';
 
-export type AdminTab = 'live_orders' | 'order_history' | 'offers' | 'products' | 'stock' | 'messages' | 'settings' | 'summary';
+export type AdminTab = 'orders' | 'order_history' | 'offers' | 'products' | 'stock' | 'messages' | 'settings' | 'summary';
 
 interface AdminSidebarProps {
   activeTab: AdminTab;
   onSelectTab: (tab: AdminTab) => void;
   pendingCount: number;
   productsCount: number;
-  isBusyMode: boolean;
-  onToggleBusyMode: () => void;
   onBackToStore?: () => void;
   onCloseMobile?: () => void;
 }
@@ -30,8 +25,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   onSelectTab,
   pendingCount,
   productsCount,
-  isBusyMode,
-  onToggleBusyMode,
   onBackToStore,
   onCloseMobile
 }) => {
@@ -43,21 +36,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     badgeColor?: string;
   }[] = [
     {
-      id: 'live_orders',
-      label: 'Live Orders',
-      icon: Radio,
+      id: 'orders',
+      label: 'Orders',
+      icon: ShoppingBag,
       badge: pendingCount > 0 ? pendingCount : undefined,
       badgeColor: 'bg-[#ff4d4f] text-white'
-    },
-    {
-      id: 'order_history',
-      label: 'Order History',
-      icon: History
-    },
-    {
-      id: 'offers',
-      label: 'Offers',
-      icon: Tag
     },
     {
       id: 'products',
@@ -67,12 +50,17 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     },
     {
       id: 'stock',
-      label: 'Stock',
+      label: 'Stock & Inventory',
       icon: Boxes
     },
     {
+      id: 'offers',
+      label: 'Offers & Coupons',
+      icon: Tag
+    },
+    {
       id: 'messages',
-      label: 'Message',
+      label: 'Messages',
       icon: MessageSquare
     },
     {
@@ -104,7 +92,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         <nav className="space-y-1.5">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = activeTab === item.id;
+            const isActive = activeTab === item.id || (item.id === 'orders' && (activeTab === 'order_history' || activeTab === 'summary'));
 
             return (
               <button
@@ -149,25 +137,16 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
         </nav>
       </div>
 
-      {/* Bottom Busy Mode Switch matching reference */}
-      <div className="pt-6 border-t border-stone-100">
-        <div className="flex items-center justify-between px-3 py-2">
-          <span className="text-xs font-medium text-stone-700 font-sans">Busy Mode</span>
-          <button
-            type="button"
-            onClick={onToggleBusyMode}
-            className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${
-              isBusyMode ? 'bg-[#18181b]' : 'bg-stone-200'
-            }`}
-            aria-label="Toggle Busy Mode"
-          >
-            <div
-              className={`bg-white w-4 h-4 rounded-full shadow-sm transform transition-transform ${
-                isBusyMode ? 'translate-x-5' : 'translate-x-0'
-              }`}
-            />
-          </button>
-        </div>
+      {/* Back to Store Quick Action */}
+      <div className="pt-4 border-t border-stone-100">
+        <button
+          type="button"
+          onClick={onBackToStore}
+          className="w-full py-2.5 px-3 rounded-xl text-xs font-sans font-medium text-stone-500 hover:text-stone-900 hover:bg-stone-50 transition-colors flex items-center justify-between cursor-pointer"
+        >
+          <span>View Live Store</span>
+          <span className="text-stone-400">→</span>
+        </button>
       </div>
     </aside>
   );
