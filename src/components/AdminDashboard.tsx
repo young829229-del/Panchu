@@ -22,17 +22,6 @@ import {
   seedInitialProductsIfEmpty,
   ADMIN_EMAIL_PRIMARY
 } from '../services/firebaseService';
-import {
-  connectGmail,
-  disconnectGmail,
-  getGmailAccessToken,
-  getConnectedGmailEmail,
-  setGmailAccessToken,
-  sendGmailEmail,
-  fetchRecentGmailMessages,
-  buildOrderEmailHtml,
-  GmailMessageSummary
-} from '../services/gmailService';
 import { Product, Order, OrderStatus, AdminUser } from '../types';
 import { ALL_PRODUCTS } from '../data/products';
 import { PanchuLogo } from './PanchuLogo';
@@ -71,17 +60,13 @@ import {
   AlertCircle,
   Database,
   ArrowLeft,
-  Mail,
   Lock,
+  Mail,
   Eye,
   EyeOff,
-  Send,
-  Inbox,
   RefreshCw,
   FileText,
   Check,
-  MailCheck,
-  MessageSquare,
   Menu
 } from 'lucide-react';
 
@@ -128,25 +113,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Top Controls & Toggles
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
-
-  // Gmail Integration State
-  const [isGmailConnected, setIsGmailConnected] = useState<boolean>(!!getGmailAccessToken());
-  const [gmailConnectedEmail, setGmailConnectedEmail] = useState<string>(getConnectedGmailEmail() || '');
-  const [isConnectingGmail, setIsConnectingGmail] = useState<boolean>(false);
-  const [gmailMessages, setGmailMessages] = useState<GmailMessageSummary[]>([]);
-  const [isLoadingGmailMessages, setIsLoadingGmailMessages] = useState<boolean>(false);
-  const [gmailQuery, setGmailQuery] = useState<string>('');
-
-  // Email Composer & Modal State
-  const [emailModalOrder, setEmailModalOrder] = useState<Order | null>(null);
-  const [emailModalType, setEmailModalType] = useState<'confirmation' | 'shipped' | 'delivered' | 'cancelled' | 'custom'>('confirmation');
-  const [emailRecipient, setEmailRecipient] = useState<string>('');
-  const [emailSubject, setEmailSubject] = useState<string>('');
-  const [emailBodyText, setEmailBodyText] = useState<string>('');
-  const [emailBodyHtml, setEmailBodyHtml] = useState<string>('');
-  const [isEmailModalOpen, setIsEmailModalOpen] = useState<boolean>(false);
-  const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false);
-  const [emailSendStatus, setEmailSendStatus] = useState<{ success: boolean; msg: string } | null>(null);
 
   // Product Modal State
   const [editingProduct, setEditingProduct] = useState<Partial<Product> | null>(null);
@@ -224,12 +190,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     setAuthError('');
     try {
       const credential = await signInWithPopup(auth, googleProvider);
-      const googleCred = GoogleAuthProvider.credentialFromResult(credential);
-      if (googleCred?.accessToken) {
-        setGmailAccessToken(googleCred.accessToken, credential.user?.email);
-        setIsGmailConnected(true);
-        setGmailConnectedEmail(credential.user?.email || '');
-      }
       if (credential?.user) {
         const adminStatus = await checkIsAdmin(credential.user);
         if (!adminStatus) {
@@ -288,8 +248,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const handleLogout = async () => {
     await signOut(auth);
-    disconnectGmail();
-    setIsGmailConnected(false);
     setCurrentUser(null);
     setIsAdmin(false);
   };
@@ -302,71 +260,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     } catch (err: any) {
       alert(`Failed to update status: ${err.message}`);
-    }
-  };
-
-  // Gmail & Email Handlers
-  const handleConnectGmailAction = async () => {
-    setIsConnectingGmail(true);
-    try {
-      const res = await connectGmail();
-      setIsGmailConnected(true);
-      setGmailConnectedEmail(res.email);
-      await handleLoadGmailInbox();
-    } catch (err: any) {
-      alert(err?.message || 'Failed to connect Gmail');
-    } finally {
-      setIsConnectingGmail(false);
-    }
-  };
-
-  const handleLoadGmailInbox = async () => {
-    if (!getGmailAccessToken()) return;
-    setIsLoadingGmailMessages(true);
-    try {
-      const msgs = await fetchRecentGmailMessages(gmailQuery, 10);
-      setGmailMessages(msgs);
-    } catch (err) {
-      console.error('Failed to load Gmail:', err);
-    } finally {
-      setIsLoadingGmailMessages(false);
-    }
-  };
-
-  const handleOpenOrderEmailModal = (order: Order, type: 'confirmation' | 'shipped' | 'delivered' | 'cancelled' = 'confirmation') => {
-    setEmailModalOrder(order);
-    setEmailModalType(type);
-    setEmailRecipient(order.customerEmail || '');
-    const { subject, html, text } = buildOrderEmailHtml(order, type);
-    setEmailSubject(subject);
-    setEmailBodyHtml(html);
-    setEmailBodyText(text);
-    setEmailSendStatus(null);
-    setIsEmailModalOpen(true);
-  };
-
-  const handleSendEmailSubmit = async () => {
-    if (!emailRecipient.trim() || !emailSubject.trim()) {
-      alert('Please enter recipient and subject');
-      return;
-    }
-    setIsSendingEmail(true);
-    try {
-      await sendGmailEmail({
-        to: emailRecipient.trim(),
-        subject: emailSubject.trim(),
-        bodyText: emailBodyText,
-        bodyHtml: emailBodyHtml || undefined
-      });
-      setEmailSendStatus({ success: true, msg: `Email sent to ${emailRecipient.trim()}` });
-      setTimeout(() => {
-        setIsEmailModalOpen(false);
-        setEmailSendStatus(null);
-      }, 1500);
-    } catch (err: any) {
-      setEmailSendStatus({ success: false, msg: err?.message || 'Failed to send email' });
-    } finally {
-      setIsSendingEmail(false);
     }
   };
 
@@ -698,7 +591,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     orders={orders}
                     searchQuery={searchQuery}
                     onUpdateStatus={handleUpdateOrderStatus}
-                    onOpenEmailModal={handleOpenOrderEmailModal}
                     onSelectOrder={(ord) => setSelectedOrder(ord)}
                     currentSubTab={orderSubTab}
                     onChangeSubTab={setOrderSubTab}
@@ -811,77 +703,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               />
             )}
 
-            {/* VIEW 6: MESSAGES & GMAIL */}
-            {activeTab === 'messages' && (
-              <div className="space-y-6 pt-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <h1 className="text-xl sm:text-2xl font-bold font-sans text-stone-900">
-                      Customer Communications & Gmail
-                    </h1>
-                    <p className="text-xs text-stone-500 font-sans mt-0.5">
-                      Send branded receipts and notifications via your connected Google Account ({ADMIN_EMAIL_PRIMARY}).
-                    </p>
-                  </div>
-
-                  {isGmailConnected ? (
-                    <div className="flex items-center gap-2">
-                      <span className="px-3 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-semibold flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>Connected: {gmailConnectedEmail || ADMIN_EMAIL_PRIMARY}</span>
-                      </span>
-                      <button
-                        onClick={disconnectGmail}
-                        className="text-xs text-stone-400 hover:text-stone-700 cursor-pointer"
-                      >
-                        Disconnect
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={handleConnectGmailAction}
-                      disabled={isConnectingGmail}
-                      className="px-4 py-2 rounded-2xl bg-[#ff4d4f] hover:bg-[#e04345] text-white text-xs font-semibold flex items-center gap-2 cursor-pointer shadow-sm"
-                    >
-                      {isConnectingGmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
-                      <span>Connect Gmail Account</span>
-                    </button>
-                  )}
-                </div>
-
-                {/* Quick Orders Dispatch */}
-                <div className="p-5 rounded-2xl bg-[#faf9f8] border border-stone-100 space-y-4">
-                  <h3 className="text-xs font-bold text-stone-900 uppercase font-sans">
-                    Recent Customer Email Dispatch
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    {orders.slice(0, 6).map((ord) => (
-                      <div key={ord.id || ord.orderId} className="p-3 bg-white rounded-xl border border-stone-200/60 text-xs space-y-2">
-                        <div className="flex justify-between font-bold">
-                          <span className="text-[#ff4d4f]">{ord.orderId}</span>
-                          <span className="text-stone-500">{ord.customerName}</span>
-                        </div>
-                        <div className="flex gap-1.5">
-                          <button
-                            onClick={() => handleOpenOrderEmailModal(ord, 'confirmation')}
-                            className="flex-1 py-1 rounded-lg bg-stone-50 hover:bg-stone-100 border border-stone-200 text-[11px] font-medium"
-                          >
-                            Receipt
-                          </button>
-                          <button
-                            onClick={() => handleOpenOrderEmailModal(ord, 'shipped')}
-                            className="flex-1 py-1 rounded-lg bg-stone-50 hover:bg-stone-100 border border-stone-200 text-[11px] font-medium"
-                          >
-                            Shipped
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* VIEW 7: SETTINGS & ADMINS */}
             {activeTab === 'settings' && (
               <div className="max-w-2xl space-y-6 pt-2">
@@ -962,84 +783,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         order={selectedOrder}
         onClose={() => setSelectedOrder(null)}
         onUpdateStatus={handleUpdateOrderStatus}
-        onOpenEmailModal={handleOpenOrderEmailModal}
       />
-
-      {/* MODAL 3: GMAIL DISPATCH MODAL */}
-      {isEmailModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-stone-100 p-6 space-y-4">
-            <button
-              onClick={() => setIsEmailModalOpen(false)}
-              className="absolute top-5 right-5 p-2 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div>
-              <h3 className="text-base font-bold text-stone-900">Send Order Update via Gmail</h3>
-              <p className="text-xs text-stone-500">From {ADMIN_EMAIL_PRIMARY}</p>
-            </div>
-
-            {emailSendStatus && (
-              <div className={`p-3 rounded-xl text-xs ${emailSendStatus.success ? 'bg-emerald-50 text-emerald-800' : 'bg-red-50 text-red-800'}`}>
-                {emailSendStatus.msg}
-              </div>
-            )}
-
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">To Customer Email</label>
-                <input
-                  type="email"
-                  value={emailRecipient}
-                  onChange={(e) => setEmailRecipient(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-stone-200"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">Subject</label>
-                <input
-                  type="text"
-                  value={emailSubject}
-                  onChange={(e) => setEmailSubject(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-stone-200"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">Message Preview</label>
-                <textarea
-                  rows={4}
-                  value={emailBodyText}
-                  onChange={(e) => setEmailBodyText(e.target.value)}
-                  className="w-full px-3.5 py-2 rounded-xl border border-stone-200"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEmailModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-stone-200 text-stone-600"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSendEmailSubmit}
-                  disabled={isSendingEmail}
-                  className="px-5 py-2 rounded-xl bg-[#ff4d4f] text-white font-semibold flex items-center gap-1.5"
-                >
-                  {isSendingEmail ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                  <span>Send Email</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
     </div>
   );

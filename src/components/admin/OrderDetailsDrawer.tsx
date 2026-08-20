@@ -2,7 +2,6 @@ import React from 'react';
 import {
   X,
   ExternalLink,
-  Mail,
   Phone,
   MapPin,
   Clock,
@@ -11,7 +10,8 @@ import {
   AlertCircle,
   Truck,
   RotateCcw,
-  MessageCircle
+  MessageCircle,
+  Mail
 } from 'lucide-react';
 import { Order, OrderStatus } from '../../types';
 
@@ -19,14 +19,12 @@ interface OrderDetailsDrawerProps {
   order: Order | null;
   onClose: () => void;
   onUpdateStatus: (orderId: string, status: OrderStatus) => Promise<void>;
-  onOpenEmailModal: (order: Order, type: 'confirmation' | 'shipped' | 'delivered' | 'cancelled') => void;
 }
 
 export const OrderDetailsDrawer: React.FC<OrderDetailsDrawerProps> = ({
   order,
   onClose,
-  onUpdateStatus,
-  onOpenEmailModal
+  onUpdateStatus
 }) => {
   if (!order) return null;
 
@@ -97,15 +95,6 @@ export const OrderDetailsDrawer: React.FC<OrderDetailsDrawerProps> = ({
                 <MessageCircle className="w-3.5 h-3.5" />
                 <span>WhatsApp</span>
               </a>
-
-              <button
-                type="button"
-                onClick={() => onOpenEmailModal(order, 'confirmation')}
-                className="px-3 py-1.5 rounded-xl bg-white border border-stone-200 hover:bg-stone-50 text-stone-700 text-xs font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Mail className="w-3.5 h-3.5 text-[#ff4d4f]" />
-                <span>Email Receipt</span>
-              </button>
             </div>
           </div>
 

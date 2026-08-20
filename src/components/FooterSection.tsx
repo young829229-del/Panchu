@@ -111,40 +111,6 @@ export const FooterSection: React.FC<FooterSectionProps> = ({
               >
                 Contact
               </button>
-              {onOpenAccount && (
-                <>
-                  <span className={isDark ? 'text-neutral-700' : 'text-stone-300'}>|</span>
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      onOpenAccount();
-                    }}
-                    className={`hover:text-red-600 transition-colors cursor-pointer whitespace-nowrap ${
-                      isDark ? 'text-neutral-400' : 'text-stone-600'
-                    }`}
-                  >
-                    Account
-                  </button>
-                </>
-              )}
-              <span className={isDark ? 'text-neutral-700' : 'text-stone-300'}>|</span>
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  if (onOpenAdmin) {
-                    onOpenAdmin();
-                  } else {
-                    window.history.pushState(null, '', '/admin');
-                    window.dispatchEvent(new Event('popstate'));
-                  }
-                }}
-                className={`hover:text-red-600 transition-colors cursor-pointer whitespace-nowrap ${
-                  isDark ? 'text-neutral-500' : 'text-stone-400'
-                }`}
-                title="Panchu Admin Portal"
-              >
-                Admin
-              </button>
             </div>
 
             {/* Social Icons Group - TikTok, Instagram, WhatsApp placed downside of terms */}

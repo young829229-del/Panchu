@@ -4,7 +4,6 @@ import {
   Tag,
   Package,
   Boxes,
-  MessageSquare,
   Settings
 } from 'lucide-react';
 import { PanchuLogo } from '../PanchuLogo';
@@ -57,11 +56,6 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       id: 'offers',
       label: 'Offers & Coupons',
       icon: Tag
-    },
-    {
-      id: 'messages',
-      label: 'Messages',
-      icon: MessageSquare
     },
     {
       id: 'settings',

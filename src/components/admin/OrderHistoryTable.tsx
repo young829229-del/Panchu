@@ -5,7 +5,6 @@ import {
   Calendar,
   ChevronDown,
   ArrowUpDown,
-  Mail,
   RotateCcw,
   CheckCircle2,
   Eye,
@@ -21,7 +20,7 @@ interface OrderHistoryTableProps {
   orders: Order[];
   searchQuery: string;
   onUpdateStatus: (orderId: string, newStatus: OrderStatus) => Promise<void>;
-  onOpenEmailModal: (order: Order, type: 'confirmation' | 'shipped' | 'delivered' | 'cancelled') => void;
+  onOpenEmailModal?: (order: Order, type: 'confirmation' | 'shipped' | 'delivered' | 'cancelled') => void;
   onSelectOrder: (order: Order) => void;
   currentSubTab: OrderSubTab;
   onChangeSubTab: (tab: OrderSubTab) => void;
@@ -478,19 +477,6 @@ export const OrderHistoryTable: React.FC<OrderHistoryTableProps> = ({
                           >
                             <MessageCircle className="w-3.5 h-3.5 text-emerald-500" />
                             <span>WhatsApp</span>
-                          </button>
-
-                          {/* Email Receipt */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onOpenEmailModal(order, 'confirmation');
-                              setActiveMenuOrderId(null);
-                            }}
-                            className="w-full px-3.5 py-2 text-xs font-sans text-stone-700 hover:text-[#ff4d4f] hover:bg-stone-50 flex items-center gap-2 transition-colors cursor-pointer"
-                          >
-                            <Mail className="w-3.5 h-3.5 text-[#ff4d4f]" />
-                            <span>Send Email</span>
                           </button>
 
                           <div className="border-t border-stone-100 my-1" />
