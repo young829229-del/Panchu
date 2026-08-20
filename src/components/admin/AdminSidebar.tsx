@@ -10,6 +10,7 @@ import {
   Flame,
   Radio
 } from 'lucide-react';
+import { PanchuLogo } from '../PanchuLogo';
 
 export type AdminTab = 'live_orders' | 'order_history' | 'offers' | 'products' | 'stock' | 'messages' | 'settings' | 'summary';
 
@@ -84,25 +85,18 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
   return (
     <aside className="w-64 shrink-0 flex flex-col justify-between p-6 border-r border-stone-100 bg-white">
       <div>
-        {/* Brand Logo matching reference */}
+        {/* Brand Logo with Panchu Logo */}
         <div className="flex items-center justify-between mb-8 px-2">
           <button
             onClick={onBackToStore}
             type="button"
-            className="flex items-center gap-2.5 cursor-pointer text-left group"
+            className="flex flex-col items-start gap-1 cursor-pointer text-left group"
             title="Back to Storefront"
           >
-            <div className="w-8 h-8 rounded-full bg-[#ff4d4f]/10 flex items-center justify-center text-[#ff4d4f] group-hover:scale-105 transition-transform">
-              <Flame className="w-4.5 h-4.5 fill-[#ff4d4f]" />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-lg font-bold tracking-tight text-stone-900 font-sans group-hover:text-[#ff4d4f] transition-colors">
-                bringova
-              </span>
-              <span className="text-[9px] font-mono uppercase tracking-widest text-stone-400 -mt-1">
-                PANCHU ADMIN
-              </span>
-            </div>
+            <PanchuLogo size="md" className="group-hover:opacity-85 transition-opacity" />
+            <span className="text-[9px] font-montserrat font-bold uppercase tracking-[0.2em] text-stone-400">
+              Admin Portal
+            </span>
           </button>
         </div>
 

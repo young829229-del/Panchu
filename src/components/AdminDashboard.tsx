@@ -588,51 +588,63 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const pendingCount = orders.filter((o) => o.status === 'Pending').length;
 
   return (
-    <div className="min-h-screen bg-[#f5f3f2] p-2 sm:p-5 lg:p-8 flex items-center justify-center font-sans antialiased text-stone-900">
+    <div className="w-full min-h-screen bg-[#f8f9fa] flex flex-col md:flex-row font-sans antialiased text-stone-900 overflow-x-hidden">
       
-      {/* Outer Dashboard Card Matching Reference Image Exactly */}
-      <div className="w-full max-w-[1400px] min-h-[88vh] bg-white rounded-[28px] sm:rounded-[36px] shadow-[0_20px_70px_rgba(0,0,0,0.06),0_1px_3px_rgba(0,0,0,0.02)] border border-stone-100 flex flex-col md:flex-row overflow-hidden relative">
-        
-        {/* Mobile Header Bar for Toggle */}
-        <div className="md:hidden flex items-center justify-between p-4 border-b border-stone-100 bg-white">
-          <button
-            onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
-            className="p-2 rounded-xl bg-stone-100 text-stone-700"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-          <span className="font-bold text-sm">bringova admin</span>
-          <button
-            onClick={handleBack}
-            className="text-xs text-[#ff4d4f] font-medium"
-          >
-            Store →
-          </button>
+      {/* Mobile Header Bar with Panchu Logo and Store link */}
+      <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-stone-200 bg-white sticky top-0 z-30">
+        <button
+          onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+          className="p-2 rounded-xl bg-stone-100 text-stone-700 hover:bg-stone-200 transition-colors"
+          aria-label="Toggle navigation menu"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <div className="flex items-center gap-1.5">
+          <PanchuLogo size="sm" />
+          <span className="text-[10px] font-montserrat font-bold text-stone-400 uppercase tracking-widest">
+            Admin
+          </span>
         </div>
+        <button
+          onClick={handleBack}
+          className="text-xs text-red-600 font-semibold px-2.5 py-1 rounded-full bg-red-50 hover:bg-red-100 transition-colors"
+        >
+          Store →
+        </button>
+      </div>
 
-        {/* Sidebar matching reference */}
-        <div className={`${isMobileSidebarOpen ? 'block' : 'hidden'} md:block absolute md:relative z-40 inset-y-0 left-0 bg-white shadow-lg md:shadow-none`}>
-          <AdminSidebar
-            activeTab={activeTab}
-            onSelectTab={(tab) => {
-              setActiveTab(tab);
-              if (tab === 'order_history') {
-                setOrderSubTab('all');
-              }
-            }}
-            pendingCount={pendingCount}
-            productsCount={products.length}
-            isBusyMode={isBusyMode}
-            onToggleBusyMode={() => setIsBusyMode(!isBusyMode)}
-            onBackToStore={handleBack}
-            onCloseMobile={() => setIsMobileSidebarOpen(false)}
-          />
-        </div>
+      {/* Full-height Sidebar with Panchu Logo & exact reference layout */}
+      <div className={`${isMobileSidebarOpen ? 'block' : 'hidden'} md:block fixed md:sticky top-0 z-40 inset-y-0 left-0 bg-white shadow-xl md:shadow-none h-screen`}>
+        <AdminSidebar
+          activeTab={activeTab}
+          onSelectTab={(tab) => {
+            setActiveTab(tab);
+            if (tab === 'order_history') {
+              setOrderSubTab('all');
+            }
+          }}
+          pendingCount={pendingCount}
+          productsCount={products.length}
+          isBusyMode={isBusyMode}
+          onToggleBusyMode={() => setIsBusyMode(!isBusyMode)}
+          onBackToStore={handleBack}
+          onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        />
+      </div>
 
-        {/* Main Content Body */}
-        <main className="flex-1 flex flex-col p-5 sm:p-7 lg:p-9 overflow-y-auto max-h-[92vh]">
+      {/* Backdrop for mobile drawer */}
+      {isMobileSidebarOpen && (
+        <div
+          onClick={() => setIsMobileSidebarOpen(false)}
+          className="fixed inset-0 bg-black/40 z-30 md:hidden backdrop-blur-xs"
+        />
+      )}
+
+      {/* Main Full-Width Content Container */}
+      <main className="flex-1 flex flex-col min-w-0 bg-white md:bg-[#fafafa] min-h-screen">
+        <div className="w-full max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 flex-1 flex flex-col">
           
-          {/* Top Search & Controls Bar matching reference */}
+          {/* Top Search & Controls Bar */}
           <AdminTopHeader
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
@@ -946,8 +958,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
 
           </div>
-        </main>
-      </div>
+        </div>
+      </main>
 
       {/* MODAL 1: ORDER DETAILS DRAWER */}
       <OrderDetailsDrawer
