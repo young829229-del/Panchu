@@ -37,10 +37,14 @@ export interface CartItem {
 export interface OrderItem {
   productId: string;
   productName: string;
+  name?: string;
   image: string;
-  selectedSize: string;
+  productImage?: string;
+  size: string;
+  selectedSize?: string;
   quantity: number;
   price: number;
+  subtotal: number;
 }
 
 export type OrderStatus = 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered' | 'Collected' | 'Cancelled';
@@ -48,17 +52,22 @@ export type OrderStatus = 'Pending' | 'Confirmed' | 'Shipped' | 'Delivered' | 'C
 export interface Order {
   id?: string;
   orderId: string;
+  userId?: string | null;
   customerName: string;
   customerEmail?: string;
-  userId?: string;
   phone: string;
-  address: string;
+  shippingAddress: string;
+  address?: string;
   location?: string;
   deliveryOption?: string;
   items: OrderItem[];
-  subtotal: number;
-  deliveryFee: number;
-  total: number;
+  subtotal?: number;
+  deliveryFee?: number;
+  totalAmount: number;
+  total?: number;
+  paymentMethod: string;
+  paymentScreenshotUrl?: string | null;
+  orderStatus: OrderStatus;
   status: OrderStatus;
   createdAt?: any;
   updatedAt?: any;
@@ -71,6 +80,17 @@ export interface UserProfile {
   phone?: string;
   address?: string;
   role?: 'customer' | 'admin';
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface BannerDoc {
+  id: string; // 'male' | 'female'
+  gender: 'male' | 'female';
+  imageUrl: string;
+  originalUrl?: string;
+  title?: string;
+  active?: boolean;
   createdAt?: any;
   updatedAt?: any;
 }

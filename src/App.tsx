@@ -11,7 +11,12 @@ import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
 import { Product, CartItem } from './types';
 import { ALL_PRODUCTS, HERO_MALE_IMAGE, HERO_FEMALE_IMAGE } from './data/products';
-import { subscribeProducts, seedInitialProductsIfEmpty } from './services/firebaseService';
+import {
+  subscribeProducts,
+  seedInitialProductsIfEmpty,
+  subscribeBanners,
+  seedInitialBannersIfEmpty
+} from './services/firebaseService';
 import { auth } from './firebase';
 import {
   CustomerProfile,
@@ -84,9 +89,31 @@ export default function App() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [gender, setGender] = useState<'male' | 'female'>('male');
+  const [banners, setBanners] = useState<{ male: string; female: string }>({
+    male: HERO_MALE_IMAGE,
+    female: HERO_FEMALE_IMAGE
+  });
 
   const catalogRef = useRef<HTMLDivElement>(null);
   const preloadedImagesRef = useRef<Set<string>>(new Set());
+
+  // Subscribe to real-time Firebase banners collection & auto-seed initial docs
+  useEffect(() => {
+    seedInitialBannersIfEmpty().catch(err => {
+      console.warn('Initial banner check/seed notice:', err);
+    });
+
+    const unsubscribe = subscribeBanners((liveBanners) => {
+      setBanners({
+        male: liveBanners.male || HERO_MALE_IMAGE,
+        female: liveBanners.female || HERO_FEMALE_IMAGE
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Subscribe to real-time Firebase products collection & auto-seed if empty
   useEffect(() => {
@@ -125,39 +152,63 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Preload full-resolution product images as soon as a product is viewed (or on load)
+  // Preload critical images first (Hero Banners & Active Product), then idle-preload other catalog images
   useEffect(() => {
-    const imagesToPreload: string[] = [];
+    // 1. Critical immediate preloads (Hero Banners & Active/Featured Product)
+    const priorityImages: string[] = [
+      banners.male || HERO_MALE_IMAGE,
+      banners.female || HERO_FEMALE_IMAGE
+    ];
 
-    // Prioritize active product main and gallery images
     if (activeProduct) {
-      if (activeProduct.image) imagesToPreload.push(activeProduct.image);
+      if (activeProduct.image) priorityImages.push(activeProduct.image);
       if (activeProduct.additionalImages) {
         activeProduct.additionalImages.forEach(img => {
-          if (img) imagesToPreload.push(img);
+          if (img) priorityImages.push(img);
         });
       }
+    } else {
+      // Preload the default featured products for male and female
+      const defaultMale = products.find(p => p.gender === 'male');
+      const defaultFemale = products.find(p => p.gender === 'female');
+      if (defaultMale?.image) priorityImages.push(defaultMale.image);
+      if (defaultFemale?.image) priorityImages.push(defaultFemale.image);
     }
 
-    // Preload all product images to cache high-res assets in memory
-    products.forEach(p => {
-      if (p.image) imagesToPreload.push(p.image);
-      if (p.additionalImages) {
-        p.additionalImages.forEach(img => {
-          if (img) imagesToPreload.push(img);
-        });
-      }
-    });
-
-    // Execute preloading using HTMLImageElement
-    imagesToPreload.forEach(src => {
+    priorityImages.forEach(src => {
       if (src && !preloadedImagesRef.current.has(src)) {
         preloadedImagesRef.current.add(src);
         const img = new Image();
         img.src = src;
       }
     });
-  }, [activeProduct, products]);
+
+    // 2. Non-critical catalog images: preload progressively during browser idle time
+    const remainingImages: string[] = [];
+    products.forEach(p => {
+      if (p.image && !preloadedImagesRef.current.has(p.image)) {
+        remainingImages.push(p.image);
+      }
+    });
+
+    if (remainingImages.length > 0) {
+      const preloadRemaining = () => {
+        remainingImages.slice(0, 12).forEach(src => {
+          if (src && !preloadedImagesRef.current.has(src)) {
+            preloadedImagesRef.current.add(src);
+            const img = new Image();
+            img.src = src;
+          }
+        });
+      };
+
+      if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(preloadRemaining, { timeout: 2000 });
+      } else {
+        setTimeout(preloadRemaining, 1000);
+      }
+    }
+  }, [activeProduct, products, banners]);
 
   // Sync cart items to localStorage on change
   useEffect(() => {
@@ -249,8 +300,10 @@ export default function App() {
     };
   }, [products]);
 
-  // Banner Image according to gender selector
-  const heroImage = gender === 'male' ? HERO_MALE_IMAGE : HERO_FEMALE_IMAGE;
+  // Banner Image according to gender selector (dynamically loaded from Firebase)
+  const heroImage = gender === 'male' 
+    ? (banners.male || HERO_MALE_IMAGE) 
+    : (banners.female || HERO_FEMALE_IMAGE);
 
   // Select product and navigate to /product/:id on same page
   const handleSelectProduct = (product: Product) => {

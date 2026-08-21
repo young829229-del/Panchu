@@ -22,7 +22,9 @@ service cloud.firestore {
     function isPrimaryAdmin() {
       return isSignedIn() && 
         (request.auth.token.email == 'young829229@gmail.com' || 
-         request.auth.token.email == 'Young829229@gmail.com');
+         request.auth.token.email == 'Young829229@gmail.com' ||
+         request.auth.token.email == 'npdraggers111@gmail.com' ||
+         request.auth.token.email == 'Npdraggers111@gmail.com');
     }
 
     function isAdmin() {
@@ -41,13 +43,21 @@ service cloud.firestore {
 
     function isValidOrder(data) {
       return data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 100 &&
-             data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 100 &&
-             data.phone is string && data.phone.size() > 0 && data.phone.size() <= 30 &&
-             data.address is string && data.address.size() > 0 && data.address.size() <= 500 &&
+             data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 150 &&
+             data.phone is string && data.phone.size() > 0 && data.phone.size() <= 50 &&
+             (
+               (data.shippingAddress is string && data.shippingAddress.size() > 0 && data.shippingAddress.size() <= 500) ||
+               (data.address is string && data.address.size() > 0 && data.address.size() <= 500)
+             ) &&
              data.items is list && data.items.size() > 0 && data.items.size() <= 100 &&
-             data.subtotal is number && data.subtotal >= 0 &&
-             data.total is number && data.total >= 0 &&
-             (data.status == 'Pending' || data.status == 'Confirmed' || data.status == 'Shipped' || data.status == 'Delivered' || data.status == 'Collected' || data.status == 'Cancelled');
+             (
+               (data.totalAmount is number && data.totalAmount >= 0) ||
+               (data.total is number && data.total >= 0)
+             ) &&
+             (
+               data.orderStatus == 'Pending' || data.orderStatus == 'Confirmed' || data.orderStatus == 'Shipped' || data.orderStatus == 'Delivered' || data.orderStatus == 'Collected' || data.orderStatus == 'Cancelled' ||
+               data.status == 'Pending' || data.status == 'Confirmed' || data.status == 'Shipped' || data.status == 'Delivered' || data.status == 'Collected' || data.status == 'Cancelled'
+             );
     }
 
     // Default deny catch-all
@@ -65,6 +75,12 @@ service cloud.firestore {
           incoming().diff(existing()).affectedKeys().hasOnly(['stock', 'inStock', 'updatedAt'])
         )
       );
+    }
+
+    // Banners Collection: Public read, Admin write
+    match /banners/{bannerId} {
+      allow read, get, list: if true;
+      allow create, update, delete: if isAdmin() && isValidId(bannerId);
     }
 
     // Orders Collection: Unauthenticated / guest create, Only Authenticated Admin can read, list, update, or delete

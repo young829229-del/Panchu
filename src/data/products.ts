@@ -1,7 +1,10 @@
 import { Product } from '../types';
 
-export const HERO_MALE_IMAGE = 'https://user19304.na.imgto.link/public/20260807/1000067471.avif';
-export const HERO_FEMALE_IMAGE = 'https://user19304.na.imgto.link/public/20260807/1000067473.avif';
+export const APPROVED_MALE_BANNER_URL = 'https://i.ibb.co/XrZGLnvw/snaptik-app-7637482582606826773-slide-2.jpg';
+export const APPROVED_FEMALE_BANNER_URL = 'https://i.ibb.co/7dNkX1C3/IMG-20260820-WA0001.jpg';
+
+export const HERO_MALE_IMAGE = APPROVED_MALE_BANNER_URL;
+export const HERO_FEMALE_IMAGE = APPROVED_FEMALE_BANNER_URL;
 export const HERO_IMAGE = HERO_MALE_IMAGE;
 
 // DIRECT HIGH-RESOLUTION CDN IMAGE MAPPINGS (Exact direct full-res images from ImgBB)

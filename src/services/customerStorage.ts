@@ -1,4 +1,4 @@
-import { ADMIN_EMAIL_PRIMARY } from './firebaseService';
+import { ADMIN_EMAILS, ADMIN_EMAIL_PRIMARY } from './firebaseService';
 
 export interface CustomerProfile {
   username: string;
@@ -27,9 +27,8 @@ const ALL_ADMIN_KEYS = ['panchu_admin', 'isAdmin', 'admin_role', 'panchu_admin_a
 export function isUserAdminIdentifier(identifier?: string | null): boolean {
   if (!identifier) return false;
   const normalized = identifier.toLowerCase().trim();
-  const adminEmailNorm = ADMIN_EMAIL_PRIMARY.toLowerCase().trim();
   return (
-    normalized === adminEmailNorm ||
+    ADMIN_EMAILS.some(email => normalized === email.toLowerCase().trim()) ||
     normalized === 'admin' ||
     normalized === 'owner' ||
     normalized === 'panchu_admin'

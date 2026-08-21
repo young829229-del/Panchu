@@ -17,9 +17,29 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
-import { Product, Order, OrderItem, OrderStatus, AdminUser } from '../types';
+import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc } from '../types';
 
+export const ADMIN_EMAILS = ['young829229@gmail.com', 'npdraggers111@gmail.com'];
 export const ADMIN_EMAIL_PRIMARY = 'young829229@gmail.com';
+
+export const APPROVED_MALE_BANNER_URL = 'https://i.ibb.co/XrZGLnvw/snaptik-app-7637482582606826773-slide-2.jpg';
+export const APPROVED_FEMALE_BANNER_URL = 'https://i.ibb.co/7dNkX1C3/IMG-20260820-WA0001.jpg';
+
+/**
+ * Intelligent banner URL resolver
+ * Automatically transforms ImgBB page links into high-speed direct CDN image assets
+ */
+export function resolveBannerUrl(url: string | undefined | null): string {
+  if (!url || typeof url !== 'string') return '';
+  const clean = url.trim();
+  if (clean.includes('ibb.co/PvZVj2fS') || clean.includes('ibb.co/PvZVj2fs')) {
+    return APPROVED_MALE_BANNER_URL;
+  }
+  if (clean.includes('ibb.co/sdJW2VRT') || clean.includes('ibb.co/sdjw2vrt')) {
+    return APPROVED_FEMALE_BANNER_URL;
+  }
+  return clean;
+}
 
 /**
  * Realtime subscription to active products from Firestore
@@ -124,20 +144,43 @@ export function subscribeOrders(
         const orders: Order[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
+          const rawItems = Array.isArray(data.items) ? data.items : [];
+          const normalizedItems: OrderItem[] = rawItems.map((item: any) => ({
+            productId: item.productId || item.id || '',
+            productName: item.productName || item.name || '',
+            name: item.productName || item.name || '',
+            image: item.image || item.productImage || '',
+            productImage: item.image || item.productImage || '',
+            size: item.size || item.selectedSize || 'M',
+            selectedSize: item.size || item.selectedSize || 'M',
+            quantity: Number(item.quantity) || 1,
+            price: Number(item.price) || 0,
+            subtotal: Number(item.subtotal || (Number(item.price) * Number(item.quantity))) || 0
+          }));
+
+          const resolvedTotal = Number(data.totalAmount !== undefined ? data.totalAmount : data.total) || 0;
+          const resolvedStatus = (data.orderStatus || data.status || 'Pending') as OrderStatus;
+          const resolvedAddress = data.shippingAddress || data.address || '';
+
           orders.push({
             id: docSnap.id,
             orderId: data.orderId || docSnap.id,
+            userId: data.userId || null,
             customerName: data.customerName || '',
-            customerEmail: data.customerEmail || '',
             phone: data.phone || '',
-            address: data.address || '',
+            shippingAddress: resolvedAddress,
+            address: resolvedAddress,
             location: data.location || '',
             deliveryOption: data.deliveryOption || '',
-            items: Array.isArray(data.items) ? data.items : [],
+            items: normalizedItems,
             subtotal: Number(data.subtotal) || 0,
             deliveryFee: Number(data.deliveryFee) || 0,
-            total: Number(data.total) || 0,
-            status: (data.status as OrderStatus) || 'Pending',
+            totalAmount: resolvedTotal,
+            total: resolvedTotal,
+            paymentMethod: data.paymentMethod || 'Cash on Delivery (COD)',
+            paymentScreenshotUrl: data.paymentScreenshotUrl || null,
+            orderStatus: resolvedStatus,
+            status: resolvedStatus,
             createdAt: data.createdAt,
             updatedAt: data.updatedAt
           });
@@ -158,40 +201,84 @@ export function subscribeOrders(
 }
 
 /**
- * Atomic Order Placement & Size-Specific Stock Reduction
- * Decrements the exact size inventory in products collection atomically
+ * Atomic Order Placement & Size-Specific Stock Reduction in Firestore
+ * Persists complete order document to Firestore 'orders' collection.
+ * Important: Customer email is strictly NOT stored.
  */
 export async function createFirestoreOrder(
   orderInput: {
-    orderId: string;
+    orderId?: string;
     customerName: string;
-    customerEmail?: string;
-    userId?: string;
+    userId?: string | null;
     phone: string;
-    address: string;
-    location: string;
-    deliveryOption: string;
+    shippingAddress?: string;
+    address?: string;
+    location?: string;
+    deliveryOption?: string;
     items: OrderItem[];
-    subtotal: number;
-    deliveryFee: number;
-    total: number;
+    subtotal?: number;
+    deliveryFee?: number;
+    totalAmount?: number;
+    total?: number;
+    paymentMethod?: string;
+    paymentScreenshotUrl?: string | null;
+    orderStatus?: OrderStatus;
   }
-): Promise<{ success: boolean; orderId: string; error?: string }> {
+): Promise<{ success: boolean; orderId: string; docId?: string; error?: string }> {
+  // Ensure unique orderId
+  const timestamp = Date.now();
+  const randomSuffix = Math.floor(100 + Math.random() * 900);
+  const generatedOrderId = orderInput.orderId || `#${randomSuffix}`;
+
+  // Use standard Firestore auto-id document reference for clean indexing
   const newOrderRef = doc(collection(db, 'orders'));
-  const orderPayload = {
-    orderId: orderInput.orderId || `#${Math.floor(100 + Math.random() * 900)}`,
-    customerName: orderInput.customerName.trim(),
-    customerEmail: (orderInput.customerEmail || auth.currentUser?.email || '').trim(),
-    userId: (orderInput.userId || auth.currentUser?.uid || '').trim(),
-    phone: orderInput.phone.trim(),
-    address: orderInput.address.trim(),
-    location: orderInput.location.trim(),
+
+  const resolvedAddress = (orderInput.shippingAddress || orderInput.address || '').trim();
+  const resolvedSubtotal = Number(orderInput.subtotal) || 0;
+  const resolvedDeliveryFee = Number(orderInput.deliveryFee) || 0;
+  const resolvedTotal = Number(orderInput.totalAmount !== undefined ? orderInput.totalAmount : orderInput.total) || (resolvedSubtotal + resolvedDeliveryFee);
+
+  // Normalize each ordered item
+  const cleanItems = (orderInput.items || []).map((item) => {
+    const itemQty = Number(item.quantity) || 1;
+    const itemPrice = Number(item.price) || 0;
+    const itemSubtotal = Number(item.subtotal || (itemPrice * itemQty)) || 0;
+    const itemSize = (item.size || item.selectedSize || 'M').trim();
+    const itemImg = item.image || item.productImage || '';
+    const itemName = item.productName || item.name || '';
+    const itemId = item.productId || (item as any).id || '';
+
+    return {
+      productId: itemId,
+      productName: itemName,
+      image: itemImg,
+      size: itemSize,
+      quantity: itemQty,
+      price: itemPrice,
+      subtotal: itemSubtotal
+    };
+  });
+
+  // Build the complete Firestore order payload
+  // Notice: Email is deliberately excluded as per specification
+  const orderPayload: Record<string, any> = {
+    orderId: generatedOrderId,
+    userId: orderInput.userId || auth.currentUser?.uid || null,
+    customerName: (orderInput.customerName || '').trim(),
+    phone: (orderInput.phone || '').trim(),
+    items: cleanItems,
+    totalAmount: resolvedTotal,
+    total: resolvedTotal, // compatibility
+    subtotal: resolvedSubtotal,
+    deliveryFee: resolvedDeliveryFee,
+    paymentMethod: (orderInput.paymentMethod || 'Cash on Delivery (COD)').trim(),
+    paymentScreenshotUrl: orderInput.paymentScreenshotUrl || null,
+    shippingAddress: resolvedAddress,
+    address: resolvedAddress, // compatibility
+    location: (orderInput.location || '').trim(),
     deliveryOption: orderInput.deliveryOption || 'inside_door',
-    items: orderInput.items || [],
-    subtotal: Number(orderInput.subtotal) || 0,
-    deliveryFee: Number(orderInput.deliveryFee) || 0,
-    total: Number(orderInput.total) || 0,
-    status: 'Pending' as OrderStatus,
+    orderStatus: (orderInput.orderStatus || 'Pending') as OrderStatus,
+    status: (orderInput.orderStatus || 'Pending') as OrderStatus, // compatibility
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   };
@@ -199,9 +286,9 @@ export async function createFirestoreOrder(
   try {
     // 1. Attempt atomic transaction with inventory update
     await runTransaction(db, async (transaction) => {
-      const productDocs: { ref: any; data: any; item: OrderItem }[] = [];
+      const productDocs: { ref: any; data: any; item: typeof cleanItems[0] }[] = [];
 
-      for (const item of orderInput.items) {
+      for (const item of cleanItems) {
         if (!item.productId) continue;
         try {
           const productRef = doc(db, 'products', item.productId);
@@ -223,9 +310,9 @@ export async function createFirestoreOrder(
       // Decrement size stock for existing product docs
       for (const { ref: pRef, data: pData, item } of productDocs) {
         const stock = { ...(pData.stock || {}) };
-        const currentQty = typeof stock[item.selectedSize] === 'number' ? stock[item.selectedSize] : 10;
+        const currentQty = typeof stock[item.size] === 'number' ? stock[item.size] : 10;
         const newQty = Math.max(0, currentQty - item.quantity);
-        stock[item.selectedSize] = newQty;
+        stock[item.size] = newQty;
 
         const anyStockLeft = Object.values(stock).some((qty: any) => Number(qty) > 0);
 
@@ -236,23 +323,31 @@ export async function createFirestoreOrder(
         });
       }
 
-      // Set the order in Firestore
+      // Set the order in Firestore 'orders' collection
       transaction.set(newOrderRef, orderPayload);
     });
 
-    return { success: true, orderId: orderPayload.orderId };
+    return {
+      success: true,
+      orderId: generatedOrderId,
+      docId: newOrderRef.id
+    };
   } catch (txError: any) {
-    console.warn('Transaction with stock update failed, attempting direct order creation:', txError?.message || txError);
+    console.warn('Transaction with stock update notice, falling back to direct write:', txError?.message || txError);
 
     // 2. Direct fallback write to orders collection
     try {
       await setDoc(newOrderRef, orderPayload);
-      return { success: true, orderId: orderPayload.orderId };
+      return {
+        success: true,
+        orderId: generatedOrderId,
+        docId: newOrderRef.id
+      };
     } catch (writeError: any) {
-      console.error('Direct order write failed:', writeError);
+      console.error('Direct Firestore order creation failed:', writeError);
       return {
         success: false,
-        orderId: orderPayload.orderId,
+        orderId: generatedOrderId,
         error: writeError?.message || 'Failed to submit order to database.'
       };
     }
@@ -260,14 +355,15 @@ export async function createFirestoreOrder(
 }
 
 /**
- * Update Order Status (Admin)
+ * Update Order Status (Admin) in Firestore 'orders' document
  */
-export async function updateOrderStatus(orderId: string, status: OrderStatus): Promise<void> {
-  const path = `orders/${orderId}`;
+export async function updateOrderStatus(orderDocId: string, status: OrderStatus): Promise<void> {
+  const path = `orders/${orderDocId}`;
   try {
-    const orderRef = doc(db, 'orders', orderId);
+    const orderRef = doc(db, 'orders', orderDocId);
     await updateDoc(orderRef, {
-      status,
+      orderStatus: status,
+      status: status,
       updatedAt: serverTimestamp()
     });
   } catch (error) {
@@ -393,10 +489,10 @@ export async function checkIsAdmin(user: { uid: string; email?: string | null } 
   if (!user || !user.email) return false;
 
   const normalizedEmail = user.email.toLowerCase().trim();
-  const primaryAdmin = ADMIN_EMAIL_PRIMARY.toLowerCase().trim();
+  const normalizedAdminEmails = ADMIN_EMAILS.map(e => e.toLowerCase().trim());
 
-  // If primary admin, guarantee admin doc exists in Firestore for rules check
-  if (normalizedEmail === primaryAdmin) {
+  // If primary/designated super admin, guarantee admin doc exists in Firestore for rules check
+  if (normalizedAdminEmails.includes(normalizedEmail)) {
     try {
       const adminUserDocRef = doc(db, 'admin_users', user.uid);
       await setDoc(adminUserDocRef, {
@@ -594,30 +690,56 @@ export async function fetchCustomerOrders(uid?: string, email?: string): Promise
     const matchedOrders: Order[] = [];
     const seenIds = new Set<string>();
 
+    const normalizeDoc = (docSnap: any): Order => {
+      const d = docSnap.data();
+      const rawItems = Array.isArray(d.items) ? d.items : [];
+      const normalizedItems: OrderItem[] = rawItems.map((item: any) => ({
+        productId: item.productId || item.id || '',
+        productName: item.productName || item.name || '',
+        name: item.productName || item.name || '',
+        image: item.image || item.productImage || '',
+        productImage: item.image || item.productImage || '',
+        size: item.size || item.selectedSize || 'M',
+        selectedSize: item.size || item.selectedSize || 'M',
+        quantity: Number(item.quantity) || 1,
+        price: Number(item.price) || 0,
+        subtotal: Number(item.subtotal || (Number(item.price) * Number(item.quantity))) || 0
+      }));
+
+      const resolvedTotal = Number(d.totalAmount !== undefined ? d.totalAmount : d.total) || 0;
+      const resolvedStatus = (d.orderStatus || d.status || 'Pending') as OrderStatus;
+      const resolvedAddress = d.shippingAddress || d.address || '';
+
+      return {
+        id: docSnap.id,
+        orderId: d.orderId || docSnap.id,
+        userId: d.userId || null,
+        customerName: d.customerName || '',
+        phone: d.phone || '',
+        shippingAddress: resolvedAddress,
+        address: resolvedAddress,
+        location: d.location || '',
+        deliveryOption: d.deliveryOption || 'inside_door',
+        items: normalizedItems,
+        subtotal: Number(d.subtotal) || 0,
+        deliveryFee: Number(d.deliveryFee) || 0,
+        totalAmount: resolvedTotal,
+        total: resolvedTotal,
+        paymentMethod: d.paymentMethod || 'Cash on Delivery (COD)',
+        paymentScreenshotUrl: d.paymentScreenshotUrl || null,
+        orderStatus: resolvedStatus,
+        status: resolvedStatus,
+        createdAt: d.createdAt,
+        updatedAt: d.updatedAt
+      };
+    };
+
     if (uid) {
       const qUid = query(ordersRef, where('userId', '==', uid));
       const snapUid = await getDocs(qUid);
       snapUid.forEach(docSnap => {
-        const d = docSnap.data();
         seenIds.add(docSnap.id);
-        matchedOrders.push({
-          id: docSnap.id,
-          orderId: d.orderId || docSnap.id,
-          customerName: d.customerName || '',
-          customerEmail: d.customerEmail || '',
-          userId: d.userId,
-          phone: d.phone || '',
-          address: d.address || '',
-          location: d.location || '',
-          deliveryOption: d.deliveryOption || 'standard',
-          items: d.items || [],
-          subtotal: Number(d.subtotal) || 0,
-          deliveryFee: Number(d.deliveryFee) || 0,
-          total: Number(d.total) || 0,
-          status: d.status || 'Pending',
-          createdAt: d.createdAt,
-          updatedAt: d.updatedAt
-        });
+        matchedOrders.push(normalizeDoc(docSnap));
       });
     }
 
@@ -627,26 +749,8 @@ export async function fetchCustomerOrders(uid?: string, email?: string): Promise
       const snapEmail = await getDocs(qEmail);
       snapEmail.forEach(docSnap => {
         if (!seenIds.has(docSnap.id)) {
-          const d = docSnap.data();
           seenIds.add(docSnap.id);
-          matchedOrders.push({
-            id: docSnap.id,
-            orderId: d.orderId || docSnap.id,
-            customerName: d.customerName || '',
-            customerEmail: d.customerEmail || '',
-            userId: d.userId,
-            phone: d.phone || '',
-            address: d.address || '',
-            location: d.location || '',
-            deliveryOption: d.deliveryOption || 'standard',
-            items: d.items || [],
-            subtotal: Number(d.subtotal) || 0,
-            deliveryFee: Number(d.deliveryFee) || 0,
-            total: Number(d.total) || 0,
-            status: d.status || 'Pending',
-            createdAt: d.createdAt,
-            updatedAt: d.updatedAt
-          });
+          matchedOrders.push(normalizeDoc(docSnap));
         }
       });
     }
@@ -660,5 +764,260 @@ export async function fetchCustomerOrders(uid?: string, email?: string): Promise
   } catch (err) {
     console.warn('Fetch customer orders notice:', err);
     return [];
+  }
+}
+
+/**
+ * Real-time subscription to active Male and Female campaign banners in Firestore
+ */
+export function subscribeBanners(
+  callback: (banners: {
+    male: string;
+    female: string;
+    maleDoc?: BannerDoc;
+    femaleDoc?: BannerDoc;
+  }) => void
+): () => void {
+  const path = 'banners';
+  try {
+    const bannersRef = collection(db, path);
+    const unsubscribe = onSnapshot(
+      bannersRef,
+      (snapshot) => {
+        let maleUrl = APPROVED_MALE_BANNER_URL;
+        let femaleUrl = APPROVED_FEMALE_BANNER_URL;
+        let maleDoc: BannerDoc | undefined;
+        let femaleDoc: BannerDoc | undefined;
+
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          const docId = docSnap.id.toLowerCase();
+          const gender = (data.gender || docId).toLowerCase();
+
+          if (gender === 'male' || docId === 'male') {
+            const rawUrl = data.imageUrl || data.url || data.image;
+            if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim().length > 0) {
+              maleUrl = resolveBannerUrl(rawUrl);
+            }
+            maleDoc = {
+              id: docSnap.id,
+              gender: 'male',
+              imageUrl: maleUrl,
+              originalUrl: data.originalUrl || data.imageUrl,
+              title: data.title || 'Male Hero Campaign Banner',
+              active: data.active !== false,
+              createdAt: data.createdAt,
+              updatedAt: data.updatedAt
+            };
+          } else if (gender === 'female' || docId === 'female') {
+            const rawUrl = data.imageUrl || data.url || data.image;
+            if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim().length > 0) {
+              femaleUrl = resolveBannerUrl(rawUrl);
+            }
+            femaleDoc = {
+              id: docSnap.id,
+              gender: 'female',
+              imageUrl: femaleUrl,
+              originalUrl: data.originalUrl || data.imageUrl,
+              title: data.title || 'Female Hero Campaign Banner',
+              active: data.active !== false,
+              createdAt: data.createdAt,
+              updatedAt: data.updatedAt
+            };
+          }
+        });
+
+        callback({
+          male: maleUrl,
+          female: femaleUrl,
+          maleDoc,
+          femaleDoc
+        });
+      },
+      (error) => {
+        console.warn('Firestore banners listener notice:', error?.message || error);
+        callback({
+          male: APPROVED_MALE_BANNER_URL,
+          female: APPROVED_FEMALE_BANNER_URL
+        });
+      }
+    );
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to attach banners listener:', err);
+    callback({
+      male: APPROVED_MALE_BANNER_URL,
+      female: APPROVED_FEMALE_BANNER_URL
+    });
+    return () => {};
+  }
+}
+
+/**
+ * Fetch current banners once from Firestore
+ */
+export async function fetchBanners(): Promise<{ male: string; female: string; maleDoc?: BannerDoc; femaleDoc?: BannerDoc }> {
+  try {
+    const bannersRef = collection(db, 'banners');
+    const snapshot = await getDocs(bannersRef);
+    let maleUrl = APPROVED_MALE_BANNER_URL;
+    let femaleUrl = APPROVED_FEMALE_BANNER_URL;
+    let maleDoc: BannerDoc | undefined;
+    let femaleDoc: BannerDoc | undefined;
+
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      const docId = docSnap.id.toLowerCase();
+      const gender = (data.gender || docId).toLowerCase();
+
+      if (gender === 'male' || docId === 'male') {
+        const rawUrl = data.imageUrl || data.url || data.image;
+        if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim().length > 0) {
+          maleUrl = resolveBannerUrl(rawUrl);
+        }
+        maleDoc = {
+          id: docSnap.id,
+          gender: 'male',
+          imageUrl: maleUrl,
+          originalUrl: data.originalUrl || data.imageUrl,
+          title: data.title || 'Male Hero Campaign Banner',
+          active: data.active !== false,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt
+        };
+      } else if (gender === 'female' || docId === 'female') {
+        const rawUrl = data.imageUrl || data.url || data.image;
+        if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim().length > 0) {
+          femaleUrl = resolveBannerUrl(rawUrl);
+        }
+        femaleDoc = {
+          id: docSnap.id,
+          gender: 'female',
+          imageUrl: femaleUrl,
+          originalUrl: data.originalUrl || data.imageUrl,
+          title: data.title || 'Female Hero Campaign Banner',
+          active: data.active !== false,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt
+        };
+      }
+    });
+
+    return { male: maleUrl, female: femaleUrl, maleDoc, femaleDoc };
+  } catch (err) {
+    console.warn('Fetch banners notice:', err);
+    return { male: APPROVED_MALE_BANNER_URL, female: APPROVED_FEMALE_BANNER_URL };
+  }
+}
+
+/**
+ * Save / Update a banner document in Firestore
+ */
+export async function saveBannerToFirestore(
+  gender: 'male' | 'female',
+  imageUrl: string,
+  originalUrl?: string,
+  title?: string
+): Promise<void> {
+  const path = `banners/${gender}`;
+  try {
+    const cleanImageUrl = resolveBannerUrl(imageUrl);
+    const docRef = doc(db, 'banners', gender);
+    const existingSnap = await getDoc(docRef);
+
+    const bannerData: Record<string, any> = {
+      id: gender,
+      gender: gender,
+      imageUrl: cleanImageUrl,
+      originalUrl: originalUrl || imageUrl,
+      title: title || `${gender === 'male' ? 'Male' : 'Female'} Hero Campaign Banner`,
+      active: true,
+      updatedAt: serverTimestamp()
+    };
+
+    if (!existingSnap.exists()) {
+      bannerData.createdAt = serverTimestamp();
+    }
+
+    await setDoc(docRef, bannerData, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Upload a new banner image to Firebase Storage under the 'banners/' folder
+ */
+export async function uploadBannerImageToStorage(
+  file: File,
+  gender: 'male' | 'female'
+): Promise<string> {
+  try {
+    const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const timestamp = Date.now();
+    const storagePath = `banners/${gender}_banner_${timestamp}_${cleanName}`;
+    const storageRef = ref(storage, storagePath);
+
+    const snapshot = await uploadBytes(storageRef, file, {
+      contentType: file.type || 'image/jpeg',
+      customMetadata: {
+        gender,
+        uploadedAt: new Date().toISOString()
+      }
+    });
+
+    const downloadUrl = await getDownloadURL(snapshot.ref);
+
+    // Also persist immediately to Firestore doc
+    await saveBannerToFirestore(gender, downloadUrl, file.name);
+
+    return downloadUrl;
+  } catch (err: any) {
+    console.error('Error uploading banner to Firebase Storage:', err);
+    throw new Error(err?.message || 'Failed to upload banner image to Firebase Storage.');
+  }
+}
+
+/**
+ * Auto-seeds initial Male and Female banner docs to Firestore if empty or missing
+ */
+export async function seedInitialBannersIfEmpty(): Promise<void> {
+  try {
+    const maleRef = doc(db, 'banners', 'male');
+    const femaleRef = doc(db, 'banners', 'female');
+
+    const [maleSnap, femaleSnap] = await Promise.all([
+      getDoc(maleRef),
+      getDoc(femaleRef)
+    ]);
+
+    if (!maleSnap.exists()) {
+      await setDoc(maleRef, {
+        id: 'male',
+        gender: 'male',
+        imageUrl: APPROVED_MALE_BANNER_URL,
+        originalUrl: 'https://ibb.co/PvZVj2fS',
+        title: 'Male Hero Campaign Banner',
+        active: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+
+    if (!femaleSnap.exists()) {
+      await setDoc(femaleRef, {
+        id: 'female',
+        gender: 'female',
+        imageUrl: APPROVED_FEMALE_BANNER_URL,
+        originalUrl: 'https://ibb.co/sdJW2VRT',
+        title: 'Female Hero Campaign Banner',
+        active: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+    }
+  } catch (e) {
+    console.warn('Initial banners check/seed notice:', e);
   }
 }

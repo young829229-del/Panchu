@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ALL_PRODUCTS,
   MALE_PRODUCTS,
@@ -10,10 +10,11 @@ import {
 import { Product } from '../types';
 import { ProductCard } from './ProductCard';
 import { ProductImage } from './ProductImage';
+import { ProductGallerySwipe } from './ProductGallerySwipe';
 import { MatchPartnerSection } from './MatchPartnerSection';
 import { GetDiscountSection } from './GetDiscountSection';
 import { FooterSection } from './FooterSection';
-import { Check, Plus, Minus, ShoppingBag, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Check, Plus, Minus, ShoppingBag } from 'lucide-react';
 
 interface ProductPageProps {
   onAddToCart: (product: Product, size: string, quantity: number) => void;
@@ -85,10 +86,6 @@ export const ProductPage: React.FC<ProductPageProps> = ({
   const [quantity, setQuantity] = useState<number>(1);
   const [isAdded, setIsAdded] = useState<boolean>(false);
 
-  // Touch Swipe Gesture Refs
-  const touchStartX = useRef<number | null>(null);
-  const touchEndX = useRef<number | null>(null);
-
   // Automatically update featured main product when gender changes or products load
   useEffect(() => {
     const hasUrlProduct = typeof window !== 'undefined' && (
@@ -142,37 +139,6 @@ export const ProductPage: React.FC<ProductPageProps> = ({
     return getWinterCollection(activeGender);
   }, [products, activeGender]);
 
-  const handleNextImage = () => {
-    setActiveImageIndex(prev => (prev + 1) % galleryImages.length);
-  };
-
-  const handlePrevImage = () => {
-    setActiveImageIndex(prev => (prev - 1 + galleryImages.length) % galleryImages.length);
-  };
-
-  // Touch handlers for mobile swipe
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-    touchEndX.current = null;
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    touchEndX.current = e.touches[0].clientX;
-  };
-
-  const handleTouchEnd = () => {
-    if (touchStartX.current === null || touchEndX.current === null) return;
-    const diffX = touchStartX.current - touchEndX.current;
-    const minSwipeDistance = 35;
-    if (diffX > minSwipeDistance) {
-      handleNextImage();
-    } else if (diffX < -minSwipeDistance) {
-      handlePrevImage();
-    }
-    touchStartX.current = null;
-    touchEndX.current = null;
-  };
-
   const handleAddToCart = () => {
     if (!selectedProduct.inStock) return;
     onAddToCart(selectedProduct, selectedSize, quantity);
@@ -207,25 +173,16 @@ export const ProductPage: React.FC<ProductPageProps> = ({
           {/* LEFT: PRODUCT GALLERY */}
           <div className="md:col-span-7 flex flex-col gap-3 select-none">
             
-            {/* Main Product Image Container - Clean Image with Click-to-Scroll */}
-            <div 
+            {/* Main Product Image Container with Native Touch Swiping */}
+            <ProductGallerySwipe
+              images={galleryImages}
+              activeIndex={activeImageIndex}
+              onIndexChange={setActiveImageIndex}
+              productName={selectedProduct.name}
+              badge={selectedProduct.badge}
               onClick={handleImageClick}
-              className="relative aspect-square w-full max-w-[500px] mx-auto overflow-hidden bg-stone-100 dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-sm cursor-pointer group/img"
-              title="Click image to view price & size selection"
-            >
-              <ProductImage
-                src={galleryImages[activeImageIndex] || selectedProduct.image}
-                alt={selectedProduct.name}
-                className="w-full h-full object-cover object-center group-hover/img:scale-105 transition-transform duration-500 ease-out"
-              />
-
-              {/* Badge if present */}
-              {selectedProduct.badge && (
-                <div className="absolute top-3 left-3 bg-red-600 text-white font-montserrat font-bold text-[10px] tracking-widest px-2.5 py-1 uppercase z-10">
-                  {selectedProduct.badge}
-                </div>
-              )}
-            </div>
+              priority={true}
+            />
 
             {/* Thumbnails list - Only displayed if there are multiple gallery images */}
             {galleryImages.length > 1 && (

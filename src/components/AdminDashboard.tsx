@@ -20,6 +20,7 @@ import {
   addAdminUser,
   fetchAllAdmins,
   seedInitialProductsIfEmpty,
+  ADMIN_EMAILS,
   ADMIN_EMAIL_PRIMARY
 } from '../services/firebaseService';
 import { Product, Order, OrderStatus, AdminUser } from '../types';
@@ -37,6 +38,7 @@ import { OrderDetailsDrawer } from './admin/OrderDetailsDrawer';
 import { OffersView } from './admin/OffersView';
 import { StockView } from './admin/StockView';
 import { ProductEditorView } from './admin/ProductEditorView';
+import { BannersView } from './admin/BannersView';
 
 import {
   Shield,
@@ -281,8 +283,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         category: 'TEES',
         collection: 'ESSENTIALS',
         gender: 'unisex',
-        image: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80',
-        images: ['https://images.unsplash.com/photo-1521572267360-ee0c2909d518?w=800&auto=format&fit=crop&q=80'],
+        image: 'https://i.ibb.co/pvDTJ7j4/snaptik-app-7647506153697447189-slide-1.jpg',
+        images: ['https://i.ibb.co/pvDTJ7j4/snaptik-app-7647506153697447189-slide-1.jpg'],
         sizes: ['S', 'M', 'L', 'XL'],
         stock: { S: 10, M: 15, L: 15, XL: 8 },
         active: true,
@@ -695,7 +697,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* VIEW 5: STOCK */}
+            {/* VIEW 5: BANNERS & HERO */}
+            {activeTab === 'banners' && <BannersView />}
+
+            {/* VIEW 6: STOCK */}
             {activeTab === 'stock' && (
               <StockView
                 products={products}
@@ -741,16 +746,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div className="p-5 rounded-2xl bg-white border border-stone-200/70 shadow-2xs space-y-3">
                   <h3 className="text-xs font-bold uppercase text-stone-900">Active Super Admins</h3>
                   <div className="space-y-2 text-xs font-sans">
-                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-red-50 text-red-700 font-medium">
-                      <span>{ADMIN_EMAIL_PRIMARY} (Root Admin)</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-600 text-white">ROOT</span>
-                    </div>
-                    {adminsList.map((adm) => (
-                      <div key={adm.uid} className="flex items-center justify-between p-2.5 rounded-xl bg-stone-50 text-stone-800">
-                        <span>{adm.email}</span>
-                        <span className="text-[10px] text-stone-500 font-medium">ADMIN</span>
+                    {ADMIN_EMAILS.map((admEmail) => (
+                      <div key={admEmail} className="flex items-center justify-between p-2.5 rounded-xl bg-red-50 text-red-700 font-medium">
+                        <span>{admEmail}</span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-600 text-white">SUPER ADMIN</span>
                       </div>
                     ))}
+                    {adminsList
+                      .filter((adm) => !ADMIN_EMAILS.some((e) => e.toLowerCase() === (adm.email || '').toLowerCase()))
+                      .map((adm) => (
+                        <div key={adm.uid} className="flex items-center justify-between p-2.5 rounded-xl bg-stone-50 text-stone-800">
+                          <span>{adm.email}</span>
+                          <span className="text-[10px] text-stone-500 font-medium">ADMIN</span>
+                        </div>
+                      ))}
                   </div>
                 </div>
 

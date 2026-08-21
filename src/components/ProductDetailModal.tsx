@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Product } from '../types';
+import { ProductGallerySwipe } from './ProductGallerySwipe';
 import { ProductImage } from './ProductImage';
-import { X, ShoppingBag, Check, Plus, Minus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, ShoppingBag, Check, Plus, Minus } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface ProductDetailModalProps {
@@ -24,46 +25,9 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
   const [isAdded, setIsAdded] = useState<boolean>(false);
 
-  // Touch Swipe State
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [touchEnd, setTouchEnd] = useState<number | null>(null);
-
   const images = (product.additionalImages && product.additionalImages.length > 0) 
     ? product.additionalImages 
-    : [product.image];
-
-  const handleNextImage = () => {
-    setActiveImageIndex(prev => (prev + 1) % images.length);
-  };
-
-  const handlePrevImage = () => {
-    setActiveImageIndex(prev => (prev - 1 + images.length) % images.length);
-  };
-
-  // Touch Swipe Handlers
-  const minSwipeDistance = 50;
-
-  const onTouchStart = (e: React.TouchEvent) => {
-    setTouchEnd(null);
-    setTouchStart(e.targetTouches[0].clientX);
-  };
-
-  const onTouchMove = (e: React.TouchEvent) => {
-    setTouchEnd(e.targetTouches[0].clientX);
-  };
-
-  const onTouchEnd = () => {
-    if (!touchStart || !touchEnd) return;
-    const distance = touchStart - touchEnd;
-    const isLeftSwipe = distance > minSwipeDistance;
-    const isRightSwipe = distance < -minSwipeDistance;
-
-    if (isLeftSwipe) {
-      handleNextImage();
-    } else if (isRightSwipe) {
-      handlePrevImage();
-    }
-  };
+    : (product.images && product.images.length > 0 ? product.images : [product.image]);
 
   const handleAddToCart = () => {
     onAddToCart(product, selectedSize, quantity);
@@ -93,13 +57,15 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2">
             {/* Left: Product Media Gallery */}
             <div className="p-4 sm:p-6 flex flex-col justify-between relative border-b md:border-b-0 md:border-r border-stone-200 select-none">
-              <div className="relative aspect-square w-full max-w-[420px] mx-auto overflow-hidden bg-stone-100 dark:bg-neutral-900 border border-stone-200 dark:border-neutral-800 rounded-sm">
-                <ProductImage
-                  src={images[activeImageIndex]}
-                  alt={product.name}
-                  className="w-full h-full object-cover object-center"
-                />
-              </div>
+              <ProductGallerySwipe
+                images={images}
+                activeIndex={activeImageIndex}
+                onIndexChange={setActiveImageIndex}
+                productName={product.name}
+                badge={product.badge}
+                containerClassName="max-w-[420px]"
+                priority={true}
+              />
 
               {/* Thumbnails if multiple images */}
               {images.length > 1 && (
@@ -108,7 +74,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     <button
                       key={idx}
                       onClick={() => setActiveImageIndex(idx)}
-                      className={`w-16 h-16 border-2 overflow-hidden transition-all flex-shrink-0 ${
+                      className={`w-16 h-16 border-2 overflow-hidden transition-all flex-shrink-0 cursor-pointer ${
                         activeImageIndex === idx ? 'border-black' : 'border-stone-300 opacity-60 hover:opacity-100'
                       }`}
                     >
@@ -138,70 +104,82 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                 </p>
               </div>
 
-              {/* Purchase Options */}
-              <div className="space-y-5 pt-4 border-t border-stone-200">
-                {/* Size Selector */}
+              <div className="space-y-6">
+                {/* Size Selection */}
                 <div>
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-montserrat font-semibold tracking-wider text-black uppercase">
-                      Choose Size
-                    </span>
+                  <div className="flex justify-between text-xs font-montserrat font-semibold tracking-wider text-stone-600 mb-2">
+                    <span>SELECT SIZE</span>
+                    <span>FIT GUIDE</span>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid grid-cols-4 gap-2">
                     {product.sizes.map((size) => (
                       <button
                         key={size}
-                        type="button"
                         onClick={() => setSelectedSize(size)}
-                        className={`px-4 py-2 text-xs font-montserrat font-bold tracking-wider transition-all cursor-pointer border flex items-center gap-1.5 ${
+                        className={`py-3 text-xs font-montserrat font-semibold border transition-all cursor-pointer ${
                           selectedSize === size
-                            ? 'bg-black text-white border-black'
+                            ? 'bg-black text-white border-black shadow-sm'
                             : 'bg-white text-black border-stone-300 hover:border-black'
                         }`}
                       >
-                        {selectedSize === size && <Check className="w-3.5 h-3.5" />}
-                        <span>{size}</span>
+                        {size}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 {/* Quantity */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-montserrat font-semibold tracking-wider text-black uppercase">
+                <div>
+                  <label className="block text-xs font-montserrat font-semibold tracking-wider text-stone-600 mb-2">
                     QUANTITY
-                  </span>
-                  <div className="flex items-center border border-stone-300 bg-stone-50">
+                  </label>
+                  <div className="flex items-center border border-stone-300 w-32 bg-white">
                     <button
-                      type="button"
-                      onClick={() => setQuantity(p => Math.max(p - 1, 1))}
-                      className="p-2 text-black hover:bg-stone-200 cursor-pointer"
+                      onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                      className="p-2 hover:bg-stone-100 transition-colors text-stone-700 cursor-pointer"
                     >
                       <Minus className="w-4 h-4" />
                     </button>
-                    <span className="px-4 text-sm font-montserrat font-semibold text-black">{quantity}</span>
+                    <span className="flex-1 text-center font-montserrat font-semibold text-sm text-stone-900">
+                      {quantity}
+                    </span>
                     <button
-                      type="button"
-                      onClick={() => setQuantity(p => Math.min(p + 1, 10))}
-                      className="p-2 text-black hover:bg-stone-200 cursor-pointer"
+                      onClick={() => setQuantity(quantity + 1)}
+                      className="p-2 hover:bg-stone-100 transition-colors text-stone-700 cursor-pointer"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="pt-2">
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
                   <button
                     onClick={handleAddToCart}
-                    className={`w-full flex items-center justify-center gap-2 py-4 px-6 border text-xs font-montserrat font-bold tracking-widest uppercase transition-all duration-200 cursor-pointer shadow-md ${
-                      isAdded
-                        ? 'bg-emerald-600 text-white border-emerald-600'
-                        : 'bg-black text-white hover:bg-neutral-800 border-black'
-                    }`}
+                    className="flex-1 py-4 bg-white text-black border-2 border-black font-montserrat font-semibold text-xs tracking-widest hover:bg-stone-100 transition-all flex items-center justify-center gap-2 cursor-pointer uppercase"
+                    id="modal-add-to-cart-btn"
                   >
-                    {isAdded ? <Check className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
-                    <span>{isAdded ? 'ADDED TO BAG' : 'ADD TO BAG'}</span>
+                    {isAdded ? (
+                      <>
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        <span>ADDED TO BAG</span>
+                      </>
+                    ) : (
+                      <>
+                        <ShoppingBag className="w-4 h-4" />
+                        <span>ADD TO CART</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      onBuyNow(product, selectedSize, quantity);
+                      onClose();
+                    }}
+                    className="flex-1 py-4 bg-black text-white font-montserrat font-semibold text-xs tracking-widest hover:bg-stone-800 transition-all flex items-center justify-center cursor-pointer uppercase shadow-md"
+                    id="modal-buy-now-btn"
+                  >
+                    BUY NOW
                   </button>
                 </div>
               </div>
@@ -212,4 +190,3 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
     </AnimatePresence>
   );
 };
-

@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Sun, Moon } from 'lucide-react';
+import { HERO_MALE_IMAGE, HERO_FEMALE_IMAGE } from '../data/products';
 
 interface HeroProps {
   image: string;
@@ -19,6 +20,16 @@ export const Hero: React.FC<HeroProps> = ({
   onShopNow
 }) => {
   const isDark = theme === 'dark';
+
+  // Preload both gender banners immediately so switching is instantaneous
+  useEffect(() => {
+    [HERO_MALE_IMAGE, HERO_FEMALE_IMAGE].forEach(url => {
+      if (url) {
+        const img = new Image();
+        img.src = url;
+      }
+    });
+  }, []);
 
   return (
     <section className={`relative w-full h-screen md:h-[calc(100dvh-52px)] overflow-hidden ${isDark ? 'bg-neutral-950 text-white' : 'bg-white text-black'} select-none flex flex-col items-center justify-center`}>
@@ -101,18 +112,27 @@ export const Hero: React.FC<HeroProps> = ({
 
       {/* Hero Banner Container */}
       <div className="w-full h-full cursor-pointer relative overflow-hidden flex items-center justify-center group" onClick={onShopNow}>
-        {/* Main Banner Image - Responsive Wide Landscape for Desktop / Portrait for Mobile */}
+        {/* Main Banner Image - High Definition, Optimized Sharp Rendering */}
         <img
           src={image}
           alt="PANCHU Campaign Banner"
+          loading="eager"
+          decoding="async"
+          fetchPriority="high"
           className="w-full h-full object-cover object-[center_12%] sm:object-[center_15%] md:object-[center_18%] lg:object-[center_20%] transition-transform duration-500 scale-100 group-hover:scale-105"
+          style={{
+            imageRendering: '-webkit-optimize-contrast',
+            backfaceVisibility: 'hidden',
+            transform: 'translateZ(0)',
+            willChange: 'transform'
+          }}
           referrerPolicy="no-referrer"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
             if (gender === 'female') {
-              target.src = 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1600&q=80';
+              target.src = HERO_FEMALE_IMAGE;
             } else {
-              target.src = 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?auto=format&fit=crop&w=1600&q=80';
+              target.src = HERO_MALE_IMAGE;
             }
           }}
         />
@@ -132,5 +152,3 @@ export const Hero: React.FC<HeroProps> = ({
     </section>
   );
 };
-
-

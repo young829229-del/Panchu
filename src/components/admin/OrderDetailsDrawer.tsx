@@ -78,12 +78,10 @@ export const OrderDetailsDrawer: React.FC<OrderDetailsDrawerProps> = ({
               </span>
             </div>
 
-            {order.customerEmail && (
-              <div className="text-xs text-stone-500 flex items-center gap-1 mt-1 truncate">
-                <Mail className="w-3 h-3 text-stone-400 shrink-0" />
-                <span>{order.customerEmail}</span>
-              </div>
-            )}
+            <div className="text-xs text-stone-500 mt-2 font-mono">
+              <span className="text-stone-400">Payment: </span>
+              <span className="font-semibold text-stone-800">{order.paymentMethod || 'Cash on Delivery (COD)'}</span>
+            </div>
 
             <div className="flex items-center gap-2 mt-3">
               <a
@@ -139,9 +137,9 @@ export const OrderDetailsDrawer: React.FC<OrderDetailsDrawerProps> = ({
                   )}
 
                   <div className="truncate">
-                    <h5 className="text-xs font-bold text-stone-900 truncate font-sans">{item.productName}</h5>
+                    <h5 className="text-xs font-bold text-stone-900 truncate font-sans">{item.productName || item.name}</h5>
                     <div className="flex items-center gap-2 mt-1 text-[11px] text-stone-500 font-mono">
-                      <span>Size: <strong className="text-[#ff4d4f]">{item.selectedSize}</strong></span>
+                      <span>Size: <strong className="text-[#ff4d4f]">{item.size || item.selectedSize || 'M'}</strong></span>
                       <span>•</span>
                       <span>Qty: <strong>{item.quantity}</strong></span>
                     </div>
@@ -150,7 +148,7 @@ export const OrderDetailsDrawer: React.FC<OrderDetailsDrawerProps> = ({
 
                 <div className="text-right shrink-0">
                   <span className="text-xs font-bold text-stone-900 font-sans">
-                    Rs {(item.price * item.quantity).toLocaleString()}
+                    Rs {(item.subtotal || (item.price * item.quantity)).toLocaleString()}
                   </span>
                   <span className="block text-[10px] text-stone-400 font-mono">
                     Rs {item.price} each
@@ -173,7 +171,7 @@ export const OrderDetailsDrawer: React.FC<OrderDetailsDrawerProps> = ({
           </div>
           <div className="border-t border-stone-200 pt-2 flex justify-between font-bold text-sm text-stone-900">
             <span>Total Payable</span>
-            <span className="text-[#ff4d4f]">Rs {order.total?.toLocaleString() || '0'}</span>
+            <span className="text-[#ff4d4f]">Rs {(order.totalAmount || order.total || 0).toLocaleString()}</span>
           </div>
         </div>
 
