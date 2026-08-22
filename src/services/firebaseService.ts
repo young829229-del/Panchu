@@ -15,7 +15,7 @@ import {
   serverTimestamp,
   Timestamp
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
 import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc } from '../types';
 
@@ -992,15 +992,27 @@ export async function saveBannerToFirestore(
   }
 }
 
+export interface BannerUploadProgress {
+  stage: 'checking' | 'uploading' | 'getting-url' | 'saving-firestore' | 'cleaning-old' | 'done';
+  percent: number;
+  message: string;
+  bytesTransferred?: number;
+  totalBytes?: number;
+}
+
+export type BannerUploadProgressCallback = (progress: BannerUploadProgress) => void;
+
 /**
  * Upload the original banner image file to Firebase Storage under the 'banners/' folder.
  * Preserves full original resolution and quality.
- * Deletes the previous banner file from Storage to prevent orphaned files and stale cache.
+ * Uses uploadBytesResumable with progress tracking and an explicit 45s safety timeout.
+ * Deletes the previous banner file from Storage to prevent orphaned files.
  * Updates Firestore document so the live storefront syncs immediately.
  */
 export async function uploadBannerImageToStorage(
   file: File,
-  gender: 'male' | 'female'
+  gender: 'male' | 'female',
+  onProgress?: BannerUploadProgressCallback
 ): Promise<string> {
   if (!file) {
     throw new Error('No image file selected.');
@@ -1009,8 +1021,27 @@ export async function uploadBannerImageToStorage(
   const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const timestamp = Date.now();
   const storagePath = `banners/${gender}_hero_${timestamp}_${cleanName}`;
+  const bucketName = storage.app.options.storageBucket || 'gen-lang-client-0600433059.firebasestorage.app';
+
+  console.log('[Banner Upload Initialized]', {
+    gender,
+    fileName: file.name,
+    fileSize: file.size,
+    fileType: file.type,
+    storageBucket: bucketName,
+    storagePath,
+    authUid: auth.currentUser?.uid || 'anonymous'
+  });
 
   // 1. Fetch current document to check if there is an existing storage file to delete
+  onProgress?.({
+    stage: 'checking',
+    percent: 5,
+    message: 'Checking current banner record in Firestore...',
+    bytesTransferred: 0,
+    totalBytes: file.size
+  });
+
   let oldStoragePath: string | undefined;
   try {
     const currentDocSnap = await getDoc(doc(db, 'banners', gender));
@@ -1022,24 +1053,122 @@ export async function uploadBannerImageToStorage(
     console.debug('Previous banner check notice:', checkErr);
   }
 
-  // 2. Upload original file directly to Firebase Storage with proper metadata
+  // 2. Upload original file to Firebase Storage with resumable task, progress tracking & timeout
+  onProgress?.({
+    stage: 'uploading',
+    percent: 10,
+    message: 'Starting upload to Firebase Storage...',
+    bytesTransferred: 0,
+    totalBytes: file.size
+  });
+
   const storageRef = ref(storage, storagePath);
-  const snapshot = await uploadBytes(storageRef, file, {
+  const metadata = {
     contentType: file.type || 'image/jpeg',
     cacheControl: 'public, max-age=31536000',
     customMetadata: {
       gender,
       originalName: file.name,
-      uploadedAt: new Date().toISOString()
+      uploadedAt: new Date().toISOString(),
+      uploaderUid: auth.currentUser?.uid || 'admin'
     }
+  };
+
+  const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+
+  await new Promise<void>((resolve, reject) => {
+    // 45 seconds safety timeout to prevent infinite UI hanging
+    const timeoutId = setTimeout(() => {
+      try {
+        uploadTask.cancel();
+      } catch {}
+      const timeoutError = new Error(
+        `Firebase Storage upload timed out after 45 seconds. Target bucket: "${bucketName}", path: "${storagePath}". Please check network connection and Firebase Storage bucket access.`
+      );
+      reject(timeoutError);
+    }, 45000);
+
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {
+        const bytesTransferred = snapshot.bytesTransferred;
+        const totalBytes = snapshot.totalBytes || file.size;
+        const ratio = totalBytes > 0 ? bytesTransferred / totalBytes : 0;
+        // Map upload bytes from 10% to 80%
+        const uploadPercent = Math.min(80, Math.round(10 + ratio * 70));
+
+        const mbTransferred = (bytesTransferred / (1024 * 1024)).toFixed(2);
+        const mbTotal = (totalBytes / (1024 * 1024)).toFixed(2);
+
+        onProgress?.({
+          stage: 'uploading',
+          percent: uploadPercent,
+          message: `Uploading to Firebase Storage (${uploadPercent}% — ${mbTransferred}MB / ${mbTotal}MB)...`,
+          bytesTransferred,
+          totalBytes
+        });
+      },
+      (error: any) => {
+        clearTimeout(timeoutId);
+        console.error('[Firebase Storage Upload Error Details]', {
+          code: error?.code,
+          name: error?.name,
+          message: error?.message,
+          serverResponse: error?.serverResponse,
+          storageBucket: bucketName,
+          storagePath
+        });
+
+        let helpfulMsg = error?.message || 'Storage upload failed.';
+        if (error?.code === 'storage/unauthorized') {
+          helpfulMsg = `Permission Denied: Firebase Storage rules rejected this upload. Bucket: ${bucketName}. Ensure you are signed in as an admin or storage rules allow write access to 'banners/'.`;
+        } else if (error?.code === 'storage/bucket-not-found' || error?.code === 'storage/project-not-found') {
+          helpfulMsg = `Bucket Not Found: Firebase Storage bucket "${bucketName}" could not be reached. Verify that Firebase Storage is enabled in the Firebase Console.`;
+        } else if (error?.code === 'storage/canceled') {
+          helpfulMsg = 'Upload was canceled or timed out.';
+        } else if (error?.code === 'storage/quota-exceeded') {
+          helpfulMsg = 'Firebase Storage quota exceeded for this project.';
+        }
+
+        const customError = new Error(`Firebase Storage Error [${error?.code || 'UNKNOWN'}]: ${helpfulMsg}`);
+        reject(customError);
+      },
+      () => {
+        clearTimeout(timeoutId);
+        resolve();
+      }
+    );
   });
 
-  const downloadUrl = await getDownloadURL(snapshot.ref);
+  // 3. Obtain secure download URL from Firebase Storage
+  onProgress?.({
+    stage: 'getting-url',
+    percent: 85,
+    message: 'Generating Firebase Storage download URL...',
+    bytesTransferred: file.size,
+    totalBytes: file.size
+  });
+
+  const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
   if (!downloadUrl) {
-    throw new Error('Firebase Storage returned empty download URL.');
+    throw new Error('Firebase Storage succeeded but returned an empty download URL.');
   }
 
-  // 3. Update the Firestore banner document immediately
+  console.log('[Firebase Storage Download URL Generated]', {
+    gender,
+    downloadUrl,
+    storagePath
+  });
+
+  // 4. Update the Firestore banner document immediately
+  onProgress?.({
+    stage: 'saving-firestore',
+    percent: 92,
+    message: 'Saving banner document to Firestore...',
+    bytesTransferred: file.size,
+    totalBytes: file.size
+  });
+
   await saveBannerToFirestore(
     gender,
     downloadUrl,
@@ -1049,10 +1178,29 @@ export async function uploadBannerImageToStorage(
     `${gender === 'male' ? 'Male' : 'Female'} Hero Campaign Banner`
   );
 
-  // 4. Delete old Storage file if it exists and differs from the new one
+  console.log('[Firestore Banner Document Updated]', { gender });
+
+  // 5. Clean up old Storage file if it exists and is distinct
   if (oldStoragePath && oldStoragePath !== storagePath) {
-    deleteBannerImageFromStorage(oldStoragePath).catch(() => {});
+    onProgress?.({
+      stage: 'cleaning-old',
+      percent: 97,
+      message: 'Cleaning up previous banner from Firebase Storage...',
+      bytesTransferred: file.size,
+      totalBytes: file.size
+    });
+    deleteBannerImageFromStorage(oldStoragePath).catch((err) => {
+      console.debug('Old storage cleanup non-fatal notice:', err);
+    });
   }
+
+  onProgress?.({
+    stage: 'done',
+    percent: 100,
+    message: 'Banner uploaded and synchronized successfully!',
+    bytesTransferred: file.size,
+    totalBytes: file.size
+  });
 
   return downloadUrl;
 }

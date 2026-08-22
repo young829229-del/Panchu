@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Sun, Moon } from 'lucide-react';
+import { ProgressiveBanner } from './common/ProgressiveBanner';
 
 interface HeroProps {
   image: string;
@@ -21,7 +22,6 @@ export const Hero: React.FC<HeroProps> = ({
   onShopNow
 }) => {
   const isDark = theme === 'dark';
-  const [imageLoaded, setImageLoaded] = useState<boolean>(false);
 
   // Preload current and alternate gender live banner dynamically
   useEffect(() => {
@@ -32,10 +32,6 @@ export const Hero: React.FC<HeroProps> = ({
       }
     });
   }, [image, alternateImage]);
-
-  useEffect(() => {
-    setImageLoaded(false);
-  }, [image]);
 
   return (
     <section className={`relative w-full h-screen md:h-[calc(100dvh-52px)] overflow-hidden ${isDark ? 'bg-neutral-950 text-white' : 'bg-white text-black'} select-none flex flex-col items-center justify-center`}>
@@ -118,27 +114,16 @@ export const Hero: React.FC<HeroProps> = ({
 
       {/* Hero Banner Container */}
       <div className="w-full h-full cursor-pointer relative overflow-hidden flex items-center justify-center group" onClick={onShopNow}>
-        {/* Main Banner Image - High Definition, Optimized Sharp Rendering */}
-        {image && (
-          <img
-            src={image}
-            alt="PANCHU Campaign Banner"
-            loading="eager"
-            decoding="async"
-            fetchPriority="high"
-            onLoad={() => setImageLoaded(true)}
-            className={`w-full h-full object-cover object-[center_12%] sm:object-[center_15%] md:object-[center_18%] lg:object-[center_20%] transition-all duration-500 scale-100 group-hover:scale-105 ${
-              imageLoaded ? 'opacity-100' : 'opacity-90'
-            }`}
-            style={{
-              imageRendering: '-webkit-optimize-contrast',
-              backfaceVisibility: 'hidden',
-              transform: 'translateZ(0)',
-              willChange: 'transform'
-            }}
-            referrerPolicy="no-referrer"
-          />
-        )}
+        {/* Progressive Banner Image with Low-Quality Blur Placeholder */}
+        <ProgressiveBanner
+          src={image}
+          alt="PANCHU Campaign Banner"
+          priority={true}
+          theme={theme}
+          gender={gender}
+          objectPosition="object-[center_12%] sm:object-[center_15%] md:object-[center_18%] lg:object-[center_20%]"
+          imgClassName="group-hover:scale-105 transition-transform duration-500"
+        />
         <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 z-10 pointer-events-none" />
       </div>
 

@@ -9,7 +9,9 @@ import {
   GoogleAuthProvider,
   User
 } from 'firebase/auth';
-import { auth, googleProvider } from '../firebase';
+import { auth, googleProvider, db, storage } from '../firebase';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import {
   subscribeOrders,
   subscribeProducts,
@@ -360,6 +362,298 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  /**
+   * Diagnostic Banner Upload Pipeline with Explicit Stage Logging & Error Diagnostics
+   * Covers all stages: File Selection, Storage Path Prep, uploadBytesResumable, Error Catching,
+   * Download URL Retrieval, and Firestore Update.
+   */
+  const handleBannerUploadWithDiagnostics = async (
+    file: File,
+    gender: 'male' | 'female',
+    onProgress?: (progress: {
+      stage: 'checking' | 'uploading' | 'getting-url' | 'saving-firestore' | 'cleaning-old' | 'done';
+      percent: number;
+      message: string;
+      bytesTransferred?: number;
+      totalBytes?: number;
+    }) => void
+  ): Promise<string> => {
+    // STAGE 1: File Selection
+    console.log('[Banner Upload Stage 1: File Selection]', {
+      gender,
+      fileName: file?.name,
+      fileSize: file?.size,
+      fileSizeFormatted: file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : '0 MB',
+      fileType: file?.type,
+      lastModified: file?.lastModified,
+      lastModifiedISO: file ? new Date(file.lastModified).toISOString() : null,
+      timestamp: new Date().toISOString()
+    });
+
+    if (!file) {
+      const err = new Error('Stage 1 Error: No file was selected for upload.');
+      console.error('[Banner Upload Stage 1: File Selection Failed]', err);
+      throw err;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      const err = new Error(`Stage 1 Error: Selected file type "${file.type}" is not a recognized image format.`);
+      console.error('[Banner Upload Stage 1: Invalid File Type]', err);
+      throw err;
+    }
+
+    onProgress?.({
+      stage: 'checking',
+      percent: 5,
+      message: `Selected ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB). Preparing Storage...`,
+      bytesTransferred: 0,
+      totalBytes: file.size
+    });
+
+    // STAGE 2: Storage Path Preparation
+    const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const timestamp = Date.now();
+    const storagePath = `banners/${gender}_hero_${timestamp}_${cleanName}`;
+    const storageBucket = storage.app.options.storageBucket || 'gen-lang-client-0600433059.firebasestorage.app';
+    const projectId = storage.app.options.projectId || 'ai-studio-offwhiteparadise-e79d13d5-a99b-4d72-81cd-5942898df393';
+
+    console.log('[Banner Upload Stage 2: Storage Path Preparation]', {
+      gender,
+      cleanFileName: cleanName,
+      storagePath,
+      storageBucket,
+      projectId,
+      currentUserUid: auth.currentUser?.uid || 'anonymous',
+      currentUserEmail: auth.currentUser?.email || 'unauthenticated',
+      timestamp
+    });
+
+    // Check existing banner to cleanup after successful replacement
+    let oldStoragePath: string | undefined;
+    try {
+      const currentDocSnap = await getDoc(doc(db, 'banners', gender));
+      if (currentDocSnap.exists()) {
+        const currentData = currentDocSnap.data();
+        oldStoragePath = currentData?.storagePath;
+        console.log('[Banner Upload Stage 2: Previous Banner Path Located]', {
+          oldStoragePath,
+          gender
+        });
+      }
+    } catch (checkErr) {
+      console.warn('[Banner Upload Stage 2: Previous Banner Check Non-fatal]', checkErr);
+    }
+
+    onProgress?.({
+      stage: 'uploading',
+      percent: 10,
+      message: 'Connecting to Firebase Storage...',
+      bytesTransferred: 0,
+      totalBytes: file.size
+    });
+
+    // STAGE 3: uploadBytesResumable Execution
+    console.log('[Banner Upload Stage 3: uploadBytesResumable Execution] Initializing upload stream...', {
+      targetPath: storagePath,
+      bucket: storageBucket,
+      contentType: file.type || 'image/jpeg'
+    });
+
+    const storageRef = ref(storage, storagePath);
+    const metadata = {
+      contentType: file.type || 'image/jpeg',
+      cacheControl: 'public, max-age=31536000',
+      customMetadata: {
+        gender,
+        originalName: file.name,
+        uploadedAt: new Date().toISOString(),
+        uploaderUid: auth.currentUser?.uid || 'admin',
+        uploaderEmail: auth.currentUser?.email || 'young829229@gmail.com'
+      }
+    };
+
+    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        // 45s safety timeout to prevent infinite UI hanging
+        const timeoutId = setTimeout(() => {
+          try {
+            uploadTask.cancel();
+          } catch {}
+          const timeoutErr = new Error(
+            `Firebase Storage upload timed out after 45 seconds. Target bucket: "${storageBucket}", path: "${storagePath}". Please check network connection and Firebase Storage bucket permissions.`
+          );
+          console.error('[Banner Upload Timeout Triggered]', {
+            storageBucket,
+            storagePath,
+            timeoutSeconds: 45
+          });
+          reject(timeoutErr);
+        }, 45000);
+
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            const bytesTransferred = snapshot.bytesTransferred;
+            const totalBytes = snapshot.totalBytes || file.size;
+            const ratio = totalBytes > 0 ? bytesTransferred / totalBytes : 0;
+            const progressPercent = Math.min(80, Math.round(10 + ratio * 70));
+            const mbTransferred = (bytesTransferred / (1024 * 1024)).toFixed(2);
+            const mbTotal = (totalBytes / (1024 * 1024)).toFixed(2);
+
+            console.log(`[Banner Upload Stage 3: uploadBytesResumable Execution] ${progressPercent}% (${mbTransferred}MB / ${mbTotal}MB)`, {
+              state: snapshot.state,
+              bytesTransferred,
+              totalBytes,
+              percent: progressPercent
+            });
+
+            onProgress?.({
+              stage: 'uploading',
+              percent: progressPercent,
+              message: `Uploading to Firebase Storage (${progressPercent}% — ${mbTransferred}MB / ${mbTotal}MB)...`,
+              bytesTransferred,
+              totalBytes
+            });
+          },
+          (storageError: any) => {
+            clearTimeout(timeoutId);
+            // STAGE 4: Error Catching (Storage stream error)
+            console.error('[Banner Upload Stage 4: Error Catch Block] Firebase Storage stream encountered an error:', {
+              errorCode: storageError?.code,
+              errorMessage: storageError?.message,
+              errorName: storageError?.name,
+              serverResponse: storageError?.serverResponse,
+              customData: storageError?.customData,
+              stack: storageError?.stack,
+              fullErrorObject: storageError,
+              targetBucket: storageBucket,
+              targetPath: storagePath
+            });
+
+            let descriptiveMessage = storageError?.message || 'Storage upload stream failed.';
+            if (storageError?.code === 'storage/unauthorized') {
+              descriptiveMessage = `Firebase Permission Denied: Storage security rules rejected write to bucket "${storageBucket}". Ensure admin authentication or storage write rules allow "banners/".`;
+            } else if (storageError?.code === 'storage/bucket-not-found' || storageError?.code === 'storage/project-not-found') {
+              descriptiveMessage = `Firebase Storage Bucket Not Found: Bucket "${storageBucket}" does not exist or is disabled in Firebase Console.`;
+            } else if (storageError?.code === 'storage/canceled') {
+              descriptiveMessage = 'Firebase Storage upload was canceled or timed out after 45 seconds.';
+            } else if (storageError?.code === 'storage/quota-exceeded') {
+              descriptiveMessage = 'Firebase Storage quota exceeded for this project.';
+            } else if (storageError?.code === 'storage/retry-limit-exceeded') {
+              descriptiveMessage = 'Firebase Storage upload failed due to network retry limit exceeded. Please check your internet connection.';
+            }
+
+            const structuredErr = new Error(`Firebase Storage Error [${storageError?.code || 'UNKNOWN'}]: ${descriptiveMessage}`);
+            (structuredErr as any).rawFirebaseError = storageError;
+            (structuredErr as any).firebaseCode = storageError?.code;
+            reject(structuredErr);
+          },
+          () => {
+            clearTimeout(timeoutId);
+            console.log('[Banner Upload Stage 3: uploadBytesResumable Execution] Storage chunk transfer completed successfully.');
+            resolve();
+          }
+        );
+      });
+
+      // STAGE 5: Download URL Retrieval
+      console.log('[Banner Upload Stage 5: Download URL Retrieval] Requesting download URL from Storage ref...', {
+        storagePath
+      });
+
+      onProgress?.({
+        stage: 'getting-url',
+        percent: 85,
+        message: 'Retrieving permanent Firebase Storage download URL...',
+        bytesTransferred: file.size,
+        totalBytes: file.size
+      });
+
+      const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+      if (!downloadUrl) {
+        throw new Error('Stage 5 Error: Firebase Storage upload completed but returned an empty download URL.');
+      }
+
+      console.log('[Banner Upload Stage 5: Download URL Retrieval] Download URL successfully obtained:', {
+        gender,
+        downloadUrl,
+        storagePath
+      });
+
+      // STAGE 6: Firestore Document Update
+      console.log('[Banner Upload Stage 6: Firestore Document Update] Committing banner record to Firestore...', {
+        collection: 'banners',
+        documentId: gender,
+        downloadUrl,
+        storagePath
+      });
+
+      onProgress?.({
+        stage: 'saving-firestore',
+        percent: 92,
+        message: 'Updating Firestore document and syncing live storefront...',
+        bytesTransferred: file.size,
+        totalBytes: file.size
+      });
+
+      const bannerDocRef = doc(db, 'banners', gender);
+      const bannerPayload = {
+        id: gender,
+        imageUrl: downloadUrl,
+        storagePath,
+        originalFileName: file.name,
+        fileSizeBytes: file.size,
+        title: `${gender === 'male' ? 'Male' : 'Female'} Hero Campaign Banner`,
+        updatedAt: serverTimestamp(),
+        updatedBy: auth.currentUser?.email || 'admin'
+      };
+
+      await setDoc(bannerDocRef, bannerPayload, { merge: true });
+
+      console.log('[Banner Upload Stage 6: Firestore Document Update] Firestore document successfully updated and verified!', {
+        documentId: gender,
+        imageUrl: downloadUrl
+      });
+
+      // Clean up previous storage file if different
+      if (oldStoragePath && oldStoragePath !== storagePath) {
+        onProgress?.({
+          stage: 'cleaning-old',
+          percent: 97,
+          message: 'Cleaning up previous banner file from Storage...',
+          bytesTransferred: file.size,
+          totalBytes: file.size
+        });
+        deleteObject(ref(storage, oldStoragePath)).catch((cleanupErr) => {
+          console.warn('[Banner Upload Storage Cleanup Non-fatal]', cleanupErr);
+        });
+      }
+
+      onProgress?.({
+        stage: 'done',
+        percent: 100,
+        message: 'Banner uploaded and synchronized with live storefront successfully!',
+        bytesTransferred: file.size,
+        totalBytes: file.size
+      });
+
+      return downloadUrl;
+    } catch (pipelineError: any) {
+      // STAGE 4: Error Catching (Full pipeline catch block)
+      console.error('[Banner Upload Stage 4: Error Catch Block] Full Firebase Error Object Caught in Pipeline:', {
+        errorName: pipelineError?.name,
+        errorMessage: pipelineError?.message,
+        errorCode: pipelineError?.code || pipelineError?.firebaseCode,
+        serverResponse: pipelineError?.rawFirebaseError?.serverResponse,
+        stack: pipelineError?.stack,
+        fullErrorObject: pipelineError?.rawFirebaseError || pipelineError
+      });
+      throw pipelineError;
+    }
+  };
+
   // Auth Loading
   if (authLoading) {
     return (
@@ -698,7 +992,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             )}
 
             {/* VIEW 5: BANNERS & HERO */}
-            {activeTab === 'banners' && <BannersView />}
+            {activeTab === 'banners' && (
+              <BannersView uploadBannerHandler={handleBannerUploadWithDiagnostics} />
+            )}
 
             {/* VIEW 6: STOCK */}
             {activeTab === 'stock' && (

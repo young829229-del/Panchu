@@ -10,7 +10,8 @@ import {
   Smartphone,
   Monitor,
   Info,
-  FileCheck
+  FileCheck,
+  XCircle
 } from 'lucide-react';
 import {
   subscribeBanners,
@@ -18,11 +19,21 @@ import {
   saveBannerToFirestore,
   seedInitialBannersIfEmpty,
   APPROVED_MALE_BANNER_URL,
-  APPROVED_FEMALE_BANNER_URL
+  APPROVED_FEMALE_BANNER_URL,
+  BannerUploadProgress
 } from '../../services/firebaseService';
 import { BannerDoc } from '../../types';
+import { ProgressiveBanner } from '../common/ProgressiveBanner';
 
-export const BannersView: React.FC = () => {
+export interface BannersViewProps {
+  uploadBannerHandler?: (
+    file: File,
+    gender: 'male' | 'female',
+    onProgress?: (progress: BannerUploadProgress) => void
+  ) => Promise<string>;
+}
+
+export const BannersView: React.FC<BannersViewProps> = ({ uploadBannerHandler }) => {
   const [banners, setBanners] = useState<{
     male: string;
     female: string;
@@ -36,9 +47,12 @@ export const BannersView: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [activePreviewDevice, setActivePreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
 
-  // Upload & Save loading states
-  const [isUploadingMale, setIsUploadingMale] = useState<boolean>(false);
-  const [isUploadingFemale, setIsUploadingFemale] = useState<boolean>(false);
+  // Upload & Progress states
+  const [maleProgress, setMaleProgress] = useState<BannerUploadProgress | null>(null);
+  const [femaleProgress, setFemaleProgress] = useState<BannerUploadProgress | null>(null);
+  const [maleError, setMaleError] = useState<{ message: string; details?: string } | null>(null);
+  const [femaleError, setFemaleError] = useState<{ message: string; details?: string } | null>(null);
+
   const [isDraggingMale, setIsDraggingMale] = useState<boolean>(false);
   const [isDraggingFemale, setIsDraggingFemale] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
@@ -62,10 +76,10 @@ export const BannersView: React.FC = () => {
     setStatusMessage({ type, text });
     setTimeout(() => {
       setStatusMessage(null);
-    }, 4000);
+    }, 5000);
   };
 
-  // Handle direct file upload to Firebase Storage & Firestore
+  // Handle direct file upload to Firebase Storage & Firestore with live progress and structured error capturing
   const handleFileUpload = async (file: File, gender: 'male' | 'female') => {
     if (!file) return;
 
@@ -74,18 +88,53 @@ export const BannersView: React.FC = () => {
       return;
     }
 
-    if (gender === 'male') setIsUploadingMale(true);
-    else setIsUploadingFemale(true);
+    if (gender === 'male') {
+      setMaleError(null);
+      setMaleProgress({
+        stage: 'checking',
+        percent: 0,
+        message: 'Initializing upload pipeline...'
+      });
+    } else {
+      setFemaleError(null);
+      setFemaleProgress({
+        stage: 'checking',
+        percent: 0,
+        message: 'Initializing upload pipeline...'
+      });
+    }
+
+    const runner = uploadBannerHandler || uploadBannerImageToStorage;
 
     try {
-      await uploadBannerImageToStorage(file, gender);
+      await runner(file, gender, (progress) => {
+        if (gender === 'male') {
+          setMaleProgress(progress);
+        } else {
+          setFemaleProgress(progress);
+        }
+      });
       showToast('success', `${gender === 'male' ? 'Male' : 'Female'} banner successfully uploaded to Firebase Storage and synced live!`);
     } catch (err: any) {
-      console.error('Banner upload error:', err);
-      showToast('error', err?.message || 'Failed to upload banner to Firebase Storage.');
+      console.error('[Banner Upload Error Caught in BannersView]', {
+        name: err?.name,
+        message: err?.message,
+        code: err?.code,
+        fullError: err
+      });
+      const errorMessage = err?.message || 'Failed to upload banner to Firebase Storage.';
+      if (gender === 'male') {
+        setMaleError({ message: errorMessage });
+      } else {
+        setFemaleError({ message: errorMessage });
+      }
+      showToast('error', errorMessage);
     } finally {
-      if (gender === 'male') setIsUploadingMale(false);
-      else setIsUploadingFemale(false);
+      if (gender === 'male') {
+        setTimeout(() => setMaleProgress(null), 1500);
+      } else {
+        setTimeout(() => setFemaleProgress(null), 1500);
+      }
     }
   };
 
@@ -93,8 +142,13 @@ export const BannersView: React.FC = () => {
   const handleResetToDefault = async (gender: 'male' | 'female') => {
     const defaultUrl = gender === 'male' ? APPROVED_MALE_BANNER_URL : APPROVED_FEMALE_BANNER_URL;
 
-    if (gender === 'male') setIsUploadingMale(true);
-    else setIsUploadingFemale(true);
+    if (gender === 'male') {
+      setMaleError(null);
+      setMaleProgress({ stage: 'saving-firestore', percent: 50, message: 'Resetting to default banner...' });
+    } else {
+      setFemaleError(null);
+      setFemaleProgress({ stage: 'saving-firestore', percent: 50, message: 'Resetting to default banner...' });
+    }
 
     try {
       await saveBannerToFirestore(
@@ -108,10 +162,13 @@ export const BannersView: React.FC = () => {
       showToast('success', `Reset ${gender === 'male' ? 'Male' : 'Female'} banner to default approved campaign image.`);
     } catch (err: any) {
       console.error('Error resetting banner:', err);
-      showToast('error', 'Failed to reset banner.');
+      const errMsg = err?.message || 'Failed to reset banner.';
+      if (gender === 'male') setMaleError({ message: errMsg });
+      else setFemaleError({ message: errMsg });
+      showToast('error', errMsg);
     } finally {
-      if (gender === 'male') setIsUploadingMale(false);
-      else setIsUploadingFemale(false);
+      if (gender === 'male') setMaleProgress(null);
+      else setFemaleProgress(null);
     }
   };
 
@@ -121,6 +178,9 @@ export const BannersView: React.FC = () => {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
+
+  const isUploadingMale = !!maleProgress;
+  const isUploadingFemale = !!femaleProgress;
 
   return (
     <div className="space-y-6 pt-2 max-w-6xl">
@@ -170,7 +230,7 @@ export const BannersView: React.FC = () => {
       {/* Toast Notification Alert */}
       {statusMessage && (
         <div
-          className={`p-3.5 rounded-2xl flex items-center gap-3 text-xs font-medium transition-all ${
+          className={`p-3.5 rounded-2xl flex items-center justify-between gap-3 text-xs font-medium transition-all shadow-sm ${
             statusMessage.type === 'success'
               ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
               : statusMessage.type === 'error'
@@ -178,10 +238,18 @@ export const BannersView: React.FC = () => {
               : 'bg-blue-50 text-blue-800 border border-blue-200'
           }`}
         >
-          {statusMessage.type === 'success' && <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600" />}
-          {statusMessage.type === 'error' && <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />}
-          {statusMessage.type === 'info' && <Info className="w-4 h-4 shrink-0 text-blue-600" />}
-          <span>{statusMessage.text}</span>
+          <div className="flex items-center gap-2.5">
+            {statusMessage.type === 'success' && <CheckCircle className="w-4 h-4 shrink-0 text-emerald-600" />}
+            {statusMessage.type === 'error' && <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />}
+            {statusMessage.type === 'info' && <Info className="w-4 h-4 shrink-0 text-blue-600" />}
+            <span>{statusMessage.text}</span>
+          </div>
+          <button
+            onClick={() => setStatusMessage(null)}
+            className="text-stone-400 hover:text-stone-600 text-xs font-bold px-1.5 py-0.5 rounded cursor-pointer"
+          >
+            ✕
+          </button>
         </div>
       )}
 
@@ -227,16 +295,17 @@ export const BannersView: React.FC = () => {
                 activePreviewDevice === 'desktop' ? 'aspect-[16/9]' : 'aspect-[9/14] max-w-[280px] mx-auto'
               }`}
             >
-              <img
+              <ProgressiveBanner
                 src={banners.male || APPROVED_MALE_BANNER_URL}
                 alt="Male Hero Banner Live Preview"
-                className="w-full h-full object-cover object-[center_18%]"
-                referrerPolicy="no-referrer"
+                gender="male"
+                priority={false}
+                objectPosition="object-[center_18%]"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20 pointer-events-none" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20 pointer-events-none z-10" />
 
               {/* Shop Now Overlay Demo Tag */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                 <div className="px-4 py-1.5 border border-white/90 bg-black/60 text-white text-[10px] tracking-[0.2em] font-montserrat font-bold uppercase shadow-lg">
                   SHOP NOW
                 </div>
@@ -247,7 +316,7 @@ export const BannersView: React.FC = () => {
                 href={banners.male || APPROVED_MALE_BANNER_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black text-[10px] flex items-center gap-1"
+                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black text-[10px] flex items-center gap-1 z-20"
                 title="View Full Resolution Image"
               >
                 <ExternalLink className="w-3 h-3" />
@@ -270,7 +339,28 @@ export const BannersView: React.FC = () => {
             </div>
           )}
 
-          {/* Direct File Upload Dropzone / Button */}
+          {/* Error Alert Box if any */}
+          {maleError && (
+            <div className="p-3 rounded-2xl bg-red-50 border border-red-200 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2 text-xs text-red-900 font-semibold">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <span>Upload Error</span>
+                </div>
+                <button
+                  onClick={() => setMaleError(null)}
+                  className="text-red-400 hover:text-red-700 text-xs font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-xs text-red-800 font-mono break-words pl-6">
+                {maleError.message}
+              </p>
+            </div>
+          )}
+
+          {/* Direct File Upload Dropzone / Button with Real-time Progress */}
           <div className="pt-2 border-t border-stone-100 space-y-2">
             <input
               type="file"
@@ -298,19 +388,33 @@ export const BannersView: React.FC = () => {
                   handleFileUpload(e.dataTransfer.files[0], 'male');
                 }
               }}
-              onClick={() => maleFileInputRef.current?.click()}
-              className={`w-full py-4 px-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 text-center ${
+              onClick={() => {
+                if (!isUploadingMale) maleFileInputRef.current?.click();
+              }}
+              className={`w-full py-4 px-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center gap-2 text-center ${
                 isDraggingMale
                   ? 'border-stone-900 bg-stone-100'
                   : 'border-stone-300 hover:border-stone-900 bg-stone-50/70 hover:bg-stone-100/80'
-              } ${isUploadingMale ? 'opacity-60 pointer-events-none' : ''}`}
+              } ${isUploadingMale ? 'pointer-events-none bg-stone-50 border-stone-400' : ''}`}
             >
-              {isUploadingMale ? (
-                <>
-                  <RefreshCw className="w-5 h-5 animate-spin text-stone-800" />
-                  <span className="text-xs font-semibold text-stone-900">Uploading original image to Firebase Storage...</span>
-                  <span className="text-[10px] text-stone-500">Updating Firestore & storefront live</span>
-                </>
+              {maleProgress ? (
+                <div className="w-full space-y-2 py-1">
+                  <div className="flex items-center justify-center gap-2 text-xs font-semibold text-stone-900">
+                    <RefreshCw className="w-4 h-4 animate-spin text-stone-900" />
+                    <span>{maleProgress.message}</span>
+                  </div>
+                  {/* Visual Progress Bar */}
+                  <div className="w-full bg-stone-200 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-stone-900 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.max(5, maleProgress.percent)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] text-stone-500 font-mono px-1">
+                    <span>Stage: {maleProgress.stage}</span>
+                    <span>{maleProgress.percent}%</span>
+                  </div>
+                </div>
               ) : (
                 <>
                   <Upload className="w-5 h-5 text-stone-700" />
@@ -361,16 +465,17 @@ export const BannersView: React.FC = () => {
                 activePreviewDevice === 'desktop' ? 'aspect-[16/9]' : 'aspect-[9/14] max-w-[280px] mx-auto'
               }`}
             >
-              <img
+              <ProgressiveBanner
                 src={banners.female || APPROVED_FEMALE_BANNER_URL}
                 alt="Female Hero Banner Live Preview"
-                className="w-full h-full object-cover object-[center_18%]"
-                referrerPolicy="no-referrer"
+                gender="female"
+                priority={false}
+                objectPosition="object-[center_18%]"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20 pointer-events-none" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/20 pointer-events-none z-10" />
 
               {/* Shop Now Overlay Demo Tag */}
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                 <div className="px-4 py-1.5 border border-white/90 bg-black/60 text-white text-[10px] tracking-[0.2em] font-montserrat font-bold uppercase shadow-lg">
                   SHOP NOW
                 </div>
@@ -381,7 +486,7 @@ export const BannersView: React.FC = () => {
                 href={banners.female || APPROVED_FEMALE_BANNER_URL}
                 target="_blank"
                 rel="noreferrer"
-                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black text-[10px] flex items-center gap-1"
+                className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black text-[10px] flex items-center gap-1 z-20"
                 title="View Full Resolution Image"
               >
                 <ExternalLink className="w-3 h-3" />
@@ -404,7 +509,28 @@ export const BannersView: React.FC = () => {
             </div>
           )}
 
-          {/* Direct File Upload Dropzone / Button */}
+          {/* Error Alert Box if any */}
+          {femaleError && (
+            <div className="p-3 rounded-2xl bg-red-50 border border-red-200 space-y-1.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start gap-2 text-xs text-red-900 font-semibold">
+                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                  <span>Upload Error</span>
+                </div>
+                <button
+                  onClick={() => setFemaleError(null)}
+                  className="text-red-400 hover:text-red-700 text-xs font-bold"
+                >
+                  ✕
+                </button>
+              </div>
+              <p className="text-xs text-red-800 font-mono break-words pl-6">
+                {femaleError.message}
+              </p>
+            </div>
+          )}
+
+          {/* Direct File Upload Dropzone / Button with Real-time Progress */}
           <div className="pt-2 border-t border-stone-100 space-y-2">
             <input
               type="file"
@@ -432,19 +558,33 @@ export const BannersView: React.FC = () => {
                   handleFileUpload(e.dataTransfer.files[0], 'female');
                 }
               }}
-              onClick={() => femaleFileInputRef.current?.click()}
-              className={`w-full py-4 px-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 text-center ${
+              onClick={() => {
+                if (!isUploadingFemale) femaleFileInputRef.current?.click();
+              }}
+              className={`w-full py-4 px-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center gap-2 text-center ${
                 isDraggingFemale
                   ? 'border-pink-600 bg-pink-50/50'
                   : 'border-stone-300 hover:border-pink-600 bg-stone-50/70 hover:bg-stone-100/80'
-              } ${isUploadingFemale ? 'opacity-60 pointer-events-none' : ''}`}
+              } ${isUploadingFemale ? 'pointer-events-none bg-stone-50 border-pink-300' : ''}`}
             >
-              {isUploadingFemale ? (
-                <>
-                  <RefreshCw className="w-5 h-5 animate-spin text-pink-600" />
-                  <span className="text-xs font-semibold text-stone-900">Uploading original image to Firebase Storage...</span>
-                  <span className="text-[10px] text-stone-500">Updating Firestore & storefront live</span>
-                </>
+              {femaleProgress ? (
+                <div className="w-full space-y-2 py-1">
+                  <div className="flex items-center justify-center gap-2 text-xs font-semibold text-stone-900">
+                    <RefreshCw className="w-4 h-4 animate-spin text-pink-600" />
+                    <span>{femaleProgress.message}</span>
+                  </div>
+                  {/* Visual Progress Bar */}
+                  <div className="w-full bg-stone-200 rounded-full h-2 overflow-hidden">
+                    <div
+                      className="bg-pink-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${Math.max(5, femaleProgress.percent)}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between items-center text-[10px] text-stone-500 font-mono px-1">
+                    <span>Stage: {femaleProgress.stage}</span>
+                    <span>{femaleProgress.percent}%</span>
+                  </div>
+                </div>
               ) : (
                 <>
                   <Upload className="w-5 h-5 text-stone-700" />
@@ -458,13 +598,13 @@ export const BannersView: React.FC = () => {
 
       </div>
 
-      {/* Architecture Info Card */}
+      {/* Architecture & Diagnostic Info Card */}
       <div className="p-4 rounded-2xl bg-stone-100/80 border border-stone-200/80 flex items-start gap-3">
         <Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
         <div className="text-xs text-stone-600 space-y-1">
-          <p className="font-semibold text-stone-800">Direct Firebase Storage Architecture</p>
+          <p className="font-semibold text-stone-800">Direct Firebase Storage Architecture & Diagnostics</p>
           <p>
-            When you select an image, it is uploaded in its original uncompressed resolution to Firebase Storage (<code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/</code>) and the live secure download URL is stored in Firestore (<code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/male</code> or <code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/female</code>). Storefront visitors and all connected devices receive and display the newly uploaded picture in real-time.
+            When you select an image, it is uploaded in its original uncompressed resolution to Firebase Storage (<code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/</code>) using resumable chunk streams with a 45s safety timeout. The verified download URL is saved in Firestore (<code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/male</code> or <code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/female</code>), syncing the storefront in real-time across all visitor browsers and devices.
           </p>
         </div>
       </div>
