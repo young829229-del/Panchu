@@ -769,52 +769,17 @@ export async function fetchCustomerOrders(uid?: string, email?: string): Promise
 }
 
 /**
- * Helper to compress a large image file to an optimized webp/jpeg data URL if Storage is unavailable or restricted
+ * Delete a banner image file from Firebase Storage
  */
-async function compressImageToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (readerEvent) => {
-      const img = new Image();
-      img.onload = () => {
-        const maxWidth = 1920;
-        const maxHeight = 1080;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > maxWidth || height > maxHeight) {
-          if (width / height > maxWidth / maxHeight) {
-            height = Math.round((height * maxWidth) / width);
-            width = maxWidth;
-          } else {
-            width = Math.round((width * maxHeight) / height);
-            height = maxHeight;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          resolve(readerEvent.target?.result as string);
-          return;
-        }
-        ctx.drawImage(img, 0, 0, width, height);
-        try {
-          const dataUrl = canvas.toDataURL('image/webp', 0.88);
-          resolve(dataUrl);
-        } catch {
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-          resolve(dataUrl);
-        }
-      };
-      img.onerror = () => reject(new Error('Failed to parse the selected image file.'));
-      img.src = readerEvent.target?.result as string;
-    };
-    reader.onerror = () => reject(new Error('Failed to read file from disk.'));
-    reader.readAsDataURL(file);
-  });
+export async function deleteBannerImageFromStorage(storagePath: string | undefined | null): Promise<void> {
+  if (!storagePath || typeof storagePath !== 'string') return;
+  try {
+    const fileRef = ref(storage, storagePath);
+    await deleteObject(fileRef);
+  } catch (err: any) {
+    // Ignore if file doesn't exist or already deleted
+    console.debug('Old banner storage cleanup notice:', err?.message || err);
+  }
 }
 
 /**
@@ -854,6 +819,9 @@ export function subscribeBanners(
               id: docSnap.id,
               gender: 'male',
               imageUrl: maleUrl || APPROVED_MALE_BANNER_URL,
+              storagePath: data.storagePath,
+              fileName: data.fileName,
+              fileSize: data.fileSize,
               originalUrl: data.originalUrl || data.imageUrl,
               title: data.title || 'Male Hero Campaign Banner',
               active: data.active !== false,
@@ -869,6 +837,9 @@ export function subscribeBanners(
               id: docSnap.id,
               gender: 'female',
               imageUrl: femaleUrl || APPROVED_FEMALE_BANNER_URL,
+              storagePath: data.storagePath,
+              fileName: data.fileName,
+              fileSize: data.fileSize,
               originalUrl: data.originalUrl || data.imageUrl,
               title: data.title || 'Female Hero Campaign Banner',
               active: data.active !== false,
@@ -934,6 +905,9 @@ export async function fetchBanners(): Promise<{ male: string; female: string; ma
           id: docSnap.id,
           gender: 'male',
           imageUrl: maleUrl || APPROVED_MALE_BANNER_URL,
+          storagePath: data.storagePath,
+          fileName: data.fileName,
+          fileSize: data.fileSize,
           originalUrl: data.originalUrl || data.imageUrl,
           title: data.title || 'Male Hero Campaign Banner',
           active: data.active !== false,
@@ -949,6 +923,9 @@ export async function fetchBanners(): Promise<{ male: string; female: string; ma
           id: docSnap.id,
           gender: 'female',
           imageUrl: femaleUrl || APPROVED_FEMALE_BANNER_URL,
+          storagePath: data.storagePath,
+          fileName: data.fileName,
+          fileSize: data.fileSize,
           originalUrl: data.originalUrl || data.imageUrl,
           title: data.title || 'Female Hero Campaign Banner',
           active: data.active !== false,
@@ -976,7 +953,9 @@ export async function fetchBanners(): Promise<{ male: string; female: string; ma
 export async function saveBannerToFirestore(
   gender: 'male' | 'female',
   imageUrl: string,
-  originalUrl?: string,
+  fileName?: string,
+  storagePath?: string,
+  fileSize?: number,
   title?: string
 ): Promise<void> {
   if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.trim()) {
@@ -993,11 +972,15 @@ export async function saveBannerToFirestore(
       id: gender,
       gender: gender,
       imageUrl: cleanImageUrl,
-      originalUrl: originalUrl || imageUrl,
+      originalUrl: cleanImageUrl,
       title: title || `${gender === 'male' ? 'Male' : 'Female'} Hero Campaign Banner`,
       active: true,
       updatedAt: serverTimestamp()
     };
+
+    if (storagePath) bannerData.storagePath = storagePath;
+    if (fileName) bannerData.fileName = fileName;
+    if (fileSize) bannerData.fileSize = fileSize;
 
     if (!existingSnap.exists()) {
       bannerData.createdAt = serverTimestamp();
@@ -1010,46 +993,68 @@ export async function saveBannerToFirestore(
 }
 
 /**
- * Upload a new banner image to Firebase Storage under the 'banners/' folder,
- * with automatic fallback to high-quality compressed direct Firestore persistence
- * if Storage bucket is not enabled or throws permission errors.
+ * Upload the original banner image file to Firebase Storage under the 'banners/' folder.
+ * Preserves full original resolution and quality.
+ * Deletes the previous banner file from Storage to prevent orphaned files and stale cache.
+ * Updates Firestore document so the live storefront syncs immediately.
  */
 export async function uploadBannerImageToStorage(
   file: File,
   gender: 'male' | 'female'
 ): Promise<string> {
+  if (!file) {
+    throw new Error('No image file selected.');
+  }
+
   const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const timestamp = Date.now();
-  const storagePath = `banners/${gender}_banner_${timestamp}_${cleanName}`;
+  const storagePath = `banners/${gender}_hero_${timestamp}_${cleanName}`;
 
+  // 1. Fetch current document to check if there is an existing storage file to delete
+  let oldStoragePath: string | undefined;
   try {
-    const storageRef = ref(storage, storagePath);
-    const snapshot = await uploadBytes(storageRef, file, {
-      contentType: file.type || 'image/jpeg',
-      customMetadata: {
-        gender,
-        uploadedAt: new Date().toISOString()
-      }
-    });
-
-    const downloadUrl = await getDownloadURL(snapshot.ref);
-    if (!downloadUrl) {
-      throw new Error('Storage returned empty download URL.');
+    const currentDocSnap = await getDoc(doc(db, 'banners', gender));
+    if (currentDocSnap.exists()) {
+      const currentData = currentDocSnap.data();
+      oldStoragePath = currentData.storagePath;
     }
-
-    // Persist immediately to Firestore doc
-    await saveBannerToFirestore(gender, downloadUrl, file.name);
-    return downloadUrl;
-  } catch (storageErr: any) {
-    console.warn('Firebase Storage upload notice, switching to optimized direct persistence:', storageErr?.message || storageErr);
-    try {
-      const dataUrl = await compressImageToDataUrl(file);
-      await saveBannerToFirestore(gender, dataUrl, file.name);
-      return dataUrl;
-    } catch (compressErr: any) {
-      throw new Error(storageErr?.message || compressErr?.message || 'Failed to upload and save banner.');
-    }
+  } catch (checkErr) {
+    console.debug('Previous banner check notice:', checkErr);
   }
+
+  // 2. Upload original file directly to Firebase Storage with proper metadata
+  const storageRef = ref(storage, storagePath);
+  const snapshot = await uploadBytes(storageRef, file, {
+    contentType: file.type || 'image/jpeg',
+    cacheControl: 'public, max-age=31536000',
+    customMetadata: {
+      gender,
+      originalName: file.name,
+      uploadedAt: new Date().toISOString()
+    }
+  });
+
+  const downloadUrl = await getDownloadURL(snapshot.ref);
+  if (!downloadUrl) {
+    throw new Error('Firebase Storage returned empty download URL.');
+  }
+
+  // 3. Update the Firestore banner document immediately
+  await saveBannerToFirestore(
+    gender,
+    downloadUrl,
+    file.name,
+    storagePath,
+    file.size,
+    `${gender === 'male' ? 'Male' : 'Female'} Hero Campaign Banner`
+  );
+
+  // 4. Delete old Storage file if it exists and differs from the new one
+  if (oldStoragePath && oldStoragePath !== storagePath) {
+    deleteBannerImageFromStorage(oldStoragePath).catch(() => {});
+  }
+
+  return downloadUrl;
 }
 
 /**

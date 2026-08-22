@@ -89,18 +89,9 @@ export default function App() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [gender, setGender] = useState<'male' | 'female'>('male');
-  const [banners, setBanners] = useState<{ male: string; female: string }>(() => {
-    try {
-      const cachedMale = sessionStorage.getItem('panchu_live_male_banner');
-      const cachedFemale = sessionStorage.getItem('panchu_live_female_banner');
-      if (cachedMale && cachedFemale) {
-        return { male: cachedMale, female: cachedFemale };
-      }
-    } catch {}
-    return {
-      male: '',
-      female: ''
-    };
+  const [banners, setBanners] = useState<{ male: string; female: string }>({
+    male: '',
+    female: ''
   });
 
   const catalogRef = useRef<HTMLDivElement>(null);
@@ -113,10 +104,6 @@ export default function App() {
         male: liveBanners.male,
         female: liveBanners.female
       });
-      try {
-        if (liveBanners.male) sessionStorage.setItem('panchu_live_male_banner', liveBanners.male);
-        if (liveBanners.female) sessionStorage.setItem('panchu_live_female_banner', liveBanners.female);
-      } catch {}
     });
 
     return () => {

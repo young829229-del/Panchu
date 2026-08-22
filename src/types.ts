@@ -88,6 +88,9 @@ export interface BannerDoc {
   id: string; // 'male' | 'female'
   gender: 'male' | 'female';
   imageUrl: string;
+  storagePath?: string;
+  fileName?: string;
+  fileSize?: number;
   originalUrl?: string;
   title?: string;
   active?: boolean;

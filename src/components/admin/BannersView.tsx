@@ -7,20 +7,18 @@ import {
   RefreshCw,
   ExternalLink,
   RotateCcw,
-  Sparkles,
   Smartphone,
   Monitor,
-  Check,
-  Info
+  Info,
+  FileCheck
 } from 'lucide-react';
 import {
   subscribeBanners,
-  saveBannerToFirestore,
   uploadBannerImageToStorage,
+  saveBannerToFirestore,
   seedInitialBannersIfEmpty,
   APPROVED_MALE_BANNER_URL,
-  APPROVED_FEMALE_BANNER_URL,
-  resolveBannerUrl
+  APPROVED_FEMALE_BANNER_URL
 } from '../../services/firebaseService';
 import { BannerDoc } from '../../types';
 
@@ -38,13 +36,11 @@ export const BannersView: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [activePreviewDevice, setActivePreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
 
-  // Input states for manual URL editing
-  const [maleInputUrl, setMaleInputUrl] = useState<string>('');
-  const [femaleInputUrl, setFemaleInputUrl] = useState<string>('');
-
   // Upload & Save loading states
   const [isUploadingMale, setIsUploadingMale] = useState<boolean>(false);
   const [isUploadingFemale, setIsUploadingFemale] = useState<boolean>(false);
+  const [isDraggingMale, setIsDraggingMale] = useState<boolean>(false);
+  const [isDraggingFemale, setIsDraggingFemale] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   const maleFileInputRef = useRef<HTMLInputElement>(null);
@@ -56,8 +52,6 @@ export const BannersView: React.FC = () => {
 
     const unsubscribe = subscribeBanners((data) => {
       setBanners(data);
-      if (!maleInputUrl) setMaleInputUrl(data.maleDoc?.originalUrl || data.male || '');
-      if (!femaleInputUrl) setFemaleInputUrl(data.femaleDoc?.originalUrl || data.female || '');
       setLoading(false);
     });
 
@@ -71,7 +65,7 @@ export const BannersView: React.FC = () => {
     }, 4000);
   };
 
-  // Handle file upload to Firebase Storage
+  // Handle direct file upload to Firebase Storage & Firestore
   const handleFileUpload = async (file: File, gender: 'male' | 'female') => {
     if (!file) return;
 
@@ -84,13 +78,8 @@ export const BannersView: React.FC = () => {
     else setIsUploadingFemale(true);
 
     try {
-      const downloadUrl = await uploadBannerImageToStorage(file, gender);
-      if (gender === 'male') {
-        setMaleInputUrl(downloadUrl);
-      } else {
-        setFemaleInputUrl(downloadUrl);
-      }
-      showToast('success', `${gender === 'male' ? 'Male' : 'Female'} banner successfully uploaded to Firebase Storage and updated live!`);
+      await uploadBannerImageToStorage(file, gender);
+      showToast('success', `${gender === 'male' ? 'Male' : 'Female'} banner successfully uploaded to Firebase Storage and synced live!`);
     } catch (err: any) {
       console.error('Banner upload error:', err);
       showToast('error', err?.message || 'Failed to upload banner to Firebase Storage.');
@@ -100,43 +89,23 @@ export const BannersView: React.FC = () => {
     }
   };
 
-  // Handle URL Save to Firestore
-  const handleSaveUrl = async (gender: 'male' | 'female') => {
-    const inputUrl = gender === 'male' ? maleInputUrl : femaleInputUrl;
-    if (!inputUrl || !inputUrl.trim()) {
-      showToast('error', 'Please enter a valid image URL.');
-      return;
-    }
-
-    if (gender === 'male') setIsUploadingMale(true);
-    else setIsUploadingFemale(true);
-
-    try {
-      const resolved = resolveBannerUrl(inputUrl);
-      await saveBannerToFirestore(gender, resolved, inputUrl.trim());
-      showToast('success', `${gender === 'male' ? 'Male' : 'Female'} banner updated live in Firestore!`);
-    } catch (err: any) {
-      console.error('Error saving banner URL:', err);
-      showToast('error', err?.message || 'Failed to save banner URL to Firestore.');
-    } finally {
-      if (gender === 'male') setIsUploadingMale(false);
-      else setIsUploadingFemale(false);
-    }
-  };
-
   // Reset to default approved banner
   const handleResetToDefault = async (gender: 'male' | 'female') => {
     const defaultUrl = gender === 'male' ? APPROVED_MALE_BANNER_URL : APPROVED_FEMALE_BANNER_URL;
-    const defaultOriginal = gender === 'male' ? 'https://ibb.co/PvZVj2fS' : 'https://ibb.co/sdJW2VRT';
 
     if (gender === 'male') setIsUploadingMale(true);
     else setIsUploadingFemale(true);
 
     try {
-      await saveBannerToFirestore(gender, defaultUrl, defaultOriginal);
-      if (gender === 'male') setMaleInputUrl(defaultOriginal);
-      else setFemaleInputUrl(defaultOriginal);
-      showToast('success', `Reset ${gender === 'male' ? 'Male' : 'Female'} banner to approved default image!`);
+      await saveBannerToFirestore(
+        gender,
+        defaultUrl,
+        'default_approved_banner.jpg',
+        undefined,
+        undefined,
+        `${gender === 'male' ? 'Male' : 'Female'} Hero Campaign Banner`
+      );
+      showToast('success', `Reset ${gender === 'male' ? 'Male' : 'Female'} banner to default approved campaign image.`);
     } catch (err: any) {
       console.error('Error resetting banner:', err);
       showToast('error', 'Failed to reset banner.');
@@ -144,6 +113,13 @@ export const BannersView: React.FC = () => {
       if (gender === 'male') setIsUploadingMale(false);
       else setIsUploadingFemale(false);
     }
+  };
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return null;
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
   return (
@@ -154,11 +130,11 @@ export const BannersView: React.FC = () => {
           <h1 className="text-xl sm:text-2xl font-bold font-sans text-stone-900 flex items-center gap-2.5">
             <span>Hero Campaign Banners</span>
             <span className="text-[11px] font-mono font-medium px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Firebase Synced
+              Firebase Storage Synced
             </span>
           </h1>
           <p className="text-xs text-stone-500 font-sans mt-0.5">
-            Manage the primary homepage hero banners for Male and Female store modes with real-time Firebase synchronization.
+            Upload original high-definition banner images directly to Firebase Storage with instant storefront synchronization.
           </p>
         </div>
 
@@ -229,7 +205,7 @@ export const BannersView: React.FC = () => {
               type="button"
               onClick={() => handleResetToDefault('male')}
               disabled={isUploadingMale}
-              className="text-[11px] text-stone-500 hover:text-stone-900 font-medium flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg hover:bg-stone-50 transition-colors"
+              className="text-[11px] text-stone-500 hover:text-stone-900 font-medium flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg hover:bg-stone-50 transition-colors disabled:opacity-50"
               title="Reset to approved original banner"
             >
               <RotateCcw className="w-3 h-3 text-stone-400" />
@@ -279,11 +255,23 @@ export const BannersView: React.FC = () => {
             </div>
           </div>
 
-          {/* Upload Image to Firebase Storage */}
+          {/* Active File Info */}
+          {banners.maleDoc?.fileName && (
+            <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200/60 flex items-center justify-between text-[11px] text-stone-600">
+              <div className="flex items-center gap-2 truncate">
+                <FileCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate font-medium">{banners.maleDoc.fileName}</span>
+              </div>
+              {banners.maleDoc.fileSize && (
+                <span className="text-stone-400 font-mono shrink-0 ml-2">
+                  {formatFileSize(banners.maleDoc.fileSize)}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Direct File Upload Dropzone / Button */}
           <div className="pt-2 border-t border-stone-100 space-y-2">
-            <label className="block text-xs font-semibold text-stone-800 font-sans">
-              1. Upload Banner Image (Firebase Storage)
-            </label>
             <input
               type="file"
               ref={maleFileInputRef}
@@ -292,45 +280,44 @@ export const BannersView: React.FC = () => {
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
                   handleFileUpload(e.target.files[0], 'male');
+                  e.target.value = '';
                 }
               }}
             />
-            <button
-              type="button"
+            
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDraggingMale(true);
+              }}
+              onDragLeave={() => setIsDraggingMale(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDraggingMale(false);
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  handleFileUpload(e.dataTransfer.files[0], 'male');
+                }
+              }}
               onClick={() => maleFileInputRef.current?.click()}
-              disabled={isUploadingMale}
-              className="w-full py-2.5 px-4 rounded-xl border border-dashed border-stone-300 hover:border-stone-400 bg-stone-50/60 hover:bg-stone-100 text-stone-700 text-xs font-medium flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+              className={`w-full py-4 px-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 text-center ${
+                isDraggingMale
+                  ? 'border-stone-900 bg-stone-100'
+                  : 'border-stone-300 hover:border-stone-900 bg-stone-50/70 hover:bg-stone-100/80'
+              } ${isUploadingMale ? 'opacity-60 pointer-events-none' : ''}`}
             >
               {isUploadingMale ? (
-                <RefreshCw className="w-4 h-4 animate-spin text-stone-600" />
+                <>
+                  <RefreshCw className="w-5 h-5 animate-spin text-stone-800" />
+                  <span className="text-xs font-semibold text-stone-900">Uploading original image to Firebase Storage...</span>
+                  <span className="text-[10px] text-stone-500">Updating Firestore & storefront live</span>
+                </>
               ) : (
-                <Upload className="w-4 h-4 text-stone-500" />
+                <>
+                  <Upload className="w-5 h-5 text-stone-700" />
+                  <span className="text-xs font-semibold text-stone-900">Select or Drag & Drop Male Banner Picture</span>
+                  <span className="text-[10px] text-stone-500">High-resolution JPG, PNG, WEBP — Original quality preserved</span>
+                </>
               )}
-              <span>{isUploadingMale ? 'Uploading to Firebase Storage...' : 'Upload New Male Banner (File)'}</span>
-            </button>
-          </div>
-
-          {/* Or Paste Direct URL */}
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-stone-800 font-sans">
-              2. Or Paste Custom Image / ImgBB URL
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={maleInputUrl}
-                onChange={(e) => setMaleInputUrl(e.target.value)}
-                placeholder="https://i.ibb.co/... or https://ibb.co/..."
-                className="flex-1 px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-400 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => handleSaveUrl('male')}
-                disabled={isUploadingMale}
-                className="px-4 py-2 bg-stone-900 hover:bg-black text-white text-xs font-semibold rounded-xl cursor-pointer transition-colors disabled:opacity-50"
-              >
-                Save
-              </button>
             </div>
           </div>
         </div>
@@ -352,7 +339,7 @@ export const BannersView: React.FC = () => {
               type="button"
               onClick={() => handleResetToDefault('female')}
               disabled={isUploadingFemale}
-              className="text-[11px] text-stone-500 hover:text-stone-900 font-medium flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg hover:bg-stone-50 transition-colors"
+              className="text-[11px] text-stone-500 hover:text-stone-900 font-medium flex items-center gap-1 cursor-pointer py-1 px-2 rounded-lg hover:bg-stone-50 transition-colors disabled:opacity-50"
               title="Reset to approved original banner"
             >
               <RotateCcw className="w-3 h-3 text-stone-400" />
@@ -402,11 +389,23 @@ export const BannersView: React.FC = () => {
             </div>
           </div>
 
-          {/* Upload Image to Firebase Storage */}
+          {/* Active File Info */}
+          {banners.femaleDoc?.fileName && (
+            <div className="p-2.5 rounded-xl bg-stone-50 border border-stone-200/60 flex items-center justify-between text-[11px] text-stone-600">
+              <div className="flex items-center gap-2 truncate">
+                <FileCheck className="w-3.5 h-3.5 text-pink-600 shrink-0" />
+                <span className="truncate font-medium">{banners.femaleDoc.fileName}</span>
+              </div>
+              {banners.femaleDoc.fileSize && (
+                <span className="text-stone-400 font-mono shrink-0 ml-2">
+                  {formatFileSize(banners.femaleDoc.fileSize)}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Direct File Upload Dropzone / Button */}
           <div className="pt-2 border-t border-stone-100 space-y-2">
-            <label className="block text-xs font-semibold text-stone-800 font-sans">
-              1. Upload Banner Image (Firebase Storage)
-            </label>
             <input
               type="file"
               ref={femaleFileInputRef}
@@ -415,58 +414,57 @@ export const BannersView: React.FC = () => {
               onChange={(e) => {
                 if (e.target.files && e.target.files[0]) {
                   handleFileUpload(e.target.files[0], 'female');
+                  e.target.value = '';
                 }
               }}
             />
-            <button
-              type="button"
+            
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDraggingFemale(true);
+              }}
+              onDragLeave={() => setIsDraggingFemale(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setIsDraggingFemale(false);
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  handleFileUpload(e.dataTransfer.files[0], 'female');
+                }
+              }}
               onClick={() => femaleFileInputRef.current?.click()}
-              disabled={isUploadingFemale}
-              className="w-full py-2.5 px-4 rounded-xl border border-dashed border-stone-300 hover:border-stone-400 bg-stone-50/60 hover:bg-stone-100 text-stone-700 text-xs font-medium flex items-center justify-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+              className={`w-full py-4 px-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 text-center ${
+                isDraggingFemale
+                  ? 'border-pink-600 bg-pink-50/50'
+                  : 'border-stone-300 hover:border-pink-600 bg-stone-50/70 hover:bg-stone-100/80'
+              } ${isUploadingFemale ? 'opacity-60 pointer-events-none' : ''}`}
             >
               {isUploadingFemale ? (
-                <RefreshCw className="w-4 h-4 animate-spin text-stone-600" />
+                <>
+                  <RefreshCw className="w-5 h-5 animate-spin text-pink-600" />
+                  <span className="text-xs font-semibold text-stone-900">Uploading original image to Firebase Storage...</span>
+                  <span className="text-[10px] text-stone-500">Updating Firestore & storefront live</span>
+                </>
               ) : (
-                <Upload className="w-4 h-4 text-stone-500" />
+                <>
+                  <Upload className="w-5 h-5 text-stone-700" />
+                  <span className="text-xs font-semibold text-stone-900">Select or Drag & Drop Female Banner Picture</span>
+                  <span className="text-[10px] text-stone-500">High-resolution JPG, PNG, WEBP — Original quality preserved</span>
+                </>
               )}
-              <span>{isUploadingFemale ? 'Uploading to Firebase Storage...' : 'Upload New Female Banner (File)'}</span>
-            </button>
-          </div>
-
-          {/* Or Paste Direct URL */}
-          <div className="space-y-2">
-            <label className="block text-xs font-semibold text-stone-800 font-sans">
-              2. Or Paste Custom Image / ImgBB URL
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={femaleInputUrl}
-                onChange={(e) => setFemaleInputUrl(e.target.value)}
-                placeholder="https://i.ibb.co/... or https://ibb.co/..."
-                className="flex-1 px-3 py-2 text-xs bg-stone-50 border border-stone-200 rounded-xl text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-400 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => handleSaveUrl('female')}
-                disabled={isUploadingFemale}
-                className="px-4 py-2 bg-stone-900 hover:bg-black text-white text-xs font-semibold rounded-xl cursor-pointer transition-colors disabled:opacity-50"
-              >
-                Save
-              </button>
             </div>
           </div>
         </div>
 
       </div>
 
-      {/* Info Card */}
+      {/* Architecture Info Card */}
       <div className="p-4 rounded-2xl bg-stone-100/80 border border-stone-200/80 flex items-start gap-3">
         <Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
         <div className="text-xs text-stone-600 space-y-1">
-          <p className="font-semibold text-stone-800">Banner Architecture & Consistency</p>
+          <p className="font-semibold text-stone-800">Direct Firebase Storage Architecture</p>
           <p>
-            The website uses a single authoritative Firestore document per gender (<code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/male</code> and <code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/female</code>). All visitor devices (mobile, tablet, desktop) and browsers listen in real-time to this single source of truth.
+            When you select an image, it is uploaded in its original uncompressed resolution to Firebase Storage (<code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/</code>) and the live secure download URL is stored in Firestore (<code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/male</code> or <code className="font-mono text-stone-800 bg-stone-200/80 px-1 py-0.5 rounded">banners/female</code>). Storefront visitors and all connected devices receive and display the newly uploaded picture in real-time.
           </p>
         </div>
       </div>
