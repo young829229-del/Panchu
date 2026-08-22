@@ -65,6 +65,12 @@ export const BannersView: React.FC<BannersViewProps> = ({ uploadBannerHandler })
     seedInitialBannersIfEmpty().catch(console.warn);
 
     const unsubscribe = subscribeBanners((data) => {
+      console.log('[BannersView: Firestore Live Subscription Update]', {
+        maleUrl: data.male,
+        femaleUrl: data.female,
+        maleDoc: data.maleDoc,
+        femaleDoc: data.femaleDoc
+      });
       setBanners(data);
       setLoading(false);
     });

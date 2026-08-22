@@ -43,13 +43,29 @@ export const ProgressiveBanner: React.FC<ProgressiveBannerProps> = ({
     }
   }, [src, onLoaded]);
 
-  const handleImageLoad = () => {
+  const handleImageLoad = (e?: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    const imgEl = e?.currentTarget;
+    console.log('[ProgressiveBanner Image Loaded Successfully]', {
+      src,
+      alt,
+      gender,
+      naturalWidth: imgEl?.naturalWidth,
+      naturalHeight: imgEl?.naturalHeight
+    });
     setIsLoaded(true);
     setIsError(false);
     onLoaded?.();
   };
 
   const handleImageError = () => {
+    console.error('[ProgressiveBanner Image Load Failed]', {
+      src,
+      alt,
+      gender,
+      theme,
+      referrerPolicy: 'no-referrer',
+      timestamp: new Date().toISOString()
+    });
     setIsError(true);
     setIsLoaded(false);
   };
@@ -119,16 +135,21 @@ export const ProgressiveBanner: React.FC<ProgressiveBannerProps> = ({
 
       {/* 3. Error Fallback if image fails to load */}
       {isError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-stone-900/80 text-white p-4 text-center z-20">
-          <p className="text-xs font-semibold text-stone-300">Unable to load high-resolution banner</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-stone-900/90 text-white p-4 text-center z-20 space-y-2">
+          <p className="text-xs font-semibold text-stone-200">Unable to load banner image</p>
+          {src && (
+            <p className="text-[10px] text-stone-400 font-mono max-w-xs truncate px-2">
+              {src}
+            </p>
+          )}
           <button
             onClick={() => {
               setIsError(false);
               setIsLoaded(false);
             }}
-            className="mt-2 text-[11px] px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg transition-colors cursor-pointer"
+            className="text-[11px] px-3 py-1 bg-white/20 hover:bg-white/30 rounded-lg transition-colors cursor-pointer"
           >
-            Retry
+            Retry Load
           </button>
         </div>
       )}

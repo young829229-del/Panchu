@@ -9,7 +9,7 @@ import {
   GoogleAuthProvider,
   User
 } from 'firebase/auth';
-import { auth, googleProvider, db, storage } from '../firebase';
+import { auth, googleProvider, db, storage, app } from '../firebase';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import {
@@ -363,6 +363,77 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   };
 
   /**
+   * Diagnostic Utility: Logs full Firebase App & Storage configuration
+   * Identifies mismatches, missing properties, auth state, or bucket misconfigurations.
+   */
+  const logFirebaseAppDiagnostics = (context: string = 'general') => {
+    const appOptions = app?.options || {};
+    const storageOptions = storage?.app?.options || {};
+    const authUser = auth?.currentUser;
+
+    const diagnostics = {
+      context,
+      timestamp: new Date().toISOString(),
+      firebaseApp: {
+        name: app?.name || '[DEFAULT]',
+        projectId: appOptions.projectId || 'NOT_SET',
+        storageBucket: appOptions.storageBucket || 'NOT_SET',
+        authDomain: appOptions.authDomain || 'NOT_SET',
+        appId: appOptions.appId || 'NOT_SET',
+        databaseURL: appOptions.databaseURL || 'NOT_SET',
+        apiKeyPresent: Boolean(appOptions.apiKey)
+      },
+      storageInstance: {
+        bucketFromApp: storageOptions.storageBucket || 'NOT_SET',
+        maxUploadRetryTime: storage?.maxUploadRetryTime ?? 'default',
+        maxOperationRetryTime: storage?.maxOperationRetryTime ?? 'default'
+      },
+      authContext: {
+        isSignedIn: Boolean(authUser),
+        uid: authUser?.uid || 'anonymous',
+        email: authUser?.email || 'unauthenticated',
+        isEmailVerified: authUser?.emailVerified ?? false,
+        isAdminUser: isAdmin ?? false
+      },
+      configurationChecks: {
+        hasProjectId: Boolean(appOptions.projectId),
+        hasStorageBucket: Boolean(appOptions.storageBucket),
+        bucketFormatValid: Boolean(
+          appOptions.storageBucket &&
+          (appOptions.storageBucket.endsWith('.firebasestorage.app') ||
+           appOptions.storageBucket.endsWith('.appspot.com') ||
+           appOptions.storageBucket.startsWith('gs://'))
+        ),
+        projectIdMatchesBucketPrefix: Boolean(
+          appOptions.projectId &&
+          appOptions.storageBucket &&
+          appOptions.storageBucket.includes(appOptions.projectId)
+        )
+      }
+    };
+
+    console.group(`[Firebase Diagnostic Audit: ${context.toUpperCase()}]`);
+    console.log('Firebase Configuration & Storage Health Check:', diagnostics);
+    if (!diagnostics.configurationChecks.hasStorageBucket) {
+      console.error('[Firebase Diagnostic Warning] storageBucket is missing from app.options!');
+    }
+    if (!diagnostics.configurationChecks.bucketFormatValid) {
+      console.warn('[Firebase Diagnostic Warning] storageBucket format may be unexpected:', appOptions.storageBucket);
+    }
+    if (!diagnostics.authContext.isSignedIn) {
+      console.warn('[Firebase Diagnostic Warning] No active Firebase authenticated user detected.');
+    }
+    console.groupEnd();
+
+    return diagnostics;
+  };
+
+  // Run initial diagnostic check when admin state mounts
+  useEffect(() => {
+    logFirebaseAppDiagnostics('Admin Dashboard Mount');
+  }, []);
+
+  /**
    * Diagnostic Banner Upload Pipeline with Explicit Stage Logging & Error Diagnostics
    * Covers all stages: File Selection, Storage Path Prep, uploadBytesResumable, Error Catching,
    * Download URL Retrieval, and Firestore Update.
@@ -378,13 +449,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       totalBytes?: number;
     }) => void
   ): Promise<string> => {
-    // STAGE 1: File Selection
+    // Audit full Firebase App & Storage config before executing upload
+    logFirebaseAppDiagnostics(`Banner Upload: ${gender}`);
+    // STAGE 1: File Selection with dimensions inspection
+    let imageDimensions: { width: number; height: number } | null = null;
+    try {
+      imageDimensions = await new Promise<{ width: number; height: number }>((resolve) => {
+        const testImg = new Image();
+        const objUrl = URL.createObjectURL(file);
+        testImg.onload = () => {
+          const dims = { width: testImg.naturalWidth, height: testImg.naturalHeight };
+          URL.revokeObjectURL(objUrl);
+          resolve(dims);
+        };
+        testImg.onerror = () => {
+          URL.revokeObjectURL(objUrl);
+          resolve({ width: 0, height: 0 });
+        };
+        testImg.src = objUrl;
+      });
+    } catch {}
+
     console.log('[Banner Upload Stage 1: File Selection]', {
       gender,
       fileName: file?.name,
       fileSize: file?.size,
       fileSizeFormatted: file ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : '0 MB',
       fileType: file?.type,
+      dimensions: imageDimensions ? `${imageDimensions.width}x${imageDimensions.height}` : 'unknown',
       lastModified: file?.lastModified,
       lastModifiedISO: file ? new Date(file.lastModified).toISOString() : null,
       timestamp: new Date().toISOString()
