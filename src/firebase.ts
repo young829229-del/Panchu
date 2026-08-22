@@ -56,8 +56,9 @@ export const db = createFirestore();
 // Initialize Firebase Storage
 export const storage = getStorage(app);
 try {
-  storage.maxUploadRetryTime = 10000;
-  storage.maxOperationRetryTime = 10000;
+  // Lower retry time to fail-fast on unprovisioned/404 buckets without silent hangs
+  storage.maxUploadRetryTime = 3000;
+  storage.maxOperationRetryTime = 3000;
 } catch (e) {
   console.debug('Storage retry time config notice:', e);
 }

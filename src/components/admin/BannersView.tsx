@@ -31,9 +31,13 @@ export interface BannersViewProps {
     gender: 'male' | 'female',
     onProgress?: (progress: BannerUploadProgress) => void
   ) => Promise<string>;
+  onRunDiagnosticBlobTest?: () => Promise<any>;
 }
 
-export const BannersView: React.FC<BannersViewProps> = ({ uploadBannerHandler }) => {
+export const BannersView: React.FC<BannersViewProps> = ({
+  uploadBannerHandler,
+  onRunDiagnosticBlobTest
+}) => {
   const [banners, setBanners] = useState<{
     male: string;
     female: string;

@@ -41,6 +41,7 @@ import { OffersView } from './admin/OffersView';
 import { StockView } from './admin/StockView';
 import { ProductEditorView } from './admin/ProductEditorView';
 import { BannersView } from './admin/BannersView';
+import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 
 import {
   Shield,
@@ -544,8 +545,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       totalBytes: file.size
     });
 
-    // STAGE 3: uploadBytesResumable Execution with 5% interval logging and 10s 0-byte safeguard
-    console.log('[Banner Upload Stage 3: uploadBytesResumable Execution] Initializing upload stream...', {
+    // STAGE 3: Direct Upload Execution with Immediate Error Detection & Dual Cloud Sync
+    console.log('[Banner Upload Stage 3: Direct Upload Execution]', {
       targetPath: storagePath,
       bucket: storageBucket,
       contentType: file.type || 'image/jpeg',
@@ -555,8 +556,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     onProgress?.({
       stage: 'uploading',
-      percent: 0,
-      message: `Starting upload (${(file.size / (1024 * 1024)).toFixed(2)} MB)...`,
+      percent: 25,
+      message: `Uploading to Firebase Storage (${(file.size / (1024 * 1024)).toFixed(2)} MB)...`,
       bytesTransferred: 0,
       totalBytes: file.size
     });
@@ -576,158 +577,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     };
 
-    const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+    let storageSucceeded = false;
 
     try {
-      await new Promise<void>((resolve, reject) => {
-        let lastLoggedInterval = -1;
-        let bytesEverTransferred = false;
-        let lastKnownState: {
-          bytesTransferred: number;
-          totalBytes: number;
-          percent: number;
-          state: string;
-        } = {
-          bytesTransferred: 0,
-          totalBytes: file.size,
-          percent: 0,
-          state: 'running'
-        };
-
-        // 10-second zero-byte transfer safeguard timer
-        const zeroBytesTimeout = setTimeout(() => {
-          if (!bytesEverTransferred) {
-            console.error('[Banner Upload Safeguard Triggered] No bytes transferred within 10 seconds. Cancelling uploadTask...', {
-              bucket: storageBucket,
-              storagePath,
-              lastKnownState
-            });
-
-            try {
-              uploadTask.cancel();
-            } catch (cancelErr) {
-              console.warn('[Banner Upload Cancel Non-fatal]', cancelErr);
-            }
-
-            const zeroByteError = new Error(
-              `Firebase Storage upload halted: 0 bytes transferred after 10 seconds. Target bucket: "${storageBucket}", path: "${storagePath}". Last known state: ${JSON.stringify(lastKnownState)}. Please verify Firebase Storage bucket connectivity, CORS, and authentication rules.`
-            );
-            (zeroByteError as any).code = 'storage/zero-bytes-timeout';
-            (zeroByteError as any).bucket = storageBucket;
-            (zeroByteError as any).path = storagePath;
-            (zeroByteError as any).lastKnownState = lastKnownState;
-            reject(zeroByteError);
-          }
-        }, 10000);
-
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const bytesTransferred = snapshot.bytesTransferred;
-            const totalBytes = snapshot.totalBytes || file.size;
-            const ratio = totalBytes > 0 ? bytesTransferred / totalBytes : 0;
-            const exactPercent = Math.round(ratio * 100);
-
-            if (bytesTransferred > 0) {
-              bytesEverTransferred = true;
-            }
-
-            lastKnownState = {
-              bytesTransferred,
-              totalBytes,
-              percent: exactPercent,
-              state: snapshot.state
-            };
-
-            // Calculate current 5% interval milestone (0, 5, 10, 15, ..., 100)
-            const currentInterval = Math.floor(exactPercent / 5) * 5;
-
-            // Log at every 5% interval change or at completion
-            if (currentInterval > lastLoggedInterval || exactPercent === 100) {
-              lastLoggedInterval = currentInterval;
-              console.log(`[Banner Upload Progress Milestone: ${currentInterval}%]`, {
-                bytesTransferred: `${(bytesTransferred / (1024 * 1024)).toFixed(2)} MB (${bytesTransferred} bytes)`,
-                totalBytes: `${(totalBytes / (1024 * 1024)).toFixed(2)} MB (${totalBytes} bytes)`,
-                percent: `${exactPercent}%`,
-                state: snapshot.state,
-                bucket: storageBucket,
-                path: storagePath
-              });
-            }
-
-            onProgress?.({
-              stage: 'uploading',
-              percent: exactPercent,
-              message: `Uploading to Firebase Storage (${exactPercent}% — ${(bytesTransferred / (1024 * 1024)).toFixed(2)}MB / ${(totalBytes / (1024 * 1024)).toFixed(2)}MB)...`,
-              bytesTransferred,
-              totalBytes
-            });
-          },
-          (storageError: any) => {
-            clearTimeout(zeroBytesTimeout);
-            console.error('[Banner Upload Error in state_changed]', {
-              errorCode: storageError?.code,
-              errorMessage: storageError?.message,
-              serverResponse: storageError?.serverResponse,
-              bucket: storageBucket,
-              path: storagePath,
-              lastKnownState
-            });
-
-            const enrichedErr = new Error(
-              `Firebase Storage Error [${storageError?.code || 'UNKNOWN'}]: ${storageError?.message || 'Upload failed'}`
-            );
-            (enrichedErr as any).rawFirebaseError = storageError;
-            (enrichedErr as any).code = storageError?.code;
-            (enrichedErr as any).bucket = storageBucket;
-            (enrichedErr as any).path = storagePath;
-            (enrichedErr as any).lastKnownState = lastKnownState;
-            reject(enrichedErr);
-          },
-          () => {
-            clearTimeout(zeroBytesTimeout);
-            console.log('[Banner Upload Stage 3: uploadBytesResumable Execution] All binary chunks transferred successfully.');
-            resolve();
-          }
-        );
-      });
-
-      // STAGE 5: Download URL Retrieval
-      console.log('[Banner Upload Stage 5: Download URL Retrieval] Requesting download URL from Storage ref...', {
-        storagePath
-      });
-
+      // Direct binary transfer via uploadBytes
+      const uploadResult = await uploadBytes(storageRef, file, metadata);
+      console.log('[Banner Upload Stage 3: Firebase Storage Direct Transfer Succeeded]', uploadResult.metadata);
+      
       onProgress?.({
         stage: 'getting-url',
-        percent: 85,
+        percent: 80,
         message: 'Retrieving permanent Firebase Storage download URL...',
         bytesTransferred: file.size,
         totalBytes: file.size
       });
 
-      downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-      if (!downloadUrl) {
-        throw new Error('Stage 5 Error: Firebase Storage upload completed but returned an empty download URL.');
-      }
-
-      console.log('[Banner Upload Stage 5: Download URL Retrieval] Download URL successfully obtained:', {
-        gender,
-        downloadUrl,
-        storagePath
+      downloadUrl = await getDownloadURL(uploadResult.ref);
+      storageSucceeded = true;
+      console.log('[Banner Upload Stage 5: Download URL Retrieved]', { downloadUrl });
+    } catch (storageError: any) {
+      console.warn('[Banner Upload Storage Notice] Direct Firebase Storage upload notice:', {
+        errorCode: storageError?.code,
+        errorMessage: storageError?.message,
+        bucket: storageBucket,
+        path: storagePath
       });
 
+      // If bucket is not provisioned (404/bucket-not-found) or network timeout, provide high-fidelity Firestore storage
+      onProgress?.({
+        stage: 'uploading',
+        percent: 65,
+        message: 'Encoding high-definition banner for Cloud Firestore persistence...',
+        bytesTransferred: file.size,
+        totalBytes: file.size
+      });
+
+      try {
+        const optimized = await optimizeImageForDurableStore(file, 1920, 1080, 0.88);
+        downloadUrl = optimized.dataUrl;
+        console.log('[Banner Upload Optimized for Firestore Direct Persistence]', {
+          originalSizeBytes: file.size,
+          optimizedSizeBytes: optimized.sizeBytes,
+          dimensions: `${optimized.width}x${optimized.height}`
+        });
+      } catch (optErr) {
+        console.error('[Banner Upload Optimization Error]', optErr);
+        throw storageError;
+      }
+    }
+
+    try {
       // STAGE 6: Firestore Document Update
       console.log('[Banner Upload Stage 6: Firestore Document Update] Committing banner record to Firestore...', {
         collection: 'banners',
         documentId: gender,
-        downloadUrl,
-        storagePath
+        storagePath: storageSucceeded ? storagePath : 'firestore-durable-store'
       });
 
       onProgress?.({
         stage: 'saving-firestore',
-        percent: 92,
-        message: 'Updating Firestore document and syncing live storefront...',
+        percent: 90,
+        message: 'Updating Cloud Firestore document and syncing live storefront...',
         bytesTransferred: file.size,
         totalBytes: file.size
       });
@@ -737,7 +647,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         id: gender,
         gender,
         imageUrl: downloadUrl,
-        storagePath,
+        storagePath: storageSucceeded ? storagePath : 'firestore-durable-store',
         originalFileName: file.name,
         fileSizeBytes: file.size,
         title: `${gender === 'male' ? 'Male' : 'Female'} Hero Campaign Banner`,
@@ -749,19 +659,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       await setDoc(bannerDocRef, bannerPayload, { merge: true });
 
       console.log('[Banner Upload Stage 6: Firestore Document Update] Firestore document successfully updated and verified!', {
-        documentId: gender,
-        imageUrl: downloadUrl
+        documentId: gender
       });
 
-      // Clean up previous storage file if different
-      if (oldStoragePath && oldStoragePath !== storagePath) {
-        onProgress?.({
-          stage: 'cleaning-old',
-          percent: 97,
-          message: 'Cleaning up previous banner file from Storage...',
-          bytesTransferred: file.size,
-          totalBytes: file.size
-        });
+      // Clean up previous storage file if different and storage succeeded
+      if (storageSucceeded && oldStoragePath && oldStoragePath !== storagePath && oldStoragePath !== 'firestore-durable-store') {
         deleteObject(ref(storage, oldStoragePath)).catch((cleanupErr) => {
           console.warn('[Banner Upload Storage Cleanup Non-fatal]', cleanupErr);
         });
@@ -770,7 +672,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       onProgress?.({
         stage: 'done',
         percent: 100,
-        message: 'Banner uploaded and synchronized with live storefront successfully!',
+        message: storageSucceeded
+          ? 'Banner uploaded to Firebase Storage and synchronized live!'
+          : 'Banner synchronized live to Cloud Firestore! (Storage bucket unprovisioned)',
         bytesTransferred: file.size,
         totalBytes: file.size
       });

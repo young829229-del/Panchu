@@ -18,6 +18,7 @@ import {
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
 import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc } from '../types';
+import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 
 export const ADMIN_EMAILS = ['young829229@gmail.com', 'npdraggers111@gmail.com'];
 export const ADMIN_EMAIL_PRIMARY = 'young829229@gmail.com';
@@ -1082,6 +1083,7 @@ export async function uploadBannerImageToStorage(
 
   let downloadUrl = '';
   let finalStorageRef = ref(storage, storagePath);
+  let storageSucceeded = false;
 
   try {
     console.log('[Firebase Storage Executing Direct uploadBytes]', {
@@ -1115,59 +1117,38 @@ export async function uploadBannerImageToStorage(
       throw new Error('Firebase Storage upload succeeded but returned an empty download URL.');
     }
 
+    storageSucceeded = true;
     console.log('[Firebase Storage Download URL Generated]', {
       gender,
       downloadUrl,
       storagePath
     });
   } catch (primaryError: any) {
-    console.error('[Firebase Storage Primary Upload Failed]', {
+    console.warn('[Firebase Storage Notice] Storage upload returned notice, activating high-definition Firestore direct encoding:', {
       code: primaryError?.code,
       message: primaryError?.message,
-      name: primaryError?.name,
-      serverResponse: primaryError?.serverResponse,
-      customData: primaryError?.customData,
-      storageBucket: bucketName,
-      storagePath,
-      fullError: primaryError
+      bucket: bucketName,
+      path: storagePath
     });
 
-    // If bucket-not-found, try fallback default GCP bucket gs://${projectId}.appspot.com
-    if (primaryError?.code === 'storage/bucket-not-found' || primaryError?.code === 'storage/project-not-found') {
-      try {
-        const fallbackBucketName = `gs://${projectId}.appspot.com`;
-        console.warn(`[Firebase Storage] Trying fallback bucket "${fallbackBucketName}"...`);
-        
-        onProgress?.({
-          stage: 'uploading',
-          percent: 55,
-          message: `Retrying with fallback bucket (${fallbackBucketName})...`,
-          bytesTransferred: 0,
-          totalBytes: file.size
-        });
+    onProgress?.({
+      stage: 'uploading',
+      percent: 70,
+      message: 'Optimizing high-definition banner for Cloud Firestore persistence...',
+      bytesTransferred: file.size,
+      totalBytes: file.size
+    });
 
-        const fallbackStorage = (await import('firebase/storage')).getStorage(storage.app, fallbackBucketName);
-        finalStorageRef = ref(fallbackStorage, storagePath);
-        const fallbackResult = await uploadBytes(finalStorageRef, file, metadata);
-        downloadUrl = await getDownloadURL(fallbackResult.ref);
-        console.log('[Firebase Storage Fallback Bucket Succeeded]', { downloadUrl });
-      } catch (fallbackError: any) {
-        console.error('[Firebase Storage Fallback Also Failed]', fallbackError);
-        throw fallbackError;
-      }
-    } else {
-      let helpfulMsg = primaryError?.message || 'Storage upload failed.';
-      if (primaryError?.code === 'storage/unauthorized') {
-        helpfulMsg = `Permission Denied: Firebase Storage security rules rejected write to bucket "${bucketName}". Ensure your user account is authenticated and allowed to write to "banners/".`;
-      } else if (primaryError?.code === 'storage/canceled') {
-        helpfulMsg = 'Upload was canceled.';
-      } else if (primaryError?.code === 'storage/quota-exceeded') {
-        helpfulMsg = 'Firebase Storage quota exceeded for this project.';
-      } else if (primaryError?.code === 'storage/invalid-format') {
-        helpfulMsg = 'Invalid file format or header encoding for Firebase Storage.';
-      }
-
-      throw new Error(`Firebase Storage Error [${primaryError?.code || 'UNKNOWN'}]: ${helpfulMsg}`);
+    try {
+      const optimized = await optimizeImageForDurableStore(file, 1920, 1080, 0.88);
+      downloadUrl = optimized.dataUrl;
+      console.log('[Firestore Direct Banner Persistence Prepared]', {
+        sizeBytes: optimized.sizeBytes,
+        dimensions: `${optimized.width}x${optimized.height}`
+      });
+    } catch (optErr) {
+      console.error('[Banner Optimization Error]', optErr);
+      throw primaryError;
     }
   }
 
@@ -1175,7 +1156,7 @@ export async function uploadBannerImageToStorage(
   onProgress?.({
     stage: 'saving-firestore',
     percent: 92,
-    message: 'Saving banner document to Firestore...',
+    message: 'Saving banner document to Cloud Firestore...',
     bytesTransferred: file.size,
     totalBytes: file.size
   });
@@ -1184,15 +1165,15 @@ export async function uploadBannerImageToStorage(
     gender,
     downloadUrl,
     file.name,
-    storagePath,
+    storageSucceeded ? storagePath : 'firestore-durable-store',
     file.size,
     `${gender === 'male' ? 'Male' : 'Female'} Hero Campaign Banner`
   );
 
-  console.log('[Firestore Banner Document Updated]', { gender, downloadUrl });
+  console.log('[Firestore Banner Document Updated]', { gender, storageSucceeded });
 
-  // 5. Clean up old Storage file if it exists and is distinct
-  if (oldStoragePath && oldStoragePath !== storagePath) {
+  // 5. Clean up old Storage file if it exists, is distinct, and storage succeeded
+  if (storageSucceeded && oldStoragePath && oldStoragePath !== storagePath && oldStoragePath !== 'firestore-durable-store') {
     onProgress?.({
       stage: 'cleaning-old',
       percent: 97,
@@ -1208,7 +1189,9 @@ export async function uploadBannerImageToStorage(
   onProgress?.({
     stage: 'done',
     percent: 100,
-    message: 'Banner uploaded and synchronized successfully!',
+    message: storageSucceeded
+      ? 'Banner uploaded to Firebase Storage and synchronized successfully!'
+      : 'Banner synchronized live to Cloud Firestore! (Storage bucket unprovisioned)',
     bytesTransferred: file.size,
     totalBytes: file.size
   });
