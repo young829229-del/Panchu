@@ -10,7 +10,7 @@ import { CustomerAccountPage } from './components/CustomerAccountPage';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
 import { Product, CartItem } from './types';
-import { ALL_PRODUCTS, HERO_MALE_IMAGE, HERO_FEMALE_IMAGE } from './data/products';
+import { ALL_PRODUCTS, APPROVED_MALE_BANNER_URL, APPROVED_FEMALE_BANNER_URL } from './data/products';
 import {
   subscribeProducts,
   seedInitialProductsIfEmpty,
@@ -89,25 +89,34 @@ export default function App() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [gender, setGender] = useState<'male' | 'female'>('male');
-  const [banners, setBanners] = useState<{ male: string; female: string }>({
-    male: HERO_MALE_IMAGE,
-    female: HERO_FEMALE_IMAGE
+  const [banners, setBanners] = useState<{ male: string; female: string }>(() => {
+    try {
+      const cachedMale = sessionStorage.getItem('panchu_live_male_banner');
+      const cachedFemale = sessionStorage.getItem('panchu_live_female_banner');
+      if (cachedMale && cachedFemale) {
+        return { male: cachedMale, female: cachedFemale };
+      }
+    } catch {}
+    return {
+      male: '',
+      female: ''
+    };
   });
 
   const catalogRef = useRef<HTMLDivElement>(null);
   const preloadedImagesRef = useRef<Set<string>>(new Set());
 
-  // Subscribe to real-time Firebase banners collection & auto-seed initial docs
+  // Subscribe to real-time Firebase banners collection
   useEffect(() => {
-    seedInitialBannersIfEmpty().catch(err => {
-      console.warn('Initial banner check/seed notice:', err);
-    });
-
     const unsubscribe = subscribeBanners((liveBanners) => {
       setBanners({
-        male: liveBanners.male || HERO_MALE_IMAGE,
-        female: liveBanners.female || HERO_FEMALE_IMAGE
+        male: liveBanners.male,
+        female: liveBanners.female
       });
+      try {
+        if (liveBanners.male) sessionStorage.setItem('panchu_live_male_banner', liveBanners.male);
+        if (liveBanners.female) sessionStorage.setItem('panchu_live_female_banner', liveBanners.female);
+      } catch {}
     });
 
     return () => {
@@ -156,8 +165,8 @@ export default function App() {
   useEffect(() => {
     // 1. Critical immediate preloads (Hero Banners & Active/Featured Product)
     const priorityImages: string[] = [
-      banners.male || HERO_MALE_IMAGE,
-      banners.female || HERO_FEMALE_IMAGE
+      banners.male || APPROVED_MALE_BANNER_URL,
+      banners.female || APPROVED_FEMALE_BANNER_URL
     ];
 
     if (activeProduct) {
@@ -300,11 +309,6 @@ export default function App() {
     };
   }, [products]);
 
-  // Banner Image according to gender selector (dynamically loaded from Firebase)
-  const heroImage = gender === 'male' 
-    ? (banners.male || HERO_MALE_IMAGE) 
-    : (banners.female || HERO_FEMALE_IMAGE);
-
   // Select product and navigate to /product/:id on same page
   const handleSelectProduct = (product: Product) => {
     // Record current scroll position before leaving homepage
@@ -437,6 +441,14 @@ export default function App() {
 
   const totalCartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
 
+  const heroImage = gender === 'male'
+    ? (banners.male || APPROVED_MALE_BANNER_URL)
+    : (banners.female || APPROVED_FEMALE_BANNER_URL);
+
+  const alternateHeroImage = gender === 'male'
+    ? (banners.female || APPROVED_FEMALE_BANNER_URL)
+    : (banners.male || APPROVED_MALE_BANNER_URL);
+
   return (
     <div className={`w-full min-h-screen font-sans selection:bg-black selection:text-white transition-colors duration-300 ${
       theme === 'dark' ? 'bg-neutral-950 text-white' : 'bg-white text-stone-900'
@@ -510,6 +522,7 @@ export default function App() {
         <div className="relative">
           <Hero
             image={heroImage}
+            alternateImage={alternateHeroImage}
             theme={theme}
             gender={gender}
             onThemeChange={setTheme}

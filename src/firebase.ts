@@ -1,6 +1,13 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  getFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  doc,
+  getDocFromServer
+} from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import firebaseConfigJson from '../firebase-applet-config.json';
 
@@ -26,10 +33,24 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Initialize Cloud Firestore
-export const db = configJson.firestoreDatabaseId
-  ? getFirestore(app, configJson.firestoreDatabaseId)
-  : getFirestore(app);
+// Initialize Cloud Firestore with multi-tab management to prevent database closing / hidden errors
+function createFirestore() {
+  const dbId = configJson.firestoreDatabaseId;
+  try {
+    const firestoreSettings = {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    };
+    return dbId
+      ? initializeFirestore(app, firestoreSettings, dbId)
+      : initializeFirestore(app, firestoreSettings);
+  } catch {
+    return dbId ? getFirestore(app, dbId) : getFirestore(app);
+  }
+}
+
+export const db = createFirestore();
 
 // Initialize Firebase Storage
 export const storage = getStorage(app);
@@ -62,8 +83,9 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errorMessage = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errorMessage,
     authInfo: {
       userId: auth.currentUser?.uid || null,
       email: auth.currentUser?.email || null,
@@ -78,7 +100,19 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error:', JSON.stringify(errInfo));
+
+  // Log detailed error context for debugging
+  console.warn('Firestore Operation Notice:', JSON.stringify(errInfo));
+
+  // If the database connection is closing or hidden or offline, do not crash the app
+  if (
+    errorMessage.toLowerCase().includes('closing') ||
+    errorMessage.toLowerCase().includes('hidden') ||
+    errorMessage.toLowerCase().includes('offline')
+  ) {
+    return;
+  }
+
   throw new Error(JSON.stringify(errInfo));
 }
 
@@ -86,10 +120,16 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 export async function testConnection() {
   try {
     await getDocFromServer(doc(db, 'system', 'connection'));
-  } catch (error) {
+  } catch (error: any) {
+    // Gracefully handle background/offline/closing states during initial healthcheck
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Firestore connection check: client appears offline or pending network sync.");
+      console.debug("Firestore connection check: client appears offline or pending network sync.");
+    } else {
+      console.debug("Firestore connection check notice:", error?.message || error);
     }
   }
 }
-testConnection();
+
+// Safely invoke connection check without uncaught promise rejection
+testConnection().catch(() => {});
+

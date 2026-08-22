@@ -65,9 +65,29 @@
         "createdAt": { "type": "string" }
       },
       "required": ["email", "role"]
+    },
+    "Banner": {
+      "title": "Banner",
+      "description": "Storefront hero campaign banner for male and female store modes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 50 },
+        "gender": { "type": "string", "enum": ["male", "female"] },
+        "imageUrl": { "type": "string", "maxLength": 500000 },
+        "originalUrl": { "type": "string", "maxLength": 500000 },
+        "title": { "type": "string", "maxLength": 200 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["gender", "imageUrl", "active"]
     }
   },
   "firestore": {
+    "/banners/{bannerId}": {
+      "schema": "Banner",
+      "description": "Authoritative homepage hero campaign banners"
+    },
     "/products/{productId}": {
       "schema": "Product",
       "description": "Catalog products readable by all visitors and managed by admins"

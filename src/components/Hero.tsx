@@ -1,9 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sun, Moon } from 'lucide-react';
-import { HERO_MALE_IMAGE, HERO_FEMALE_IMAGE } from '../data/products';
 
 interface HeroProps {
   image: string;
+  alternateImage?: string;
   theme: 'light' | 'dark';
   gender: 'male' | 'female';
   onThemeChange: (theme: 'light' | 'dark') => void;
@@ -13,6 +13,7 @@ interface HeroProps {
 
 export const Hero: React.FC<HeroProps> = ({
   image,
+  alternateImage,
   theme,
   gender,
   onThemeChange,
@@ -20,16 +21,21 @@ export const Hero: React.FC<HeroProps> = ({
   onShopNow
 }) => {
   const isDark = theme === 'dark';
+  const [imageLoaded, setImageLoaded] = useState<boolean>(false);
 
-  // Preload both gender banners immediately so switching is instantaneous
+  // Preload current and alternate gender live banner dynamically
   useEffect(() => {
-    [HERO_MALE_IMAGE, HERO_FEMALE_IMAGE].forEach(url => {
-      if (url) {
+    [image, alternateImage].forEach((url) => {
+      if (url && typeof url === 'string' && url.trim().length > 0) {
         const img = new Image();
         img.src = url;
       }
     });
-  }, []);
+  }, [image, alternateImage]);
+
+  useEffect(() => {
+    setImageLoaded(false);
+  }, [image]);
 
   return (
     <section className={`relative w-full h-screen md:h-[calc(100dvh-52px)] overflow-hidden ${isDark ? 'bg-neutral-950 text-white' : 'bg-white text-black'} select-none flex flex-col items-center justify-center`}>
@@ -113,29 +119,26 @@ export const Hero: React.FC<HeroProps> = ({
       {/* Hero Banner Container */}
       <div className="w-full h-full cursor-pointer relative overflow-hidden flex items-center justify-center group" onClick={onShopNow}>
         {/* Main Banner Image - High Definition, Optimized Sharp Rendering */}
-        <img
-          src={image}
-          alt="PANCHU Campaign Banner"
-          loading="eager"
-          decoding="async"
-          fetchPriority="high"
-          className="w-full h-full object-cover object-[center_12%] sm:object-[center_15%] md:object-[center_18%] lg:object-[center_20%] transition-transform duration-500 scale-100 group-hover:scale-105"
-          style={{
-            imageRendering: '-webkit-optimize-contrast',
-            backfaceVisibility: 'hidden',
-            transform: 'translateZ(0)',
-            willChange: 'transform'
-          }}
-          referrerPolicy="no-referrer"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement;
-            if (gender === 'female') {
-              target.src = HERO_FEMALE_IMAGE;
-            } else {
-              target.src = HERO_MALE_IMAGE;
-            }
-          }}
-        />
+        {image && (
+          <img
+            src={image}
+            alt="PANCHU Campaign Banner"
+            loading="eager"
+            decoding="async"
+            fetchPriority="high"
+            onLoad={() => setImageLoaded(true)}
+            className={`w-full h-full object-cover object-[center_12%] sm:object-[center_15%] md:object-[center_18%] lg:object-[center_20%] transition-all duration-500 scale-100 group-hover:scale-105 ${
+              imageLoaded ? 'opacity-100' : 'opacity-90'
+            }`}
+            style={{
+              imageRendering: '-webkit-optimize-contrast',
+              backfaceVisibility: 'hidden',
+              transform: 'translateZ(0)',
+              willChange: 'transform'
+            }}
+            referrerPolicy="no-referrer"
+          />
+        )}
         <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 z-10 pointer-events-none" />
       </div>
 

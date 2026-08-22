@@ -27,7 +27,8 @@ export const APPROVED_FEMALE_BANNER_URL = 'https://i.ibb.co/7dNkX1C3/IMG-2026082
 
 /**
  * Intelligent banner URL resolver
- * Automatically transforms ImgBB page links into high-speed direct CDN image assets
+ * Automatically transforms known ImgBB landing page links into direct CDN image assets,
+ * while leaving direct image URLs, Storage download URLs, and data URLs completely intact.
  */
 export function resolveBannerUrl(url: string | undefined | null): string {
   if (!url || typeof url !== 'string') return '';
@@ -768,6 +769,55 @@ export async function fetchCustomerOrders(uid?: string, email?: string): Promise
 }
 
 /**
+ * Helper to compress a large image file to an optimized webp/jpeg data URL if Storage is unavailable or restricted
+ */
+async function compressImageToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (readerEvent) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxWidth = 1920;
+        const maxHeight = 1080;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width / height > maxWidth / maxHeight) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(readerEvent.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        try {
+          const dataUrl = canvas.toDataURL('image/webp', 0.88);
+          resolve(dataUrl);
+        } catch {
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => reject(new Error('Failed to parse the selected image file.'));
+      img.src = readerEvent.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error('Failed to read file from disk.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
  * Real-time subscription to active Male and Female campaign banners in Firestore
  */
 export function subscribeBanners(
@@ -776,6 +826,7 @@ export function subscribeBanners(
     female: string;
     maleDoc?: BannerDoc;
     femaleDoc?: BannerDoc;
+    isLoaded: boolean;
   }) => void
 ): () => void {
   const path = 'banners';
@@ -784,8 +835,8 @@ export function subscribeBanners(
     const unsubscribe = onSnapshot(
       bannersRef,
       (snapshot) => {
-        let maleUrl = APPROVED_MALE_BANNER_URL;
-        let femaleUrl = APPROVED_FEMALE_BANNER_URL;
+        let maleUrl: string = '';
+        let femaleUrl: string = '';
         let maleDoc: BannerDoc | undefined;
         let femaleDoc: BannerDoc | undefined;
 
@@ -802,7 +853,7 @@ export function subscribeBanners(
             maleDoc = {
               id: docSnap.id,
               gender: 'male',
-              imageUrl: maleUrl,
+              imageUrl: maleUrl || APPROVED_MALE_BANNER_URL,
               originalUrl: data.originalUrl || data.imageUrl,
               title: data.title || 'Male Hero Campaign Banner',
               active: data.active !== false,
@@ -817,7 +868,7 @@ export function subscribeBanners(
             femaleDoc = {
               id: docSnap.id,
               gender: 'female',
-              imageUrl: femaleUrl,
+              imageUrl: femaleUrl || APPROVED_FEMALE_BANNER_URL,
               originalUrl: data.originalUrl || data.imageUrl,
               title: data.title || 'Female Hero Campaign Banner',
               active: data.active !== false,
@@ -828,17 +879,19 @@ export function subscribeBanners(
         });
 
         callback({
-          male: maleUrl,
-          female: femaleUrl,
+          male: maleUrl || APPROVED_MALE_BANNER_URL,
+          female: femaleUrl || APPROVED_FEMALE_BANNER_URL,
           maleDoc,
-          femaleDoc
+          femaleDoc,
+          isLoaded: true
         });
       },
       (error) => {
         console.warn('Firestore banners listener notice:', error?.message || error);
         callback({
           male: APPROVED_MALE_BANNER_URL,
-          female: APPROVED_FEMALE_BANNER_URL
+          female: APPROVED_FEMALE_BANNER_URL,
+          isLoaded: true
         });
       }
     );
@@ -848,7 +901,8 @@ export function subscribeBanners(
     console.warn('Failed to attach banners listener:', err);
     callback({
       male: APPROVED_MALE_BANNER_URL,
-      female: APPROVED_FEMALE_BANNER_URL
+      female: APPROVED_FEMALE_BANNER_URL,
+      isLoaded: true
     });
     return () => {};
   }
@@ -861,8 +915,8 @@ export async function fetchBanners(): Promise<{ male: string; female: string; ma
   try {
     const bannersRef = collection(db, 'banners');
     const snapshot = await getDocs(bannersRef);
-    let maleUrl = APPROVED_MALE_BANNER_URL;
-    let femaleUrl = APPROVED_FEMALE_BANNER_URL;
+    let maleUrl: string = '';
+    let femaleUrl: string = '';
     let maleDoc: BannerDoc | undefined;
     let femaleDoc: BannerDoc | undefined;
 
@@ -879,7 +933,7 @@ export async function fetchBanners(): Promise<{ male: string; female: string; ma
         maleDoc = {
           id: docSnap.id,
           gender: 'male',
-          imageUrl: maleUrl,
+          imageUrl: maleUrl || APPROVED_MALE_BANNER_URL,
           originalUrl: data.originalUrl || data.imageUrl,
           title: data.title || 'Male Hero Campaign Banner',
           active: data.active !== false,
@@ -894,7 +948,7 @@ export async function fetchBanners(): Promise<{ male: string; female: string; ma
         femaleDoc = {
           id: docSnap.id,
           gender: 'female',
-          imageUrl: femaleUrl,
+          imageUrl: femaleUrl || APPROVED_FEMALE_BANNER_URL,
           originalUrl: data.originalUrl || data.imageUrl,
           title: data.title || 'Female Hero Campaign Banner',
           active: data.active !== false,
@@ -904,7 +958,12 @@ export async function fetchBanners(): Promise<{ male: string; female: string; ma
       }
     });
 
-    return { male: maleUrl, female: femaleUrl, maleDoc, femaleDoc };
+    return {
+      male: maleUrl || APPROVED_MALE_BANNER_URL,
+      female: femaleUrl || APPROVED_FEMALE_BANNER_URL,
+      maleDoc,
+      femaleDoc
+    };
   } catch (err) {
     console.warn('Fetch banners notice:', err);
     return { male: APPROVED_MALE_BANNER_URL, female: APPROVED_FEMALE_BANNER_URL };
@@ -920,6 +979,10 @@ export async function saveBannerToFirestore(
   originalUrl?: string,
   title?: string
 ): Promise<void> {
+  if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.trim()) {
+    throw new Error('Image URL is required to save banner.');
+  }
+
   const path = `banners/${gender}`;
   try {
     const cleanImageUrl = resolveBannerUrl(imageUrl);
@@ -947,18 +1010,20 @@ export async function saveBannerToFirestore(
 }
 
 /**
- * Upload a new banner image to Firebase Storage under the 'banners/' folder
+ * Upload a new banner image to Firebase Storage under the 'banners/' folder,
+ * with automatic fallback to high-quality compressed direct Firestore persistence
+ * if Storage bucket is not enabled or throws permission errors.
  */
 export async function uploadBannerImageToStorage(
   file: File,
   gender: 'male' | 'female'
 ): Promise<string> {
-  try {
-    const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const timestamp = Date.now();
-    const storagePath = `banners/${gender}_banner_${timestamp}_${cleanName}`;
-    const storageRef = ref(storage, storagePath);
+  const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const timestamp = Date.now();
+  const storagePath = `banners/${gender}_banner_${timestamp}_${cleanName}`;
 
+  try {
+    const storageRef = ref(storage, storagePath);
     const snapshot = await uploadBytes(storageRef, file, {
       contentType: file.type || 'image/jpeg',
       customMetadata: {
@@ -968,14 +1033,22 @@ export async function uploadBannerImageToStorage(
     });
 
     const downloadUrl = await getDownloadURL(snapshot.ref);
+    if (!downloadUrl) {
+      throw new Error('Storage returned empty download URL.');
+    }
 
-    // Also persist immediately to Firestore doc
+    // Persist immediately to Firestore doc
     await saveBannerToFirestore(gender, downloadUrl, file.name);
-
     return downloadUrl;
-  } catch (err: any) {
-    console.error('Error uploading banner to Firebase Storage:', err);
-    throw new Error(err?.message || 'Failed to upload banner image to Firebase Storage.');
+  } catch (storageErr: any) {
+    console.warn('Firebase Storage upload notice, switching to optimized direct persistence:', storageErr?.message || storageErr);
+    try {
+      const dataUrl = await compressImageToDataUrl(file);
+      await saveBannerToFirestore(gender, dataUrl, file.name);
+      return dataUrl;
+    } catch (compressErr: any) {
+      throw new Error(storageErr?.message || compressErr?.message || 'Failed to upload and save banner.');
+    }
   }
 }
 

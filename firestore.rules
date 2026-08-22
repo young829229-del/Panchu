@@ -41,6 +41,11 @@ service cloud.firestore {
              data.price is number && data.price >= 0;
     }
 
+    function isValidBanner(data) {
+      return (data.imageUrl is string && data.imageUrl.size() > 0) &&
+             (data.gender == 'male' || data.gender == 'female');
+    }
+
     function isValidOrder(data) {
       return data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 100 &&
              data.customerName is string && data.customerName.size() > 0 && data.customerName.size() <= 150 &&
@@ -80,7 +85,8 @@ service cloud.firestore {
     // Banners Collection: Public read, Admin write
     match /banners/{bannerId} {
       allow read, get, list: if true;
-      allow create, update, delete: if isAdmin() && isValidId(bannerId);
+      allow create, update: if isAdmin() && isValidId(bannerId) && isValidBanner(incoming());
+      allow delete: if isAdmin() && isValidId(bannerId);
     }
 
     // Orders Collection: Unauthenticated / guest create, Only Authenticated Admin can read, list, update, or delete
