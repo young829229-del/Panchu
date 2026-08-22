@@ -33,14 +33,15 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Initialize Cloud Firestore with multi-tab management to prevent database closing / hidden errors
+// Initialize Cloud Firestore with multi-tab management and long-polling resilience
 function createFirestore() {
   const dbId = configJson.firestoreDatabaseId;
   try {
     const firestoreSettings = {
       localCache: persistentLocalCache({
         tabManager: persistentMultipleTabManager()
-      })
+      }),
+      experimentalForceLongPolling: true
     };
     return dbId
       ? initializeFirestore(app, firestoreSettings, dbId)
@@ -54,6 +55,12 @@ export const db = createFirestore();
 
 // Initialize Firebase Storage
 export const storage = getStorage(app);
+try {
+  storage.maxUploadRetryTime = 10000;
+  storage.maxOperationRetryTime = 10000;
+} catch (e) {
+  console.debug('Storage retry time config notice:', e);
+}
 
 // Standard Operation Types for Error Handling
 export enum OperationType {
@@ -104,11 +111,12 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   // Log detailed error context for debugging
   console.warn('Firestore Operation Notice:', JSON.stringify(errInfo));
 
-  // If the database connection is closing or hidden or offline, do not crash the app
+  // If the database connection is closing, hidden, unavailable, or offline, do not crash the app
   if (
     errorMessage.toLowerCase().includes('closing') ||
     errorMessage.toLowerCase().includes('hidden') ||
-    errorMessage.toLowerCase().includes('offline')
+    errorMessage.toLowerCase().includes('offline') ||
+    errorMessage.toLowerCase().includes('unavailable')
   ) {
     return;
   }
@@ -119,14 +127,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Connection test helper
 export async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'system', 'connection'));
+    const { getDoc } = await import('firebase/firestore');
+    await getDoc(doc(db, 'system', 'connection'));
   } catch (error: any) {
-    // Gracefully handle background/offline/closing states during initial healthcheck
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.debug("Firestore connection check: client appears offline or pending network sync.");
-    } else {
-      console.debug("Firestore connection check notice:", error?.message || error);
-    }
+    // Gracefully handle background/offline/unavailable states during initial healthcheck
+    console.debug("Firestore connection check notice:", error?.message || error);
   }
 }
 

@@ -10,7 +10,7 @@ import {
   User
 } from 'firebase/auth';
 import { auth, googleProvider, db, storage } from '../firebase';
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import {
   subscribeOrders,
@@ -452,14 +452,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       totalBytes: file.size
     });
 
-    // STAGE 3: uploadBytesResumable Execution
+    // STAGE 3: uploadBytesResumable Execution with 5% interval logging and 10s 0-byte safeguard
     console.log('[Banner Upload Stage 3: uploadBytesResumable Execution] Initializing upload stream...', {
       targetPath: storagePath,
       bucket: storageBucket,
-      contentType: file.type || 'image/jpeg'
+      contentType: file.type || 'image/jpeg',
+      fileSize: file.size,
+      fileSizeMB: `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+    });
+
+    onProgress?.({
+      stage: 'uploading',
+      percent: 0,
+      message: `Starting upload (${(file.size / (1024 * 1024)).toFixed(2)} MB)...`,
+      bytesTransferred: 0,
+      totalBytes: file.size
     });
 
     const storageRef = ref(storage, storagePath);
+    let downloadUrl = '';
+
     const metadata = {
       contentType: file.type || 'image/jpeg',
       cacheControl: 'public, max-age=31536000',
@@ -476,21 +488,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     try {
       await new Promise<void>((resolve, reject) => {
-        // 45s safety timeout to prevent infinite UI hanging
-        const timeoutId = setTimeout(() => {
-          try {
-            uploadTask.cancel();
-          } catch {}
-          const timeoutErr = new Error(
-            `Firebase Storage upload timed out after 45 seconds. Target bucket: "${storageBucket}", path: "${storagePath}". Please check network connection and Firebase Storage bucket permissions.`
-          );
-          console.error('[Banner Upload Timeout Triggered]', {
-            storageBucket,
-            storagePath,
-            timeoutSeconds: 45
-          });
-          reject(timeoutErr);
-        }, 45000);
+        let lastLoggedInterval = -1;
+        let bytesEverTransferred = false;
+        let lastKnownState: {
+          bytesTransferred: number;
+          totalBytes: number;
+          percent: number;
+          state: string;
+        } = {
+          bytesTransferred: 0,
+          totalBytes: file.size,
+          percent: 0,
+          state: 'running'
+        };
+
+        // 10-second zero-byte transfer safeguard timer
+        const zeroBytesTimeout = setTimeout(() => {
+          if (!bytesEverTransferred) {
+            console.error('[Banner Upload Safeguard Triggered] No bytes transferred within 10 seconds. Cancelling uploadTask...', {
+              bucket: storageBucket,
+              storagePath,
+              lastKnownState
+            });
+
+            try {
+              uploadTask.cancel();
+            } catch (cancelErr) {
+              console.warn('[Banner Upload Cancel Non-fatal]', cancelErr);
+            }
+
+            const zeroByteError = new Error(
+              `Firebase Storage upload halted: 0 bytes transferred after 10 seconds. Target bucket: "${storageBucket}", path: "${storagePath}". Last known state: ${JSON.stringify(lastKnownState)}. Please verify Firebase Storage bucket connectivity, CORS, and authentication rules.`
+            );
+            (zeroByteError as any).code = 'storage/zero-bytes-timeout';
+            (zeroByteError as any).bucket = storageBucket;
+            (zeroByteError as any).path = storagePath;
+            (zeroByteError as any).lastKnownState = lastKnownState;
+            reject(zeroByteError);
+          }
+        }, 10000);
 
         uploadTask.on(
           'state_changed',
@@ -498,61 +534,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             const bytesTransferred = snapshot.bytesTransferred;
             const totalBytes = snapshot.totalBytes || file.size;
             const ratio = totalBytes > 0 ? bytesTransferred / totalBytes : 0;
-            const progressPercent = Math.min(80, Math.round(10 + ratio * 70));
-            const mbTransferred = (bytesTransferred / (1024 * 1024)).toFixed(2);
-            const mbTotal = (totalBytes / (1024 * 1024)).toFixed(2);
+            const exactPercent = Math.round(ratio * 100);
 
-            console.log(`[Banner Upload Stage 3: uploadBytesResumable Execution] ${progressPercent}% (${mbTransferred}MB / ${mbTotal}MB)`, {
-              state: snapshot.state,
+            if (bytesTransferred > 0) {
+              bytesEverTransferred = true;
+            }
+
+            lastKnownState = {
               bytesTransferred,
               totalBytes,
-              percent: progressPercent
-            });
+              percent: exactPercent,
+              state: snapshot.state
+            };
+
+            // Calculate current 5% interval milestone (0, 5, 10, 15, ..., 100)
+            const currentInterval = Math.floor(exactPercent / 5) * 5;
+
+            // Log at every 5% interval change or at completion
+            if (currentInterval > lastLoggedInterval || exactPercent === 100) {
+              lastLoggedInterval = currentInterval;
+              console.log(`[Banner Upload Progress Milestone: ${currentInterval}%]`, {
+                bytesTransferred: `${(bytesTransferred / (1024 * 1024)).toFixed(2)} MB (${bytesTransferred} bytes)`,
+                totalBytes: `${(totalBytes / (1024 * 1024)).toFixed(2)} MB (${totalBytes} bytes)`,
+                percent: `${exactPercent}%`,
+                state: snapshot.state,
+                bucket: storageBucket,
+                path: storagePath
+              });
+            }
 
             onProgress?.({
               stage: 'uploading',
-              percent: progressPercent,
-              message: `Uploading to Firebase Storage (${progressPercent}% — ${mbTransferred}MB / ${mbTotal}MB)...`,
+              percent: exactPercent,
+              message: `Uploading to Firebase Storage (${exactPercent}% — ${(bytesTransferred / (1024 * 1024)).toFixed(2)}MB / ${(totalBytes / (1024 * 1024)).toFixed(2)}MB)...`,
               bytesTransferred,
               totalBytes
             });
           },
           (storageError: any) => {
-            clearTimeout(timeoutId);
-            // STAGE 4: Error Catching (Storage stream error)
-            console.error('[Banner Upload Stage 4: Error Catch Block] Firebase Storage stream encountered an error:', {
+            clearTimeout(zeroBytesTimeout);
+            console.error('[Banner Upload Error in state_changed]', {
               errorCode: storageError?.code,
               errorMessage: storageError?.message,
-              errorName: storageError?.name,
               serverResponse: storageError?.serverResponse,
-              customData: storageError?.customData,
-              stack: storageError?.stack,
-              fullErrorObject: storageError,
-              targetBucket: storageBucket,
-              targetPath: storagePath
+              bucket: storageBucket,
+              path: storagePath,
+              lastKnownState
             });
 
-            let descriptiveMessage = storageError?.message || 'Storage upload stream failed.';
-            if (storageError?.code === 'storage/unauthorized') {
-              descriptiveMessage = `Firebase Permission Denied: Storage security rules rejected write to bucket "${storageBucket}". Ensure admin authentication or storage write rules allow "banners/".`;
-            } else if (storageError?.code === 'storage/bucket-not-found' || storageError?.code === 'storage/project-not-found') {
-              descriptiveMessage = `Firebase Storage Bucket Not Found: Bucket "${storageBucket}" does not exist or is disabled in Firebase Console.`;
-            } else if (storageError?.code === 'storage/canceled') {
-              descriptiveMessage = 'Firebase Storage upload was canceled or timed out after 45 seconds.';
-            } else if (storageError?.code === 'storage/quota-exceeded') {
-              descriptiveMessage = 'Firebase Storage quota exceeded for this project.';
-            } else if (storageError?.code === 'storage/retry-limit-exceeded') {
-              descriptiveMessage = 'Firebase Storage upload failed due to network retry limit exceeded. Please check your internet connection.';
-            }
-
-            const structuredErr = new Error(`Firebase Storage Error [${storageError?.code || 'UNKNOWN'}]: ${descriptiveMessage}`);
-            (structuredErr as any).rawFirebaseError = storageError;
-            (structuredErr as any).firebaseCode = storageError?.code;
-            reject(structuredErr);
+            const enrichedErr = new Error(
+              `Firebase Storage Error [${storageError?.code || 'UNKNOWN'}]: ${storageError?.message || 'Upload failed'}`
+            );
+            (enrichedErr as any).rawFirebaseError = storageError;
+            (enrichedErr as any).code = storageError?.code;
+            (enrichedErr as any).bucket = storageBucket;
+            (enrichedErr as any).path = storagePath;
+            (enrichedErr as any).lastKnownState = lastKnownState;
+            reject(enrichedErr);
           },
           () => {
-            clearTimeout(timeoutId);
-            console.log('[Banner Upload Stage 3: uploadBytesResumable Execution] Storage chunk transfer completed successfully.');
+            clearTimeout(zeroBytesTimeout);
+            console.log('[Banner Upload Stage 3: uploadBytesResumable Execution] All binary chunks transferred successfully.');
             resolve();
           }
         );
@@ -571,7 +613,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         totalBytes: file.size
       });
 
-      const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+      downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
       if (!downloadUrl) {
         throw new Error('Stage 5 Error: Firebase Storage upload completed but returned an empty download URL.');
       }
@@ -601,11 +643,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const bannerDocRef = doc(db, 'banners', gender);
       const bannerPayload = {
         id: gender,
+        gender,
         imageUrl: downloadUrl,
         storagePath,
         originalFileName: file.name,
         fileSizeBytes: file.size,
         title: `${gender === 'male' ? 'Male' : 'Female'} Hero Campaign Banner`,
+        active: true,
         updatedAt: serverTimestamp(),
         updatedBy: auth.currentUser?.email || 'admin'
       };
@@ -646,11 +690,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         errorName: pipelineError?.name,
         errorMessage: pipelineError?.message,
         errorCode: pipelineError?.code || pipelineError?.firebaseCode,
-        serverResponse: pipelineError?.rawFirebaseError?.serverResponse,
+        serverResponse: pipelineError?.serverResponse || pipelineError?.rawFirebaseError?.serverResponse,
+        customData: pipelineError?.customData,
         stack: pipelineError?.stack,
-        fullErrorObject: pipelineError?.rawFirebaseError || pipelineError
+        fullErrorObject: pipelineError?.rawFirebaseError || pipelineError,
+        targetBucket: storageBucket,
+        targetPath: storagePath
       });
-      throw pipelineError;
+
+      let descriptiveMessage = pipelineError?.message || 'Storage upload failed.';
+      if (pipelineError?.code === 'storage/unauthorized') {
+        descriptiveMessage = `Firebase Permission Denied: Storage security rules rejected write to bucket "${storageBucket}". Ensure admin authentication or storage write rules allow "banners/".`;
+      } else if (pipelineError?.code === 'storage/bucket-not-found' || pipelineError?.code === 'storage/project-not-found') {
+        descriptiveMessage = `Firebase Storage Bucket Not Found: Bucket "${storageBucket}" does not exist or is disabled in Firebase Console.`;
+      } else if (pipelineError?.code === 'storage/canceled') {
+        descriptiveMessage = 'Firebase Storage upload was canceled.';
+      } else if (pipelineError?.code === 'storage/quota-exceeded') {
+        descriptiveMessage = 'Firebase Storage quota exceeded for this project.';
+      } else if (pipelineError?.code === 'storage/retry-limit-exceeded') {
+        descriptiveMessage = 'Firebase Storage upload failed due to network retry limit exceeded. Please check your internet connection.';
+      }
+
+      const structuredErr = new Error(`Firebase Storage Error [${pipelineError?.code || 'UNKNOWN'}]: ${descriptiveMessage}`);
+      (structuredErr as any).rawFirebaseError = pipelineError;
+      (structuredErr as any).firebaseCode = pipelineError?.code;
+      throw structuredErr;
     }
   };
 
