@@ -20,6 +20,7 @@ import {
   seedInitialBannersIfEmpty,
   APPROVED_MALE_BANNER_URL,
   APPROVED_FEMALE_BANNER_URL,
+  getCanonicalBannersSync,
   BannerUploadProgress
 } from '../../services/firebaseService';
 import { BannerDoc } from '../../types';
@@ -43,9 +44,12 @@ export const BannersView: React.FC<BannersViewProps> = ({
     female: string;
     maleDoc?: BannerDoc;
     femaleDoc?: BannerDoc;
-  }>({
-    male: APPROVED_MALE_BANNER_URL,
-    female: APPROVED_FEMALE_BANNER_URL
+  }>(() => {
+    const canonical = getCanonicalBannersSync();
+    return {
+      male: canonical.male,
+      female: canonical.female
+    };
   });
 
   const [loading, setLoading] = useState<boolean>(true);

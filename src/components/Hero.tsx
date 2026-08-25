@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react';
 import { Sun, Moon } from 'lucide-react';
-import { ProgressiveBanner } from './common/ProgressiveBanner';
 
 interface HeroProps {
   image: string;
@@ -114,16 +113,20 @@ export const Hero: React.FC<HeroProps> = ({
 
       {/* Hero Banner Container */}
       <div className="w-full h-full cursor-pointer relative overflow-hidden flex items-center justify-center group" onClick={onShopNow}>
-        {/* Progressive Banner Image with Low-Quality Blur Placeholder */}
-        <ProgressiveBanner
-          src={image}
-          alt="PANCHU Campaign Banner"
-          priority={true}
-          theme={theme}
-          gender={gender}
-          objectPosition="object-[center_12%] sm:object-[center_15%] md:object-[center_18%] lg:object-[center_20%]"
-          imgClassName="group-hover:scale-105 transition-transform duration-500"
-        />
+        {image ? (
+          <img
+            key={image}
+            src={image}
+            alt="PANCHU Campaign Banner"
+            fetchPriority="high"
+            loading="eager"
+            decoding="async"
+            className="w-full h-full object-cover object-[center_12%] sm:object-[center_15%] md:object-[center_18%] lg:object-[center_20%] group-hover:scale-105 transition-transform duration-700 ease-out z-0 relative select-none"
+            referrerPolicy="no-referrer"
+          />
+        ) : (
+          <div className={`w-full h-full ${isDark ? 'bg-neutral-900' : 'bg-stone-200'}`} />
+        )}
         <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/40 z-10 pointer-events-none" />
       </div>
 

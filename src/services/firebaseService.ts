@@ -19,12 +19,85 @@ import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } 
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
 import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc } from '../types';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
+import { ALL_PRODUCTS } from '../data/products';
 
 export const ADMIN_EMAILS = ['young829229@gmail.com', 'npdraggers111@gmail.com'];
 export const ADMIN_EMAIL_PRIMARY = 'young829229@gmail.com';
 
 export const APPROVED_MALE_BANNER_URL = 'https://i.ibb.co/XrZGLnvw/snaptik-app-7637482582606826773-slide-2.jpg';
 export const APPROVED_FEMALE_BANNER_URL = 'https://i.ibb.co/7dNkX1C3/IMG-20260820-WA0001.jpg';
+
+const CANONICAL_BANNERS_KEY = 'panchu_canonical_banners';
+const CANONICAL_PRODUCTS_KEY = 'panchu_canonical_products';
+
+/**
+ * Returns the currently confirmed Firebase banners synchronously from memory/canonical cache.
+ * Eliminates initial render flicker or hardcoded fallback flash during hydration/refresh.
+ */
+export function getCanonicalBannersSync(): { male: string; female: string } {
+  if (typeof window === 'undefined') {
+    return { male: APPROVED_MALE_BANNER_URL, female: APPROVED_FEMALE_BANNER_URL };
+  }
+  try {
+    const saved = localStorage.getItem(CANONICAL_BANNERS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        const male = typeof parsed.male === 'string' && parsed.male.trim().length > 0 ? resolveBannerUrl(parsed.male) : '';
+        const female = typeof parsed.female === 'string' && parsed.female.trim().length > 0 ? resolveBannerUrl(parsed.female) : '';
+        if (male || female) {
+          return {
+            male: male || APPROVED_MALE_BANNER_URL,
+            female: female || APPROVED_FEMALE_BANNER_URL
+          };
+        }
+      }
+    }
+  } catch (e) {
+    console.debug('Error reading canonical banners cache:', e);
+  }
+  return {
+    male: APPROVED_MALE_BANNER_URL,
+    female: APPROVED_FEMALE_BANNER_URL
+  };
+}
+
+export function setCanonicalBannersSync(banners: { male: string; female: string }): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CANONICAL_BANNERS_KEY, JSON.stringify(banners));
+  } catch (e) {
+    console.debug('Error writing canonical banners cache:', e);
+  }
+}
+
+/**
+ * Returns the currently confirmed products list synchronously from canonical cache.
+ */
+export function getCanonicalProductsSync(): Product[] {
+  if (typeof window === 'undefined') return ALL_PRODUCTS;
+  try {
+    const saved = localStorage.getItem(CANONICAL_PRODUCTS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.debug('Error reading canonical products cache:', e);
+  }
+  return ALL_PRODUCTS;
+}
+
+export function setCanonicalProductsSync(products: Product[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CANONICAL_PRODUCTS_KEY, JSON.stringify(products));
+  } catch (e) {
+    console.debug('Error writing canonical products cache:', e);
+  }
+}
 
 /**
  * Intelligent banner URL resolver
@@ -115,6 +188,9 @@ export function subscribeProducts(
             updatedAt: data.updatedAt
           });
         });
+        if (products.length > 0) {
+          setCanonicalProductsSync(products);
+        }
         callback(products);
       },
       (error) => {
@@ -850,9 +926,17 @@ export function subscribeBanners(
           }
         });
 
+        const finalMale = maleUrl || APPROVED_MALE_BANNER_URL;
+        const finalFemale = femaleUrl || APPROVED_FEMALE_BANNER_URL;
+
+        setCanonicalBannersSync({
+          male: finalMale,
+          female: finalFemale
+        });
+
         callback({
-          male: maleUrl || APPROVED_MALE_BANNER_URL,
-          female: femaleUrl || APPROVED_FEMALE_BANNER_URL,
+          male: finalMale,
+          female: finalFemale,
           maleDoc,
           femaleDoc,
           isLoaded: true
@@ -860,9 +944,10 @@ export function subscribeBanners(
       },
       (error) => {
         console.warn('Firestore banners listener notice:', error?.message || error);
+        const canonical = getCanonicalBannersSync();
         callback({
-          male: APPROVED_MALE_BANNER_URL,
-          female: APPROVED_FEMALE_BANNER_URL,
+          male: canonical.male,
+          female: canonical.female,
           isLoaded: true
         });
       }
@@ -871,9 +956,10 @@ export function subscribeBanners(
     return unsubscribe;
   } catch (err) {
     console.warn('Failed to attach banners listener:', err);
+    const canonical = getCanonicalBannersSync();
     callback({
-      male: APPROVED_MALE_BANNER_URL,
-      female: APPROVED_FEMALE_BANNER_URL,
+      male: canonical.male,
+      female: canonical.female,
       isLoaded: true
     });
     return () => {};
@@ -988,6 +1074,15 @@ export async function saveBannerToFirestore(
     }
 
     await setDoc(docRef, bannerData, { merge: true });
+
+    // Instantly sync canonical cache
+    const currentCanonical = getCanonicalBannersSync();
+    if (gender === 'male') {
+      currentCanonical.male = cleanImageUrl;
+    } else {
+      currentCanonical.female = cleanImageUrl;
+    }
+    setCanonicalBannersSync(currentCanonical);
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
   }

@@ -15,7 +15,9 @@ import {
   subscribeProducts,
   seedInitialProductsIfEmpty,
   subscribeBanners,
-  seedInitialBannersIfEmpty
+  seedInitialBannersIfEmpty,
+  getCanonicalBannersSync,
+  getCanonicalProductsSync
 } from './services/firebaseService';
 import { auth } from './firebase';
 import {
@@ -64,7 +66,7 @@ function isAccountUrl(): boolean {
 }
 
 export default function App() {
-  const [products, setProducts] = useState<Product[]>(ALL_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>(() => getCanonicalProductsSync());
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeCustomer, setActiveCustomer] = useState<CustomerProfile | null>(() => getActiveCustomer());
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(() => isAdminUrl());
@@ -74,7 +76,8 @@ export default function App() {
   const [activeProduct, setActiveProduct] = useState<Product | null>(() => {
     const id = getProductIdFromUrl();
     if (!id) return null;
-    return ALL_PRODUCTS.find(p => p.id === id || p.id.toLowerCase() === id.toLowerCase()) || null;
+    const initialProducts = getCanonicalProductsSync();
+    return initialProducts.find(p => p.id === id || p.id.toLowerCase() === id.toLowerCase()) || null;
   });
 
   const [cartItems, setCartItems] = useState<CartItem[]>(() => {
@@ -89,10 +92,7 @@ export default function App() {
   const [isCheckoutOpen, setIsCheckoutOpen] = useState<boolean>(false);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [gender, setGender] = useState<'male' | 'female'>('male');
-  const [banners, setBanners] = useState<{ male: string; female: string }>({
-    male: '',
-    female: ''
-  });
+  const [banners, setBanners] = useState<{ male: string; female: string }>(() => getCanonicalBannersSync());
 
   const catalogRef = useRef<HTMLDivElement>(null);
   const preloadedImagesRef = useRef<Set<string>>(new Set());
@@ -100,9 +100,14 @@ export default function App() {
   // Subscribe to real-time Firebase banners collection
   useEffect(() => {
     const unsubscribe = subscribeBanners((liveBanners) => {
-      setBanners({
-        male: liveBanners.male,
-        female: liveBanners.female
+      setBanners((prev) => {
+        if (prev.male === liveBanners.male && prev.female === liveBanners.female) {
+          return prev;
+        }
+        return {
+          male: liveBanners.male,
+          female: liveBanners.female
+        };
       });
     });
 
