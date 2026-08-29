@@ -37,8 +37,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   items,
   onClearCart
 }) => {
-  if (!isOpen) return null;
-
   const savedDetails = getSavedCheckoutDetails();
 
   // Payment settings state synced with Firebase
@@ -260,6 +258,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       window.open(whatsappUrl, '_blank');
     }
   };
+
+  if (!isOpen) return null;
 
   return (
     <AnimatePresence>

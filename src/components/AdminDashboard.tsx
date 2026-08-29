@@ -144,6 +144,73 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const logFirebaseAppDiagnostics = (context: string = 'general') => {
+    const appOptions = app?.options || {};
+    const storageOptions = storage?.app?.options || {};
+    const authUser = auth?.currentUser;
+
+    const diagnostics = {
+      context,
+      timestamp: new Date().toISOString(),
+      firebaseApp: {
+        name: app?.name || '[DEFAULT]',
+        projectId: appOptions.projectId || 'NOT_SET',
+        storageBucket: appOptions.storageBucket || 'NOT_SET',
+        authDomain: appOptions.authDomain || 'NOT_SET',
+        appId: appOptions.appId || 'NOT_SET',
+        databaseURL: appOptions.databaseURL || 'NOT_SET',
+        apiKeyPresent: Boolean(appOptions.apiKey)
+      },
+      storageInstance: {
+        bucketFromApp: storageOptions.storageBucket || 'NOT_SET',
+        maxUploadRetryTime: storage?.maxUploadRetryTime ?? 'default',
+        maxOperationRetryTime: storage?.maxOperationRetryTime ?? 'default'
+      },
+      authContext: {
+        isSignedIn: Boolean(authUser),
+        uid: authUser?.uid || 'anonymous',
+        email: authUser?.email || 'unauthenticated',
+        isEmailVerified: authUser?.emailVerified ?? false,
+        isAdminUser: isAdmin ?? false
+      },
+      configurationChecks: {
+        hasProjectId: Boolean(appOptions.projectId),
+        hasStorageBucket: Boolean(appOptions.storageBucket),
+        bucketFormatValid: Boolean(
+          appOptions.storageBucket &&
+          (appOptions.storageBucket.endsWith('.firebasestorage.app') ||
+           appOptions.storageBucket.endsWith('.appspot.com') ||
+           appOptions.storageBucket.startsWith('gs://'))
+        ),
+        projectIdMatchesBucketPrefix: Boolean(
+          appOptions.projectId &&
+          appOptions.storageBucket &&
+          appOptions.storageBucket.includes(appOptions.projectId)
+        )
+      }
+    };
+
+    console.group(`[Firebase Diagnostic Audit: ${context.toUpperCase()}]`);
+    console.log('Firebase Configuration & Storage Health Check:', diagnostics);
+    if (!diagnostics.configurationChecks.hasStorageBucket) {
+      console.error('[Firebase Diagnostic Warning] storageBucket is missing from app.options!');
+    }
+    if (!diagnostics.configurationChecks.bucketFormatValid) {
+      console.warn('[Firebase Diagnostic Warning] storageBucket format may be unexpected:', appOptions.storageBucket);
+    }
+    if (!diagnostics.authContext.isSignedIn) {
+      console.warn('[Firebase Diagnostic Warning] No active Firebase authenticated user detected.');
+    }
+    console.groupEnd();
+
+    return diagnostics;
+  };
+
+  // Run initial diagnostic check when admin state mounts
+  useEffect(() => {
+    logFirebaseAppDiagnostics('Admin Dashboard Mount');
+  }, []);
+
   // Auth Listener
   useEffect(() => {
     purgeAdminFromStorage();
@@ -363,77 +430,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setIsSyncing(false);
     }
   };
-
-  /**
-   * Diagnostic Utility: Logs full Firebase App & Storage configuration
-   * Identifies mismatches, missing properties, auth state, or bucket misconfigurations.
-   */
-  const logFirebaseAppDiagnostics = (context: string = 'general') => {
-    const appOptions = app?.options || {};
-    const storageOptions = storage?.app?.options || {};
-    const authUser = auth?.currentUser;
-
-    const diagnostics = {
-      context,
-      timestamp: new Date().toISOString(),
-      firebaseApp: {
-        name: app?.name || '[DEFAULT]',
-        projectId: appOptions.projectId || 'NOT_SET',
-        storageBucket: appOptions.storageBucket || 'NOT_SET',
-        authDomain: appOptions.authDomain || 'NOT_SET',
-        appId: appOptions.appId || 'NOT_SET',
-        databaseURL: appOptions.databaseURL || 'NOT_SET',
-        apiKeyPresent: Boolean(appOptions.apiKey)
-      },
-      storageInstance: {
-        bucketFromApp: storageOptions.storageBucket || 'NOT_SET',
-        maxUploadRetryTime: storage?.maxUploadRetryTime ?? 'default',
-        maxOperationRetryTime: storage?.maxOperationRetryTime ?? 'default'
-      },
-      authContext: {
-        isSignedIn: Boolean(authUser),
-        uid: authUser?.uid || 'anonymous',
-        email: authUser?.email || 'unauthenticated',
-        isEmailVerified: authUser?.emailVerified ?? false,
-        isAdminUser: isAdmin ?? false
-      },
-      configurationChecks: {
-        hasProjectId: Boolean(appOptions.projectId),
-        hasStorageBucket: Boolean(appOptions.storageBucket),
-        bucketFormatValid: Boolean(
-          appOptions.storageBucket &&
-          (appOptions.storageBucket.endsWith('.firebasestorage.app') ||
-           appOptions.storageBucket.endsWith('.appspot.com') ||
-           appOptions.storageBucket.startsWith('gs://'))
-        ),
-        projectIdMatchesBucketPrefix: Boolean(
-          appOptions.projectId &&
-          appOptions.storageBucket &&
-          appOptions.storageBucket.includes(appOptions.projectId)
-        )
-      }
-    };
-
-    console.group(`[Firebase Diagnostic Audit: ${context.toUpperCase()}]`);
-    console.log('Firebase Configuration & Storage Health Check:', diagnostics);
-    if (!diagnostics.configurationChecks.hasStorageBucket) {
-      console.error('[Firebase Diagnostic Warning] storageBucket is missing from app.options!');
-    }
-    if (!diagnostics.configurationChecks.bucketFormatValid) {
-      console.warn('[Firebase Diagnostic Warning] storageBucket format may be unexpected:', appOptions.storageBucket);
-    }
-    if (!diagnostics.authContext.isSignedIn) {
-      console.warn('[Firebase Diagnostic Warning] No active Firebase authenticated user detected.');
-    }
-    console.groupEnd();
-
-    return diagnostics;
-  };
-
-  // Run initial diagnostic check when admin state mounts
-  useEffect(() => {
-    logFirebaseAppDiagnostics('Admin Dashboard Mount');
-  }, []);
 
   /**
    * Diagnostic Banner Upload Pipeline with Explicit Stage Logging & Error Diagnostics

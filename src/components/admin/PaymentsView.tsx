@@ -64,11 +64,15 @@ export const PaymentsView: React.FC = () => {
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [previewImage, setPreviewImage] = useState<{ title: string; url: string } | null>(null);
 
-  // File input refs per method
-  const fileInputRefs = {
-    'eSewa': useRef<HTMLInputElement>(null),
-    'Bank Transfer': useRef<HTMLInputElement>(null),
-    'Cash on Delivery (COD)': useRef<HTMLInputElement>(null)
+  // Explicit static file input refs per payment method
+  const esewaInputRef = useRef<HTMLInputElement | null>(null);
+  const bankInputRef = useRef<HTMLInputElement | null>(null);
+  const codInputRef = useRef<HTMLInputElement | null>(null);
+
+  const getMethodInputRef = (methodId: string) => {
+    if (methodId === 'eSewa') return esewaInputRef;
+    if (methodId === 'Bank Transfer') return bankInputRef;
+    return codInputRef;
   };
 
   // Real-time subscription to Firestore payment settings

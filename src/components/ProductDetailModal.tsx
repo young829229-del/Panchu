@@ -18,12 +18,12 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   onAddToCart,
   onBuyNow
 }) => {
-  if (!product) return null;
-
-  const [selectedSize, setSelectedSize] = useState<string>(product.sizes[0] || 'M');
+  const [selectedSize, setSelectedSize] = useState<string>(product?.sizes?.[0] || 'M');
   const [quantity, setQuantity] = useState<number>(1);
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
   const [isAdded, setIsAdded] = useState<boolean>(false);
+
+  if (!product) return null;
 
   const images = (product.additionalImages && product.additionalImages.length > 0) 
     ? product.additionalImages 
