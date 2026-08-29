@@ -194,12 +194,6 @@ export const PaymentsView: React.FC = () => {
             Manage checkout payment methods, separate QR codes, and customer payment verification uploads.
           </p>
         </div>
-
-        {/* Live sync badge */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-mono self-start sm:self-auto">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span>Synced with Live Store</span>
-        </div>
       </div>
 
       {/* Notification Toast */}
