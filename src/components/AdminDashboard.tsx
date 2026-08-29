@@ -41,6 +41,7 @@ import { OffersView } from './admin/OffersView';
 import { StockView } from './admin/StockView';
 import { ProductEditorView } from './admin/ProductEditorView';
 import { BannersView } from './admin/BannersView';
+import { PaymentsView } from './admin/PaymentsView';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 
 import {
@@ -1064,7 +1065,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               />
             )}
 
-            {/* VIEW 7: SETTINGS & ADMINS */}
+            {/* VIEW 7: PAYMENT SETTINGS */}
+            {activeTab === 'payments' && <PaymentsView />}
+
+            {/* VIEW 8: SETTINGS & ADMINS */}
             {activeTab === 'settings' && (
               <div className="max-w-2xl space-y-6 pt-2">
                 <div>

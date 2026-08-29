@@ -10,7 +10,9 @@ import {
   Eye,
   MessageCircle,
   Truck,
-  PackageCheck
+  PackageCheck,
+  CreditCard,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Order, OrderStatus } from '../../types';
 
@@ -416,12 +418,19 @@ export const OrderHistoryTable: React.FC<OrderHistoryTableProps> = ({
                       <span>{formatOrderDate(order)}</span>
                     </div>
 
-                    {/* Location / Mode */}
+                    {/* Location & Payment Method */}
                     <div className="text-xs text-stone-700 font-sans truncate">
                       <span className="block truncate">{order.location || 'Kathmandu'}</span>
-                      <span className="text-[10px] text-stone-400 block font-mono">
-                        {order.items?.length || 1} item(s)
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[10px] font-mono font-medium text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200 truncate max-w-[130px]">
+                          {order.paymentMethod || 'COD'}
+                        </span>
+                        {order.paymentScreenshotUrl && (
+                          <span className="inline-flex items-center text-emerald-600" title="Payment screenshot attached">
+                            <ImageIcon className="w-3 h-3" />
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     {/* Status */}

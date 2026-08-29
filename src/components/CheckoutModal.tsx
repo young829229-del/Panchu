@@ -1,8 +1,26 @@
-import React, { useState } from 'react';
-import { CartItem, OrderItem } from '../types';
-import { X, CheckCircle2, MessageCircle, ArrowRight, ShoppingBag, Loader2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { CartItem, OrderItem, PaymentSettings } from '../types';
+import {
+  X,
+  CheckCircle2,
+  MessageCircle,
+  ArrowRight,
+  ShoppingBag,
+  Loader2,
+  AlertCircle,
+  CreditCard,
+  QrCode,
+  Upload,
+  Image as ImageIcon,
+  Check
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { createFirestoreOrder } from '../services/firebaseService';
+import {
+  createFirestoreOrder,
+  subscribePaymentSettings,
+  getCanonicalPaymentSettingsSync,
+  uploadPaymentScreenshot
+} from '../services/firebaseService';
 import { getSavedCheckoutDetails, saveCustomerDetailsFromCheckout } from '../services/customerStorage';
 import { auth } from '../firebase';
 
@@ -23,6 +41,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   const savedDetails = getSavedCheckoutDetails();
 
+  // Payment settings state synced with Firebase
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings>(() => getCanonicalPaymentSettingsSync());
+  
+  // Selected Payment Method
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('Cash on Delivery (COD)');
+
+  // Screenshot Upload State
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
+  const [isUploadingScreenshot, setIsUploadingScreenshot] = useState<boolean>(false);
+  const screenshotInputRef = useRef<HTMLInputElement>(null);
+
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -37,6 +67,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     deliveryOption: 'inside_door' // 'inside_door' = 120, 'outside_office' = 150, 'outside_door' = 180
   });
 
+  // Subscribe to live Payment Settings
+  useEffect(() => {
+    const unsubscribe = subscribePaymentSettings((liveSettings) => {
+      setPaymentSettings(liveSettings);
+      // Ensure selected method is valid
+      const methods = liveSettings.paymentMethods || [];
+      if (methods.length > 0 && !methods.includes(selectedPaymentMethod)) {
+        setSelectedPaymentMethod(methods[0]);
+      }
+    });
+    return () => unsubscribe();
+  }, [selectedPaymentMethod]);
+
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const deliveryCharge = formData.deliveryOption === 'inside_door' 
     ? 120 
@@ -44,6 +87,29 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       ? 180 
       : 150;
   const totalAmount = subtotal + deliveryCharge;
+
+  // Available methods from settings or default fallback
+  const availableMethods = paymentSettings.paymentMethods && paymentSettings.paymentMethods.length > 0
+    ? paymentSettings.paymentMethods
+    : ['Cash on Delivery (COD)', 'eSewa', 'Bank Transfer'];
+
+  const handleScreenshotChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setScreenshotFile(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setScreenshotPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveScreenshot = () => {
+    setScreenshotFile(null);
+    setScreenshotPreview(null);
+    if (screenshotInputRef.current) screenshotInputRef.current.value = '';
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +120,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       // Generate unique order number e.g. #282
       const randomDigits = Math.floor(100 + Math.random() * 900);
       const orderNum = `#${randomDigits}`;
+
+      // Upload payment screenshot if provided and enabled
+      let uploadedScreenshotUrl: string | null = null;
+      if (paymentSettings.screenshotEnabled && screenshotFile) {
+        setIsUploadingScreenshot(true);
+        try {
+          uploadedScreenshotUrl = await uploadPaymentScreenshot(screenshotFile, orderNum.replace('#', ''));
+        } catch (uploadErr) {
+          console.warn('Screenshot upload fallback notice:', uploadErr);
+        } finally {
+          setIsUploadingScreenshot(false);
+        }
+      }
 
       // Map cart items to standard OrderItem format
       const orderItems: OrderItem[] = items.map(item => ({
@@ -94,8 +173,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         deliveryFee: deliveryCharge,
         totalAmount: totalAmount,
         total: totalAmount,
-        paymentMethod: 'Cash on Delivery (COD)',
-        paymentScreenshotUrl: null,
+        paymentMethod: selectedPaymentMethod,
+        paymentScreenshotUrl: uploadedScreenshotUrl,
         orderStatus: 'Pending'
       });
 
@@ -123,8 +202,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         return `Product - ${item.product.name}\nSize - ${item.size}\nQuantity - ${item.quantity}\nPrice - NPR ${itemPrice}`;
       }).join('\n\n');
 
-      // 5. Complete WhatsApp order message format matching user template
-      const fullMessage = `🛍️ PANCHU — NEW ORDER\n\nOrder #: ${orderNum}\n\n${customerDetailsText}\n\n• Order Details\n\n${orderItemsDetails}\n\nSubtotal - NPR ${subtotal}\nDelivery Charge - NPR ${deliveryCharge}\nTotal - NPR ${totalAmount}`;
+      // 5. Complete WhatsApp order message format including selected payment method
+      const fullMessage = `🛍️ PANCHU — NEW ORDER\n\nOrder #: ${orderNum}\n\n${customerDetailsText}\n\n• Order Details\n\n${orderItemsDetails}\n\n• Payment Details\n\nPayment Method - ${selectedPaymentMethod}${uploadedScreenshotUrl ? '\nPayment Slip - Attached with order' : ''}\n\nSubtotal - NPR ${subtotal}\nDelivery Charge - NPR ${deliveryCharge}\nTotal - NPR ${totalAmount}`;
 
       setCreatedOrderNum(orderNum);
       setCreatedOrderMessage(fullMessage);
@@ -190,7 +269,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   WHATSAPP ORDER OPENED
                 </h2>
                 <p className="mt-2 text-xs md:text-sm font-sans text-stone-600 max-w-md mx-auto">
-                  Your order has been recorded in the database and forwarded to WhatsApp line <span className="font-bold text-black">+970 6374074</span>.
+                  Your order has been recorded with payment method <strong className="text-black font-semibold">{selectedPaymentMethod}</strong> and forwarded to WhatsApp line <span className="font-bold text-black">+970 6374074</span>.
                 </p>
               </div>
 
@@ -351,6 +430,113 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   />
                 </div>
 
+                {/* PAYMENT SECTION: SELECTABLE PAYMENT METHODS */}
+                <div>
+                  <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1.5">
+                    SELECT PAYMENT METHOD <span className="text-red-500">*</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {availableMethods.map((method) => {
+                      const isSelected = selectedPaymentMethod === method;
+                      return (
+                        <button
+                          key={method}
+                          type="button"
+                          onClick={() => setSelectedPaymentMethod(method)}
+                          className={`p-3 border text-left flex items-center justify-between transition-all cursor-pointer ${
+                            isSelected
+                              ? 'border-black bg-stone-900 text-white shadow-xs'
+                              : 'border-stone-300 bg-stone-50/50 hover:bg-stone-100 text-stone-800'
+                          }`}
+                        >
+                          <span className="text-xs font-mono font-bold truncate">
+                            {method}
+                          </span>
+                          {isSelected && <Check className="w-3.5 h-3.5 shrink-0 ml-1" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* QR CODE SECTION (Only rendered when QR is ON and an image exists - Collapsed with NO gap when OFF) */}
+                {paymentSettings.qrEnabled && paymentSettings.qrImageUrl ? (
+                  <div className="p-4 bg-stone-50 border border-stone-200 rounded text-center space-y-3">
+                    <div className="flex items-center justify-center gap-1.5 text-xs font-mono font-bold text-stone-800 uppercase">
+                      <QrCode className="w-4 h-4 text-stone-600" />
+                      <span>SCAN QR CODE TO PAY</span>
+                    </div>
+
+                    <div className="w-44 h-44 bg-white p-2.5 border border-stone-300 rounded-lg mx-auto shadow-xs flex items-center justify-center">
+                      <img
+                        src={paymentSettings.qrImageUrl}
+                        alt="Store Payment QR"
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                      />
+                    </div>
+
+                    <p className="text-[11px] font-mono text-stone-500 max-w-sm mx-auto">
+                      Scan using eSewa or Mobile Banking app to complete payment of <strong className="text-stone-900">NPR {totalAmount}</strong>.
+                    </p>
+                  </div>
+                ) : null}
+
+                {/* PAYMENT SCREENSHOT UPLOAD SECTION (Only rendered when Screenshot Upload is ON - Collapsed with NO gap when OFF) */}
+                {paymentSettings.screenshotEnabled ? (
+                  <div className="p-3.5 bg-stone-50 border border-stone-200 rounded space-y-2">
+                    <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase">
+                      PAYMENT SCREENSHOT / SLIP (OPTIONAL)
+                    </label>
+                    <p className="text-[11px] font-mono text-stone-500">
+                      Attach your eSewa or bank payment confirmation screenshot for fast verification.
+                    </p>
+
+                    <input
+                      type="file"
+                      accept="image/*"
+                      ref={screenshotInputRef}
+                      onChange={handleScreenshotChange}
+                      className="hidden"
+                    />
+
+                    {screenshotPreview ? (
+                      <div className="flex items-center gap-3 bg-white p-2.5 border border-stone-300 rounded">
+                        <img
+                          src={screenshotPreview}
+                          alt="Screenshot Preview"
+                          className="w-12 h-12 object-cover rounded border border-stone-200"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-mono font-medium text-stone-800 truncate block">
+                            {screenshotFile?.name || 'Payment screenshot'}
+                          </span>
+                          <span className="text-[10px] font-mono text-emerald-600 font-bold block">
+                            Ready to attach with order
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveScreenshot}
+                          className="p-1.5 rounded hover:bg-stone-100 text-stone-500 hover:text-red-600 transition-colors cursor-pointer"
+                          title="Remove Screenshot"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => screenshotInputRef.current?.click()}
+                        className="w-full py-2.5 border border-dashed border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-xs font-mono flex items-center justify-center gap-2 rounded transition-colors cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-stone-500" />
+                        <span>UPLOAD PAYMENT CONFIRMATION SCREENSHOT</span>
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+
                 <button
                   type="submit"
                   disabled={isSubmitting}
@@ -360,7 +546,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-4.5 h-4.5 animate-spin text-white" />
-                      <span>PROCESSING ORDER...</span>
+                      <span>{isUploadingScreenshot ? 'UPLOADING SCREENSHOT...' : 'PROCESSING ORDER...'}</span>
                     </>
                   ) : (
                     <>
@@ -378,5 +564,3 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     </AnimatePresence>
   );
 };
-
-

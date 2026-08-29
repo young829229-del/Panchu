@@ -104,3 +104,10 @@ export interface AdminUser {
   role: 'admin';
   createdAt?: any;
 }
+
+export interface PaymentSettings {
+  qrEnabled: boolean;
+  qrImageUrl?: string | null;
+  screenshotEnabled: boolean;
+  paymentMethods: string[];
+}

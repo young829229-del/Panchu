@@ -117,6 +117,12 @@ service cloud.firestore {
     match /system/{docId} {
       allow read, get, list: if true;
     }
+
+    // Settings Collection: Public read, Admin write
+    match /settings/{settingId} {
+      allow read, get, list: if true;
+      allow create, update, delete: if isAdmin() && isValidId(settingId);
+    }
   }
 }
 

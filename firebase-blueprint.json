@@ -81,9 +81,26 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["gender", "imageUrl", "active"]
+    },
+    "PaymentSettings": {
+      "title": "PaymentSettings",
+      "description": "Storewide payment configuration including methods, QR toggle and image, and screenshot upload toggle",
+      "type": "object",
+      "properties": {
+        "qrEnabled": { "type": "boolean" },
+        "qrImageUrl": { "type": "string", "maxLength": 500000 },
+        "screenshotEnabled": { "type": "boolean" },
+        "paymentMethods": { "type": "array", "maxLength": 10 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["qrEnabled", "screenshotEnabled", "paymentMethods"]
     }
   },
   "firestore": {
+    "/settings/{settingId}": {
+      "schema": "PaymentSettings",
+      "description": "Live store configuration for checkout payments and QR controls"
+    },
     "/banners/{bannerId}": {
       "schema": "Banner",
       "description": "Authoritative homepage hero campaign banners"

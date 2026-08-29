@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
-import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc } from '../types';
+import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc, PaymentSettings } from '../types';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 import { ALL_PRODUCTS } from '../data/products';
 
@@ -27,8 +27,51 @@ export const ADMIN_EMAIL_PRIMARY = 'young829229@gmail.com';
 export const APPROVED_MALE_BANNER_URL = 'https://i.ibb.co/XrZGLnvw/snaptik-app-7637482582606826773-slide-2.jpg';
 export const APPROVED_FEMALE_BANNER_URL = 'https://i.ibb.co/7dNkX1C3/IMG-20260820-WA0001.jpg';
 
+export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
+  qrEnabled: false,
+  qrImageUrl: null,
+  screenshotEnabled: false,
+  paymentMethods: ['eSewa', 'Bank Transfer', 'Cash on Delivery (COD)']
+};
+
 const CANONICAL_BANNERS_KEY = 'panchu_canonical_banners';
 const CANONICAL_PRODUCTS_KEY = 'panchu_canonical_products';
+const CANONICAL_PAYMENT_SETTINGS_KEY = 'panchu_canonical_payment_settings';
+
+/**
+ * Returns the currently confirmed Payment Settings synchronously from canonical cache.
+ */
+export function getCanonicalPaymentSettingsSync(): PaymentSettings {
+  if (typeof window === 'undefined') return DEFAULT_PAYMENT_SETTINGS;
+  try {
+    const saved = localStorage.getItem(CANONICAL_PAYMENT_SETTINGS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          qrEnabled: Boolean(parsed.qrEnabled),
+          qrImageUrl: parsed.qrImageUrl || null,
+          screenshotEnabled: Boolean(parsed.screenshotEnabled),
+          paymentMethods: Array.isArray(parsed.paymentMethods) && parsed.paymentMethods.length > 0
+            ? parsed.paymentMethods
+            : DEFAULT_PAYMENT_SETTINGS.paymentMethods
+        };
+      }
+    }
+  } catch (e) {
+    console.debug('Error reading canonical payment settings:', e);
+  }
+  return DEFAULT_PAYMENT_SETTINGS;
+}
+
+export function setCanonicalPaymentSettingsSync(settings: PaymentSettings): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CANONICAL_PAYMENT_SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.debug('Error saving canonical payment settings:', e);
+  }
+}
 
 /**
  * Returns the currently confirmed Firebase banners synchronously from memory/canonical cache.
@@ -1336,3 +1379,122 @@ export async function seedInitialBannersIfEmpty(): Promise<void> {
     console.warn('Initial banners check/seed notice:', e);
   }
 }
+
+/**
+ * Real-time subscription to payment settings in Firestore.
+ */
+export function subscribePaymentSettings(
+  callback: (settings: PaymentSettings) => void
+): () => void {
+  const path = 'settings/payment';
+  try {
+    const docRef = doc(db, 'settings', 'payment');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const cleanSettings: PaymentSettings = {
+            qrEnabled: Boolean(data.qrEnabled),
+            qrImageUrl: data.qrImageUrl || null,
+            screenshotEnabled: Boolean(data.screenshotEnabled),
+            paymentMethods: Array.isArray(data.paymentMethods) && data.paymentMethods.length > 0
+              ? data.paymentMethods
+              : DEFAULT_PAYMENT_SETTINGS.paymentMethods
+          };
+          setCanonicalPaymentSettingsSync(cleanSettings);
+          callback(cleanSettings);
+        } else {
+          const canonical = getCanonicalPaymentSettingsSync();
+          callback(canonical);
+        }
+      },
+      (error) => {
+        console.warn('Firestore payment settings listener notice:', error?.message || error);
+        callback(getCanonicalPaymentSettingsSync());
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to attach payment settings listener:', err);
+    callback(getCanonicalPaymentSettingsSync());
+    return () => {};
+  }
+}
+
+/**
+ * Updates payment settings in Firestore and canonical cache.
+ */
+export async function updatePaymentSettings(
+  settings: Partial<PaymentSettings>
+): Promise<void> {
+  const path = 'settings/payment';
+  try {
+    const docRef = doc(db, 'settings', 'payment');
+    const existing = getCanonicalPaymentSettingsSync();
+    const updated: PaymentSettings = {
+      ...existing,
+      ...settings,
+      paymentMethods: settings.paymentMethods && settings.paymentMethods.length > 0
+        ? settings.paymentMethods
+        : existing.paymentMethods
+    };
+
+    setCanonicalPaymentSettingsSync(updated);
+
+    await setDoc(docRef, {
+      ...updated,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+/**
+ * Uploads a QR code image to Firebase Storage (with fallback to durable WebP data URL)
+ * and updates payment settings.
+ */
+export async function uploadPaymentQrImage(file: File): Promise<string> {
+  if (!file) throw new Error('No image file selected.');
+  
+  const optimized = await optimizeImageForDurableStore(file, 1024, 1024, 0.92);
+  let downloadUrl = optimized.dataUrl;
+
+  try {
+    const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `settings/qr_code_${Date.now()}_${cleanName}`;
+    const storageRef = ref(storage, storagePath);
+    await uploadBytes(storageRef, file, { contentType: file.type || 'image/png' });
+    downloadUrl = await getDownloadURL(storageRef);
+  } catch (storageErr) {
+    console.warn('Direct storage upload notice, utilizing durable store URL:', storageErr);
+  }
+
+  await updatePaymentSettings({ qrImageUrl: downloadUrl, qrEnabled: true });
+  return downloadUrl;
+}
+
+/**
+ * Uploads a customer's payment confirmation screenshot for an order.
+ * Optimizes image and uploads to Firebase Storage (with durable fallback).
+ */
+export async function uploadPaymentScreenshot(file: File, orderId?: string): Promise<string> {
+  if (!file) throw new Error('No screenshot file selected.');
+
+  const optimized = await optimizeImageForDurableStore(file, 1280, 1280, 0.85);
+  let downloadUrl = optimized.dataUrl;
+
+  try {
+    const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const storagePath = `payment_screenshots/order_${orderId || Date.now()}_${cleanName}`;
+    const storageRef = ref(storage, storagePath);
+    await uploadBytes(storageRef, file, { contentType: file.type || 'image/jpeg' });
+    downloadUrl = await getDownloadURL(storageRef);
+  } catch (storageErr) {
+    console.warn('Screenshot upload notice, using durable store URL:', storageErr);
+  }
+
+  return downloadUrl;
+}
+
