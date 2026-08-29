@@ -93,6 +93,34 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     ? paymentSettings.paymentMethods
     : ['Cash on Delivery (COD)', 'eSewa', 'Bank Transfer'];
 
+  // Resolve method-specific QR image and toggle state
+  const getActiveQrForSelectedMethod = () => {
+    if (selectedPaymentMethod === 'eSewa') {
+      if (paymentSettings.esewaQrEnabled && paymentSettings.esewaQrImageUrl) {
+        return { imageUrl: paymentSettings.esewaQrImageUrl, label: 'eSewa QR' };
+      }
+    } else if (selectedPaymentMethod === 'Bank Transfer') {
+      if (paymentSettings.bankQrEnabled && paymentSettings.bankQrImageUrl) {
+        return { imageUrl: paymentSettings.bankQrImageUrl, label: 'Bank Transfer QR' };
+      }
+    } else if (selectedPaymentMethod === 'Cash on Delivery (COD)') {
+      if (paymentSettings.codQrEnabled && paymentSettings.codQrImageUrl) {
+        return { imageUrl: paymentSettings.codQrImageUrl, label: 'COD QR' };
+      }
+    }
+    // Backward compatibility fallback for legacy global QR if method-specific not set
+    if (
+      paymentSettings.qrEnabled &&
+      paymentSettings.qrImageUrl &&
+      selectedPaymentMethod !== 'Cash on Delivery (COD)'
+    ) {
+      return { imageUrl: paymentSettings.qrImageUrl, label: `${selectedPaymentMethod} QR` };
+    }
+    return null;
+  };
+
+  const activeQrInfo = getActiveQrForSelectedMethod();
+
   const handleScreenshotChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -459,25 +487,25 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   </div>
                 </div>
 
-                {/* QR CODE SECTION (Only rendered when QR is ON and an image exists - Collapsed with NO gap when OFF) */}
-                {paymentSettings.qrEnabled && paymentSettings.qrImageUrl ? (
+                {/* QR CODE SECTION (Only rendered when the selected method's QR is ON and an image exists - Collapsed with NO gap when OFF) */}
+                {activeQrInfo ? (
                   <div className="p-4 bg-stone-50 border border-stone-200 rounded text-center space-y-3">
                     <div className="flex items-center justify-center gap-1.5 text-xs font-mono font-bold text-stone-800 uppercase">
                       <QrCode className="w-4 h-4 text-stone-600" />
-                      <span>SCAN QR CODE TO PAY</span>
+                      <span>SCAN {activeQrInfo.label.toUpperCase()} TO PAY</span>
                     </div>
 
                     <div className="w-44 h-44 bg-white p-2.5 border border-stone-300 rounded-lg mx-auto shadow-xs flex items-center justify-center">
                       <img
-                        src={paymentSettings.qrImageUrl}
-                        alt="Store Payment QR"
+                        src={activeQrInfo.imageUrl}
+                        alt={`${selectedPaymentMethod} QR`}
                         className="w-full h-full object-contain"
                         referrerPolicy="no-referrer"
                       />
                     </div>
 
                     <p className="text-[11px] font-mono text-stone-500 max-w-sm mx-auto">
-                      Scan using eSewa or Mobile Banking app to complete payment of <strong className="text-stone-900">NPR {totalAmount}</strong>.
+                      Scan using {selectedPaymentMethod === 'Cash on Delivery (COD)' ? 'your payment app' : selectedPaymentMethod} to complete payment of <strong className="text-stone-900">NPR {totalAmount}</strong>.
                     </p>
                   </div>
                 ) : null}

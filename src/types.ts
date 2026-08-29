@@ -110,4 +110,10 @@ export interface PaymentSettings {
   qrImageUrl?: string | null;
   screenshotEnabled: boolean;
   paymentMethods: string[];
+  esewaQrEnabled?: boolean;
+  esewaQrImageUrl?: string | null;
+  bankQrEnabled?: boolean;
+  bankQrImageUrl?: string | null;
+  codQrEnabled?: boolean;
+  codQrImageUrl?: string | null;
 }

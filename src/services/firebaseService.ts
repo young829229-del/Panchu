@@ -31,12 +31,30 @@ export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   qrEnabled: false,
   qrImageUrl: null,
   screenshotEnabled: false,
-  paymentMethods: ['eSewa', 'Bank Transfer', 'Cash on Delivery (COD)']
+  paymentMethods: ['eSewa', 'Bank Transfer', 'Cash on Delivery (COD)'],
+  esewaQrEnabled: false,
+  esewaQrImageUrl: null,
+  bankQrEnabled: false,
+  bankQrImageUrl: null,
+  codQrEnabled: false,
+  codQrImageUrl: null
 };
 
 const CANONICAL_BANNERS_KEY = 'panchu_canonical_banners';
 const CANONICAL_PRODUCTS_KEY = 'panchu_canonical_products';
 const CANONICAL_PAYMENT_SETTINGS_KEY = 'panchu_canonical_payment_settings';
+
+/**
+ * Deduplicates and validates payment methods list
+ */
+function cleanPaymentMethods(methods?: any[]): string[] {
+  if (!Array.isArray(methods) || methods.length === 0) {
+    return ['eSewa', 'Bank Transfer', 'Cash on Delivery (COD)'];
+  }
+  const allowed = ['eSewa', 'Bank Transfer', 'Cash on Delivery (COD)'];
+  const unique = Array.from(new Set(methods.filter((m) => typeof m === 'string' && allowed.includes(m))));
+  return unique.length > 0 ? unique : ['eSewa', 'Bank Transfer', 'Cash on Delivery (COD)'];
+}
 
 /**
  * Returns the currently confirmed Payment Settings synchronously from canonical cache.
@@ -52,9 +70,13 @@ export function getCanonicalPaymentSettingsSync(): PaymentSettings {
           qrEnabled: Boolean(parsed.qrEnabled),
           qrImageUrl: parsed.qrImageUrl || null,
           screenshotEnabled: Boolean(parsed.screenshotEnabled),
-          paymentMethods: Array.isArray(parsed.paymentMethods) && parsed.paymentMethods.length > 0
-            ? parsed.paymentMethods
-            : DEFAULT_PAYMENT_SETTINGS.paymentMethods
+          paymentMethods: cleanPaymentMethods(parsed.paymentMethods),
+          esewaQrEnabled: Boolean(parsed.esewaQrEnabled),
+          esewaQrImageUrl: parsed.esewaQrImageUrl || null,
+          bankQrEnabled: Boolean(parsed.bankQrEnabled),
+          bankQrImageUrl: parsed.bankQrImageUrl || null,
+          codQrEnabled: Boolean(parsed.codQrEnabled),
+          codQrImageUrl: parsed.codQrImageUrl || null
         };
       }
     }
@@ -1398,9 +1420,13 @@ export function subscribePaymentSettings(
             qrEnabled: Boolean(data.qrEnabled),
             qrImageUrl: data.qrImageUrl || null,
             screenshotEnabled: Boolean(data.screenshotEnabled),
-            paymentMethods: Array.isArray(data.paymentMethods) && data.paymentMethods.length > 0
-              ? data.paymentMethods
-              : DEFAULT_PAYMENT_SETTINGS.paymentMethods
+            paymentMethods: cleanPaymentMethods(data.paymentMethods),
+            esewaQrEnabled: Boolean(data.esewaQrEnabled),
+            esewaQrImageUrl: data.esewaQrImageUrl || null,
+            bankQrEnabled: Boolean(data.bankQrEnabled),
+            bankQrImageUrl: data.bankQrImageUrl || null,
+            codQrEnabled: Boolean(data.codQrEnabled),
+            codQrImageUrl: data.codQrImageUrl || null
           };
           setCanonicalPaymentSettingsSync(cleanSettings);
           callback(cleanSettings);
@@ -1436,7 +1462,7 @@ export async function updatePaymentSettings(
       ...existing,
       ...settings,
       paymentMethods: settings.paymentMethods && settings.paymentMethods.length > 0
-        ? settings.paymentMethods
+        ? cleanPaymentMethods(settings.paymentMethods)
         : existing.paymentMethods
     };
 
@@ -1453,17 +1479,18 @@ export async function updatePaymentSettings(
 
 /**
  * Uploads a QR code image to Firebase Storage (with fallback to durable WebP data URL)
- * and updates payment settings.
+ * and updates specific payment method QR or global settings.
  */
-export async function uploadPaymentQrImage(file: File): Promise<string> {
+export async function uploadPaymentQrImage(file: File, methodId?: string): Promise<string> {
   if (!file) throw new Error('No image file selected.');
   
   const optimized = await optimizeImageForDurableStore(file, 1024, 1024, 0.92);
   let downloadUrl = optimized.dataUrl;
 
   try {
+    const cleanMethod = methodId ? methodId.replace(/[^a-zA-Z0-9]/g, '_') : 'store';
     const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const storagePath = `settings/qr_code_${Date.now()}_${cleanName}`;
+    const storagePath = `settings/qr_${cleanMethod}_${Date.now()}_${cleanName}`;
     const storageRef = ref(storage, storagePath);
     await uploadBytes(storageRef, file, { contentType: file.type || 'image/png' });
     downloadUrl = await getDownloadURL(storageRef);
@@ -1471,7 +1498,22 @@ export async function uploadPaymentQrImage(file: File): Promise<string> {
     console.warn('Direct storage upload notice, utilizing durable store URL:', storageErr);
   }
 
-  await updatePaymentSettings({ qrImageUrl: downloadUrl, qrEnabled: true });
+  const patch: Partial<PaymentSettings> = {};
+  if (methodId === 'eSewa') {
+    patch.esewaQrImageUrl = downloadUrl;
+    patch.esewaQrEnabled = true;
+  } else if (methodId === 'Bank Transfer') {
+    patch.bankQrImageUrl = downloadUrl;
+    patch.bankQrEnabled = true;
+  } else if (methodId === 'Cash on Delivery (COD)' || methodId === 'COD') {
+    patch.codQrImageUrl = downloadUrl;
+    patch.codQrEnabled = true;
+  } else {
+    patch.qrImageUrl = downloadUrl;
+    patch.qrEnabled = true;
+  }
+
+  await updatePaymentSettings(patch);
   return downloadUrl;
 }
 

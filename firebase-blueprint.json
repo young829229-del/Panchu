@@ -84,16 +84,22 @@
     },
     "PaymentSettings": {
       "title": "PaymentSettings",
-      "description": "Storewide payment configuration including methods, QR toggle and image, and screenshot upload toggle",
+      "description": "Storewide payment configuration including active methods, per-method QR toggles/images, and customer screenshot upload toggle",
       "type": "object",
       "properties": {
         "qrEnabled": { "type": "boolean" },
         "qrImageUrl": { "type": "string", "maxLength": 500000 },
         "screenshotEnabled": { "type": "boolean" },
         "paymentMethods": { "type": "array", "maxLength": 10 },
+        "esewaQrEnabled": { "type": "boolean" },
+        "esewaQrImageUrl": { "type": "string", "maxLength": 500000 },
+        "bankQrEnabled": { "type": "boolean" },
+        "bankQrImageUrl": { "type": "string", "maxLength": 500000 },
+        "codQrEnabled": { "type": "boolean" },
+        "codQrImageUrl": { "type": "string", "maxLength": 500000 },
         "updatedAt": { "type": "string" }
       },
-      "required": ["qrEnabled", "screenshotEnabled", "paymentMethods"]
+      "required": ["screenshotEnabled", "paymentMethods"]
     }
   },
   "firestore": {
