@@ -79,6 +79,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
       {/* Content & Details - Outside Product Image Frame */}
       <div className="mt-2.5 sm:mt-3 flex flex-col">
+        {/* Product Type / Fit Label */}
+        <div className="mb-0.5">
+          <span className="text-[10px] font-montserrat tracking-widest uppercase text-stone-500 dark:text-neutral-400 font-semibold">
+            {product.typeLabel || (product.gender === 'female' ? "Women's" : product.gender === 'male' ? "Men's" : 'Unisex')}
+          </span>
+        </div>
+
         {/* Product Name Link -> Opens Page on Website (Same Tab) */}
         <a
           href={productUrl}

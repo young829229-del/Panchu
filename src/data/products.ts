@@ -54,6 +54,8 @@ export const BEST_SELLING_MAIN_PRODUCT: Product = {
   subtitle: 'BEST SELLING',
   price: 1850,
   gender: 'male',
+  typeLabel: 'Unisex',
+  categories: ['Best Selling', 'Summer', 'Oversized', 'Shirts'],
   description: 'PANCHU Best Selling signature edition featuring custom heavyweight craft cotton finish and signature artwork.',
   details: [
     '240 GSM Premium Organic Cotton',
@@ -83,6 +85,8 @@ export const XOXO_TEE_GIRL: Product = {
   subtitle: 'FEMME COLLECTION',
   price: 1650,
   gender: 'female',
+  typeLabel: "Women's",
+  categories: ['Summer', 'Shirts'],
   description: 'PANCHU Xoxo edition graphic crop tee featuring fitted organic cotton weave and signature print.',
   details: [
     'Fitted modern silhouette',
@@ -111,6 +115,8 @@ export const LILLY_TEE_GIRL: Product = {
   subtitle: 'LILLY FEMME',
   price: 1750,
   gender: 'female',
+  typeLabel: "Women's",
+  categories: ['Best Selling', 'Summer', 'Shirts'],
   description: 'PANCHU Lilly Girl special edition top crafted with premium soft combed cotton and artistic front graphic.',
   details: [
     'Lilly Girl graphic artwork',
@@ -137,6 +143,8 @@ export const LILLY_TEE_MALE: Product = {
   subtitle: 'LILLY HOMME',
   price: 1950,
   gender: 'male',
+  typeLabel: 'Unisex',
+  categories: ['Best Selling', 'Oversized', 'Shirts'],
   description: 'PANCHU Lilly Male special edition oversized graphic tee with heavy weight premium cotton.',
   details: [
     'Lilly Male graphic artwork',
@@ -165,6 +173,8 @@ export const FLORA_TEE_PRODUCT: Product = {
   subtitle: 'SUMMER COLLECTION',
   price: 1850,
   gender: 'female',
+  typeLabel: "Women's",
+  categories: ['Summer', 'Shirts'],
   description: 'PANCHU Flora Tee graphic top featuring organic cotton weave and signature front artwork.',
   details: [
     'Flora artwork print',
@@ -191,6 +201,8 @@ export const PANCHU_HOOD_1: Product = {
   subtitle: 'WINTER COLLECTION',
   price: 2450,
   gender: 'male',
+  typeLabel: 'Unisex',
+  categories: ['Winter', 'Oversized'],
   description: 'PANCHU Winter Edition Panchu Hood sweatshirt built with heavy fleece cotton lining.',
   details: [
     '380 GSM Heavyweight Fleece',
@@ -217,6 +229,8 @@ export const PANCHU_HOOD_2: Product = {
   subtitle: 'WINTER COLLECTION',
   price: 2450,
   gender: 'female',
+  typeLabel: 'Unisex',
+  categories: ['Winter', 'Oversized'],
   description: 'PANCHU Winter Edition Panchu Hood sweatshirt crafted with ultra-soft fleece.',
   details: [
     '380 GSM Heavyweight Fleece',

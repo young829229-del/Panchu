@@ -1,3 +1,18 @@
+export interface CategoryItem {
+  id: string;
+  name: string;
+  slug: string;
+  order: number;
+  enabled: boolean;
+  description?: string;
+}
+
+export interface StoreProductSettings {
+  productTypes: string[];
+  defaultType: string;
+  sizes: string[];
+}
+
 export interface Product {
   id: string;
   productId?: string;
@@ -9,8 +24,10 @@ export interface Product {
   priceDisplay?: string;
   description: string;
   category?: string;
+  categories?: string[]; // Multi-category assignment
   collection?: string;
   gender?: 'male' | 'female' | 'unisex';
+  typeLabel?: string; // Product type/tag display label e.g. "Unisex", "Men's", "Women's", "Oversized", "Regular Fit", or custom
   image: string;
   images?: string[];
   additionalImages?: string[];

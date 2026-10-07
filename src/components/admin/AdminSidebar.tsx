@@ -6,11 +6,12 @@ import {
   Boxes,
   Image as ImageIcon,
   Settings,
-  CreditCard
+  CreditCard,
+  Layers
 } from 'lucide-react';
 import { PanchuLogo } from '../PanchuLogo';
 
-export type AdminTab = 'orders' | 'order_history' | 'offers' | 'products' | 'stock' | 'banners' | 'messages' | 'payments' | 'settings' | 'summary';
+export type AdminTab = 'orders' | 'order_history' | 'offers' | 'products' | 'categories' | 'stock' | 'banners' | 'messages' | 'payments' | 'settings' | 'summary';
 
 interface AdminSidebarProps {
   activeTab: AdminTab;
@@ -48,6 +49,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       label: 'Products',
       icon: Package,
       badge: productsCount > 0 ? productsCount : undefined
+    },
+    {
+      id: 'categories',
+      label: 'Categories / Product Settings',
+      icon: Layers
     },
     {
       id: 'banners',

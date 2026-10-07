@@ -178,6 +178,13 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
           {/* RIGHT: PRODUCT INFO & SELECTION */}
           <div id="product-options-section" className="md:col-span-5 flex flex-col space-y-6 pt-1">
             <div>
+              {/* Product Type / Fit Label */}
+              <div className="mb-1">
+                <span className="text-[11px] sm:text-xs font-montserrat font-bold tracking-[0.2em] uppercase text-stone-500 dark:text-neutral-400">
+                  {product.typeLabel || (product.gender === 'female' ? "Women's" : product.gender === 'male' ? "Men's" : 'Unisex')}
+                </span>
+              </div>
+
               {/* Product Title */}
               <h1 className={`text-2xl sm:text-3xl font-montserrat font-bold tracking-tight uppercase leading-snug ${
                 isDark ? 'text-white' : 'text-black'

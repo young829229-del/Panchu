@@ -123,6 +123,12 @@ service cloud.firestore {
       allow read, get, list: if true;
       allow create, update, delete: if isAdmin() && isValidId(settingId);
     }
+
+    // Categories Collection: Public read, Admin write
+    match /categories/{categoryId} {
+      allow read, get, list: if true;
+      allow create, update, delete: if isAdmin() && isValidId(categoryId);
+    }
   }
 }
 

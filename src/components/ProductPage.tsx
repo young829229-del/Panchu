@@ -7,7 +7,7 @@ import {
   getSummerCollection,
   getWinterCollection
 } from '../data/products';
-import { Product } from '../types';
+import { Product, CategoryItem } from '../types';
 import { ProductCard } from './ProductCard';
 import { ProductImage } from './ProductImage';
 import { ProductGallerySwipe } from './ProductGallerySwipe';
@@ -15,6 +15,10 @@ import { MatchPartnerSection } from './MatchPartnerSection';
 import { GetDiscountSection } from './GetDiscountSection';
 import { FooterSection } from './FooterSection';
 import { Check, Plus, Minus, ShoppingBag } from 'lucide-react';
+import {
+  getCanonicalCategoriesSync,
+  subscribeCategories
+} from '../services/firebaseService';
 
 interface ProductPageProps {
   onAddToCart: (product: Product, size: string, quantity: number) => void;
@@ -23,6 +27,7 @@ interface ProductPageProps {
   theme?: 'light' | 'dark';
   gender?: 'male' | 'female';
   products?: Product[];
+  categories?: CategoryItem[];
   onOpenTerms?: (section?: string) => void;
   onOpenContact?: () => void;
   onOpenPrivacy?: () => void;
@@ -37,6 +42,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
   theme = 'light',
   gender = 'male',
   products,
+  categories: propCategories,
   onOpenTerms,
   onOpenContact,
   onOpenPrivacy,
@@ -45,6 +51,30 @@ export const ProductPage: React.FC<ProductPageProps> = ({
 }) => {
   const isDark = theme === 'dark';
   const activeGender = gender === 'female' ? 'female' : 'male';
+
+  const [liveCategories, setLiveCategories] = useState<CategoryItem[]>(() =>
+    propCategories && propCategories.length > 0 ? propCategories : getCanonicalCategoriesSync()
+  );
+  const [selectedCategorySlug, setSelectedCategorySlug] = useState<string>('all');
+
+  useEffect(() => {
+    if (propCategories && propCategories.length > 0) {
+      setLiveCategories(propCategories);
+    }
+  }, [propCategories]);
+
+  useEffect(() => {
+    const unsub = subscribeCategories((cats) => {
+      if (cats && cats.length > 0) {
+        setLiveCategories(cats);
+      }
+    });
+    return () => unsub();
+  }, []);
+
+  const enabledCategories = useMemo(() => {
+    return liveCategories.filter(c => c.enabled !== false).sort((a, b) => a.order - b.order);
+  }, [liveCategories]);
 
   const currentAllProducts = useMemo(() => {
     return products && products.length > 0 ? products : ALL_PRODUCTS;
@@ -114,30 +144,56 @@ export const ProductPage: React.FC<ProductPageProps> = ({
     return valid.length > 0 ? valid : [selectedProduct.image];
   }, [selectedProduct]);
 
-  // Dynamic collections filtered by gender
-  const bestSellingProducts = useMemo(() => {
-    if (products && products.length > 0) {
-      const list = products.filter(p => (p.gender === activeGender || p.gender === 'unisex') && (p.bestSelling || p.badge?.toLowerCase().includes('best') || p.id.includes('bestselling')));
-      return list.length > 0 ? list.slice(0, 4) : products.filter(p => p.gender === activeGender || p.gender === 'unisex').slice(0, 4);
-    }
-    return getBestSellingProducts(activeGender);
-  }, [products, activeGender]);
+  // Helper to filter products for each dynamic category
+  const getProductsForCategory = (cat: CategoryItem) => {
+    const catNameLower = cat.name.trim().toLowerCase();
+    const catSlugLower = cat.slug.trim().toLowerCase();
 
-  const summerCollection = useMemo(() => {
-    if (products && products.length > 0) {
-      const list = products.filter(p => (p.gender === activeGender || p.gender === 'unisex') && (p.collection?.toLowerCase().includes('summer') || p.id.includes('summer')));
-      return list.length > 0 ? list.slice(0, 4) : products.filter(p => p.gender === activeGender || p.gender === 'unisex').slice(0, 4);
-    }
-    return getSummerCollection(activeGender);
-  }, [products, activeGender]);
+    return currentAllProducts.filter(p => {
+      const matchesGender = p.gender === activeGender || p.gender === 'unisex';
+      if (!matchesGender) return false;
 
-  const winterCollection = useMemo(() => {
-    if (products && products.length > 0) {
-      const list = products.filter(p => (p.gender === activeGender || p.gender === 'unisex') && (p.collection?.toLowerCase().includes('winter') || p.id.includes('winter')));
-      return list.length > 0 ? list.slice(0, 4) : products.filter(p => p.gender === activeGender || p.gender === 'unisex').slice(0, 4);
+      // 1. Explicit multi-category assignment check
+      if (Array.isArray(p.categories) && p.categories.some(c => {
+        const cLower = String(c).trim().toLowerCase();
+        return cLower === catNameLower || cLower === catSlugLower;
+      })) {
+        return true;
+      }
+
+      // 2. Legacy category string check
+      if (p.category) {
+        const cLower = p.category.trim().toLowerCase();
+        if (cLower === catNameLower || cLower === catSlugLower) return true;
+      }
+
+      // 3. Fallbacks for default collections
+      if (catNameLower === 'best selling' && (p.bestSelling || p.badge?.toLowerCase().includes('best') || p.id.includes('bestselling'))) {
+        return true;
+      }
+      if (catNameLower === 'summer' && (p.collection?.toLowerCase().includes('summer') || p.id.includes('summer'))) {
+        return true;
+      }
+      if (catNameLower === 'winter' && (p.collection?.toLowerCase().includes('winter') || p.id.includes('winter'))) {
+        return true;
+      }
+      if (catNameLower === 'shirts' && (p.name.toLowerCase().includes('tee') || p.name.toLowerCase().includes('shirt') || p.description.toLowerCase().includes('tee'))) {
+        return true;
+      }
+      if (catNameLower === 'oversized' && (p.name.toLowerCase().includes('oversize') || p.typeLabel?.toLowerCase().includes('oversize') || p.description.toLowerCase().includes('oversize'))) {
+        return true;
+      }
+
+      return false;
+    });
+  };
+
+  const displayedCategories = useMemo(() => {
+    if (selectedCategorySlug === 'all') {
+      return enabledCategories.filter(c => c.slug !== 'all');
     }
-    return getWinterCollection(activeGender);
-  }, [products, activeGender]);
+    return enabledCategories.filter(c => c.slug === selectedCategorySlug);
+  }, [enabledCategories, selectedCategorySlug]);
 
   const handleAddToCart = () => {
     if (!selectedProduct.inStock) return;
@@ -217,6 +273,13 @@ export const ProductPage: React.FC<ProductPageProps> = ({
           {/* RIGHT: PRODUCT INFO & SELECTION */}
           <div id="home-product-options" className="md:col-span-5 flex flex-col space-y-5 pt-1">
             <div>
+              {/* Product Type / Fit Label */}
+              <div className="mb-1">
+                <span className="text-[11px] sm:text-xs font-montserrat font-bold tracking-[0.2em] uppercase text-stone-500 dark:text-neutral-400">
+                  {selectedProduct.typeLabel || (selectedProduct.gender === 'female' ? "Women's" : selectedProduct.gender === 'male' ? "Men's" : 'Unisex')}
+                </span>
+              </div>
+
               {/* Product Subtitle */}
               {selectedProduct.subtitle && (
                 <div className="text-lg sm:text-xl md:text-2xl font-montserrat tracking-[0.2em] text-red-600 font-bold uppercase mb-2">
@@ -393,92 +456,88 @@ export const ProductPage: React.FC<ProductPageProps> = ({
         gender={gender}
       />
 
-      {/* 2. BEST SELLING PRODUCTS SECTION */}
-      <section id="best-selling" className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${
-        isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-stone-50 border-stone-200'
+      {/* 2. CATEGORY NAVIGATION BAR (Admin Controlled) */}
+      <section id="category-navigation-bar" className={`w-full sticky top-[57px] z-20 backdrop-blur-md border-y transition-colors duration-300 ${
+        isDark ? 'bg-neutral-950/95 border-neutral-800' : 'bg-white/95 border-stone-200'
       }`}>
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="text-left space-y-2">
-            <h2 className={`text-3xl sm:text-4xl md:text-5xl font-bebas uppercase tracking-wider ${
-              isDark ? 'text-white' : 'text-black'
-            }`}>
-              BEST SELLING PRODUCTS
-            </h2>
-            <div className={`w-12 h-0.5 ${isDark ? 'bg-white' : 'bg-black'}`} />
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
-            {bestSellingProducts.map((product) => (
-              <ProductCard
-                key={`bestseller-${product.id}`}
-                product={product}
-                onSelectProduct={onSelectProduct}
-                onAddToCart={onAddToCart}
-                onBuyNow={onBuyNow}
-                theme={theme}
-              />
-            ))}
-          </div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-12 flex items-center justify-start sm:justify-center overflow-x-auto py-3 gap-2 sm:gap-4 md:gap-6">
+          {enabledCategories.map((cat) => {
+            const isActive = selectedCategorySlug === cat.slug;
+            return (
+              <button
+                key={`cat-nav-btn-${cat.id}`}
+                type="button"
+                onClick={() => {
+                  setSelectedCategorySlug(cat.slug);
+                  if (cat.slug !== 'all') {
+                    const el = document.getElementById(`category-sec-${cat.slug}`);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                }}
+                className={`px-3 py-1.5 text-xs sm:text-sm font-montserrat font-bold tracking-widest uppercase transition-all whitespace-nowrap cursor-pointer rounded-none border-b-2 ${
+                  isActive
+                    ? isDark
+                      ? 'text-white border-white'
+                      : 'text-black border-black'
+                    : isDark
+                      ? 'text-neutral-400 border-transparent hover:text-white'
+                      : 'text-stone-500 border-transparent hover:text-black'
+                }`}
+              >
+                {cat.name}
+              </button>
+            );
+          })}
         </div>
       </section>
 
-      {/* 3. SUMMER COLLECTION SECTION */}
-      <section id="summer-collection" className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${
-        isDark ? 'bg-neutral-950 border-neutral-800' : 'bg-white border-stone-200'
-      }`}>
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="text-left space-y-2">
-            <h2 className={`text-3xl sm:text-4xl md:text-5xl font-bebas uppercase tracking-wider ${
-              isDark ? 'text-white' : 'text-black'
-            }`}>
-              SUMMER COLLECTION
-            </h2>
-            <div className={`w-12 h-0.5 ${isDark ? 'bg-white' : 'bg-black'}`} />
-          </div>
+      {/* 3. DYNAMIC CATEGORY SECTIONS (Admin Controlled) */}
+      {displayedCategories.map((cat, catIdx) => {
+        const catProducts = getProductsForCategory(cat);
+        if (catProducts.length === 0) return null;
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
-            {summerCollection.map((product) => (
-              <ProductCard
-                key={`summer-${product.id}`}
-                product={product}
-                onSelectProduct={onSelectProduct}
-                onAddToCart={onAddToCart}
-                onBuyNow={onBuyNow}
-                theme={theme}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
+        const isEven = catIdx % 2 === 0;
+        const sectionBg = isEven
+          ? isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-stone-50 border-stone-200'
+          : isDark ? 'bg-neutral-950 border-neutral-800' : 'bg-white border-stone-200';
 
-      {/* 4. WINTER COLLECTION SECTION */}
-      <section id="winter-collection" className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${
-        isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-stone-50 border-stone-200'
-      }`}>
-        <div className="max-w-7xl mx-auto space-y-8">
-          <div className="text-left space-y-2">
-            <h2 className={`text-3xl sm:text-4xl md:text-5xl font-bebas uppercase tracking-wider ${
-              isDark ? 'text-white' : 'text-black'
-            }`}>
-              WINTER COLLECTION
-            </h2>
-            <div className={`w-12 h-0.5 ${isDark ? 'bg-white' : 'bg-black'}`} />
-          </div>
+        const displayName = cat.name.toUpperCase();
+        const headerTitle = displayName.includes('COLLECTION') || displayName.includes('PRODUCTS')
+          ? displayName
+          : `${displayName} COLLECTION`;
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
-            {winterCollection.map((product) => (
-              <ProductCard
-                key={`winter-${product.id}`}
-                product={product}
-                onSelectProduct={onSelectProduct}
-                onAddToCart={onAddToCart}
-                onBuyNow={onBuyNow}
-                theme={theme}
-              />
-            ))}
-          </div>
-        </div>
-      </section>
+        return (
+          <section
+            key={`category-sec-${cat.id}`}
+            id={`category-sec-${cat.slug}`}
+            className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${sectionBg}`}
+          >
+            <div className="max-w-7xl mx-auto space-y-8">
+              <div className="text-left space-y-2">
+                <h2 className={`text-3xl sm:text-4xl md:text-5xl font-bebas uppercase tracking-wider ${
+                  isDark ? 'text-white' : 'text-black'
+                }`}>
+                  {headerTitle}
+                </h2>
+                <div className={`w-12 h-0.5 ${isDark ? 'bg-white' : 'bg-black'}`} />
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
+                {catProducts.map((product) => (
+                  <ProductCard
+                    key={`cat-${cat.id}-prod-${product.id}`}
+                    product={product}
+                    onSelectProduct={onSelectProduct}
+                    onAddToCart={onAddToCart}
+                    onBuyNow={onBuyNow}
+                    theme={theme}
+                  />
+                ))}
+              </div>
+            </div>
+          </section>
+        );
+      })}
 
       {/* 3. GET DISCOUNT & FOOTER */}
       <GetDiscountSection theme={theme} />

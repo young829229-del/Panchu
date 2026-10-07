@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft,
   Upload,
@@ -11,10 +11,19 @@ import {
   Plus,
   X,
   AlertCircle,
-  Eye
+  Eye,
+  Tag
 } from 'lucide-react';
-import { Product } from '../../types';
+import { Product, CategoryItem } from '../../types';
 import { PanchuLogo } from '../PanchuLogo';
+import {
+  getCanonicalCategoriesSync,
+  getCanonicalSizesSync,
+  getCanonicalProductTypesSync,
+  subscribeCategories,
+  subscribeSizes,
+  saveCategoriesToFirestore
+} from '../../services/firebaseService';
 
 interface ProductEditorViewProps {
   product: Partial<Product>;
@@ -26,9 +35,7 @@ interface ProductEditorViewProps {
   errorMessage?: string;
 }
 
-const CATEGORIES = ['TEES', 'HOODIES', 'JACKETS', 'PANTS', 'SWEATSHIRTS', 'ACCESSORIES'];
 const COLLECTIONS = ['ESSENTIALS', 'SIGNATURE', 'MONOCHROME 2026', 'STREETWEAR DROP 01', 'LIMITED EDITION'];
-const SIZES_DEFAULT = ['S', 'M', 'L', 'XL', 'XXL'];
 
 export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
   product: initialProduct,
@@ -39,6 +46,43 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
   isSaving,
   errorMessage: initialError
 }) => {
+  const [availableCategories, setAvailableCategories] = useState<CategoryItem[]>(() => getCanonicalCategoriesSync());
+  const [availableSizes, setAvailableSizes] = useState<string[]>(() => getCanonicalSizesSync());
+  const [availableTypes, setAvailableTypes] = useState<string[]>(() => getCanonicalProductTypesSync());
+
+  const [newCustomCatInput, setNewCustomCatInput] = useState('');
+  const [showAddCatInput, setShowAddCatInput] = useState(false);
+  const [newCustomSizeInput, setNewCustomSizeInput] = useState('');
+  const [showAddSizeInput, setShowAddSizeInput] = useState(false);
+
+  useEffect(() => {
+    const unsubCat = subscribeCategories((cats) => {
+      if (cats && cats.length > 0) setAvailableCategories(cats);
+    });
+    const unsubSize = subscribeSizes((szs) => {
+      if (szs && szs.length > 0) setAvailableSizes(szs);
+    });
+    return () => {
+      unsubCat();
+      unsubSize();
+    };
+  }, []);
+
+  const initialCategoriesList = Array.isArray(initialProduct.categories) && initialProduct.categories.length > 0
+    ? initialProduct.categories
+    : (initialProduct.category ? [initialProduct.category] : ['Best Selling']);
+
+  const initialSizesList = Array.isArray(initialProduct.sizes) && initialProduct.sizes.length > 0
+    ? initialProduct.sizes
+    : ['S', 'M', 'L', 'XL'];
+
+  const initialStock: Record<string, number> = {};
+  initialSizesList.forEach((s) => {
+    initialStock[s] = (initialProduct.stock && typeof initialProduct.stock[s] === 'number')
+      ? initialProduct.stock[s]
+      : 10;
+  });
+
   const [formData, setFormData] = useState<Partial<Product>>({
     name: initialProduct.name || '',
     subtitle: initialProduct.subtitle || 'PANCHU SIGNATURE DROP 2026',
@@ -46,13 +90,15 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
     MRP: initialProduct.MRP || initialProduct.originalPrice || 1800,
     originalPrice: initialProduct.originalPrice || initialProduct.MRP || 1800,
     description: initialProduct.description || '',
-    category: initialProduct.category || 'TEES',
+    category: initialProduct.category || initialCategoriesList[0] || 'Tees',
+    categories: initialCategoriesList,
+    typeLabel: initialProduct.typeLabel || 'Unisex',
     collection: initialProduct.collection || 'ESSENTIALS',
     gender: initialProduct.gender || 'unisex',
     image: initialProduct.image || '',
     images: initialProduct.images || (initialProduct.image ? [initialProduct.image] : []),
-    sizes: initialProduct.sizes?.length ? initialProduct.sizes : SIZES_DEFAULT,
-    stock: initialProduct.stock || { S: 10, M: 15, L: 15, XL: 8, XXL: 5 },
+    sizes: initialSizesList,
+    stock: initialProduct.stock || initialStock,
     active: initialProduct.active ?? true,
     inStock: initialProduct.inStock ?? true,
     id: initialProduct.id
@@ -117,6 +163,106 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
     });
   };
 
+  const handleToggleCategory = (catName: string) => {
+    const current = formData.categories || [];
+    let updated: string[];
+    if (current.includes(catName)) {
+      updated = current.filter(c => c !== catName);
+      if (updated.length === 0) updated = [catName]; // keep at least 1
+    } else {
+      updated = [...current, catName];
+    }
+    setFormData({
+      ...formData,
+      categories: updated,
+      category: updated[0] || 'Tees'
+    });
+  };
+
+  const handleAddNewCategoryOnTheFly = async () => {
+    const trimmed = newCustomCatInput.trim();
+    if (!trimmed) return;
+    const exists = availableCategories.some(c => c.name.toLowerCase() === trimmed.toLowerCase());
+    let newCatsList = [...availableCategories];
+    if (!exists) {
+      const newCat: CategoryItem = {
+        id: `cat-${Date.now()}`,
+        name: trimmed,
+        slug: trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
+        order: availableCategories.length,
+        enabled: true
+      };
+      newCatsList = [...availableCategories, newCat];
+      setAvailableCategories(newCatsList);
+      try {
+        await saveCategoriesToFirestore(newCatsList);
+      } catch (e) {
+        console.warn('Error saving category on the fly:', e);
+      }
+    }
+
+    const current = formData.categories || [];
+    if (!current.includes(trimmed)) {
+      const updated = [...current, trimmed];
+      setFormData({
+        ...formData,
+        categories: updated,
+        category: updated[0]
+      });
+    }
+    setNewCustomCatInput('');
+    setShowAddCatInput(false);
+  };
+
+  const handleAddSizeToProduct = (sizeToAdd: string) => {
+    const currentSizes = formData.sizes || [];
+    if (currentSizes.includes(sizeToAdd)) return;
+
+    const updatedSizes = [...currentSizes, sizeToAdd];
+    const updatedStock = { ...(formData.stock || {}) };
+    if (typeof updatedStock[sizeToAdd] !== 'number') {
+      updatedStock[sizeToAdd] = 10;
+    }
+
+    setFormData({
+      ...formData,
+      sizes: updatedSizes,
+      stock: updatedStock,
+      inStock: Object.values(updatedStock).some(q => Number(q) > 0)
+    });
+  };
+
+  const handleRemoveSizeFromProduct = (sizeToRemove: string) => {
+    const currentSizes = formData.sizes || [];
+    if (currentSizes.length <= 1) {
+      setError('Product must have at least one apparel size.');
+      return;
+    }
+
+    const updatedSizes = currentSizes.filter(s => s !== sizeToRemove);
+    const updatedStock = { ...(formData.stock || {}) };
+    delete updatedStock[sizeToRemove];
+
+    setFormData({
+      ...formData,
+      sizes: updatedSizes,
+      stock: updatedStock,
+      inStock: Object.values(updatedStock).some(q => Number(q) > 0)
+    });
+  };
+
+  const handleCreateCustomSizeOnTheFly = () => {
+    const trimmed = newCustomSizeInput.trim().toUpperCase();
+    if (!trimmed) return;
+
+    if (!availableSizes.includes(trimmed)) {
+      setAvailableSizes(prev => [...prev, trimmed]);
+    }
+    handleAddSizeToProduct(trimmed);
+    setNewCustomSizeInput('');
+    setShowAddSizeInput(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name?.trim()) {
@@ -132,7 +278,15 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
 
     setError('');
     try {
-      await onSave(formData, newImageFiles);
+      const dataToSave: Partial<Product> = {
+        ...formData,
+        category: formData.categories?.[0] || formData.category || 'Tees',
+        categories: formData.categories && formData.categories.length > 0 ? formData.categories : ['Best Selling'],
+        typeLabel: formData.typeLabel?.trim() || 'Unisex',
+        sizes: formData.sizes && formData.sizes.length > 0 ? formData.sizes : ['S', 'M', 'L', 'XL'],
+        stock: formData.stock || {}
+      };
+      await onSave(dataToSave, newImageFiles);
       setSaveSuccess(true);
       setTimeout(() => {
         setSaveSuccess(false);
@@ -380,52 +534,128 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
 
             {/* CARD 3: Size Inventory & Stock Levels */}
             <div className="bg-white rounded-2xl p-5 sm:p-7 border border-stone-200 shadow-2xs space-y-5">
-              <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-100 pb-3">
                 <div>
                   <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wide">
                     Inventory & Size Stock
                   </h2>
                   <p className="text-xs text-stone-500 mt-0.5">
-                    Adjust quantity available for each apparel size.
+                    Manage sizes available for this product and stock quantities.
                   </p>
                 </div>
-                <span className="text-xs font-bold font-mono px-3 py-1 bg-stone-100 rounded-full text-stone-800">
-                  Total: {totalStock} Units
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold font-mono px-3 py-1 bg-stone-100 rounded-full text-stone-800">
+                    Total: {totalStock} Units
+                  </span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                {(formData.sizes || SIZES_DEFAULT).map((size) => {
-                  const qty = formData.stock?.[size] ?? 0;
-                  return (
-                    <div
-                      key={size}
-                      className="p-3.5 rounded-2xl border border-stone-200/80 bg-[#faf9f8] text-center space-y-2"
-                    >
-                      <span className="text-xs font-bold font-mono text-stone-700 block uppercase">
-                        Size {size}
-                      </span>
-                      <div className="flex items-center justify-center gap-1.5">
-                        <input
-                          type="number"
-                          min="0"
-                          value={qty}
-                          onChange={(e) =>
-                            handleStockChange(size, parseInt(e.target.value) || 0)
-                          }
-                          className="w-full text-center font-mono font-bold text-sm bg-white py-1.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-1 focus:ring-stone-900"
-                        />
-                      </div>
-                      <span
-                        className={`text-[10px] font-mono block ${
-                          qty > 0 ? 'text-emerald-600 font-semibold' : 'text-red-500 font-semibold'
-                        }`}
+              {/* Active Sizes on this Product */}
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold text-stone-700 block uppercase tracking-wider">
+                  Active Sizes on Product ({(formData.sizes || []).length})
+                </span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {(formData.sizes || []).map((size) => {
+                    const qty = formData.stock?.[size] ?? 0;
+                    return (
+                      <div
+                        key={`size-stock-${size}`}
+                        className="p-3.5 rounded-2xl border border-stone-200/80 bg-[#faf9f8] text-center space-y-2 relative group"
                       >
-                        {qty > 0 ? `${qty} in stock` : 'Out of stock'}
-                      </span>
-                    </div>
-                  );
-                })}
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold font-mono text-stone-800 uppercase">
+                            Size {size}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSizeFromProduct(size)}
+                            className="p-1 text-stone-300 hover:text-red-600 rounded transition-colors cursor-pointer"
+                            title={`Remove size ${size} from product`}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            value={qty}
+                            onChange={(e) =>
+                              handleStockChange(size, parseInt(e.target.value) || 0)
+                            }
+                            className="w-full text-center font-mono font-bold text-sm bg-white py-1.5 rounded-xl border border-stone-200 focus:outline-none focus:ring-1 focus:ring-stone-900"
+                          />
+                        </div>
+                        <span
+                          className={`text-[10px] font-mono block ${
+                            qty > 0 ? 'text-emerald-600 font-semibold' : 'text-red-500 font-semibold'
+                          }`}
+                        >
+                          {qty > 0 ? `${qty} in stock` : 'Out of stock'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Add Sizes to Product */}
+              <div className="pt-3 border-t border-stone-100 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-stone-700">
+                    Add Size to Product
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddSizeInput(!showAddSizeInput)}
+                    className="text-xs font-semibold text-[#ff4d4f] hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Custom Size</span>
+                  </button>
+                </div>
+
+                {/* Inline custom size input */}
+                {showAddSizeInput && (
+                  <div className="flex items-center gap-2 p-2 bg-stone-50 rounded-xl border border-stone-200">
+                    <input
+                      type="text"
+                      placeholder="e.g. XL, 3XL, 28..."
+                      value={newCustomSizeInput}
+                      onChange={(e) => setNewCustomSizeInput(e.target.value)}
+                      className="px-2.5 py-1 text-xs font-mono font-bold uppercase rounded-lg border border-stone-300 bg-white flex-1 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCreateCustomSizeOnTheFly}
+                      className="px-3 py-1 text-xs bg-stone-900 hover:bg-black text-white rounded-lg font-bold cursor-pointer"
+                    >
+                      Add Size
+                    </button>
+                  </div>
+                )}
+
+                {/* Unassigned Available Sizes Quick Click Chips */}
+                <div className="flex flex-wrap gap-2">
+                  {availableSizes.map((sz) => {
+                    const isAlreadyOnProduct = (formData.sizes || []).includes(sz);
+                    if (isAlreadyOnProduct) return null;
+
+                    return (
+                      <button
+                        key={`add-sz-${sz}`}
+                        type="button"
+                        onClick={() => handleAddSizeToProduct(sz)}
+                        className="px-2.5 py-1 rounded-lg border border-dashed border-stone-300 bg-white hover:border-emerald-600 hover:text-emerald-700 text-stone-600 text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1"
+                        title={`Add ${sz} to this product`}
+                      >
+                        <Plus className="w-3 h-3" />
+                        <span>{sz}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -569,47 +799,127 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
               </div>
             </div>
 
-            {/* CARD 5: Category & Apparel Classification */}
+            {/* CARD 5: Category Assignment & Product Type */}
             <div className="bg-white rounded-2xl p-5 sm:p-7 border border-stone-200 shadow-2xs space-y-5">
-              <div className="border-b border-stone-100 pb-3">
-                <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wide">
-                  Categorization
-                </h2>
+              <div className="border-b border-stone-100 pb-3 flex items-center justify-between">
+                <div>
+                  <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wide">
+                    Categories & Product Type
+                  </h2>
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    Assign product to one or multiple categories and define display label.
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-4">
+                {/* 1. Multi-Category Assignment */}
                 <div>
-                  <label className="block text-xs font-bold text-stone-800 mb-1.5">
-                    Category *
-                  </label>
-                  <select
-                    value={formData.category || 'TEES'}
-                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full px-4 py-2.5 rounded-xl border border-stone-200 bg-white text-xs font-sans text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 transition-all font-semibold"
-                  >
-                    {CATEGORIES.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-xs font-bold text-stone-800">
+                      Product Categories * (Select All That Apply)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCatInput(!showAddCatInput)}
+                      className="text-[11px] font-bold text-[#ff4d4f] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>New Category</span>
+                    </button>
+                  </div>
+
+                  {showAddCatInput && (
+                    <div className="flex items-center gap-1.5 p-2 bg-stone-50 rounded-xl border border-stone-200 mb-2.5">
+                      <input
+                        type="text"
+                        placeholder="New category name..."
+                        value={newCustomCatInput}
+                        onChange={(e) => setNewCustomCatInput(e.target.value)}
+                        className="px-2.5 py-1 text-xs rounded-lg border border-stone-300 bg-white flex-1 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddNewCategoryOnTheFly}
+                        className="px-2.5 py-1 text-xs bg-stone-900 text-white rounded-lg font-bold cursor-pointer"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Multi-Select Category Badges */}
+                  <div className="flex flex-wrap gap-2">
+                    {availableCategories.filter(c => c.enabled !== false).map((cat) => {
+                      const isSelected = (formData.categories || []).includes(cat.name);
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => handleToggleCategory(cat.name)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-sans font-semibold transition-all cursor-pointer flex items-center gap-1.5 border ${
+                            isSelected
+                              ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
+                              : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-stone-400'
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3 text-white" />}
+                          <span>{cat.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-stone-400 mt-1.5">
+                    This product will appear under all selected categories across the website.
+                  </p>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-stone-800 mb-1.5">
-                    Gender / Fit
+                {/* 2. Product Type / Tag Label (Unisex, Men's, Women's, Oversized, Custom) */}
+                <div className="pt-3 border-t border-stone-100 space-y-2">
+                  <label className="block text-xs font-bold text-stone-800">
+                    Product Type / Tag Label
                   </label>
-                  <select
-                    value={formData.gender || 'unisex'}
-                    onChange={(e) =>
-                      setFormData({ ...formData, gender: e.target.value as any })
-                    }
-                    className="w-full px-4 py-2.5 rounded-xl border border-stone-200 bg-white text-xs font-sans text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 transition-all"
-                  >
-                    <option value="unisex">Unisex Oversized</option>
-                    <option value="men">Men</option>
-                    <option value="women">Women</option>
-                  </select>
+                  <p className="text-[11px] text-stone-500">
+                    Display text shown on product pages and cards (default is "Unisex").
+                  </p>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {['Unisex', "Men's", "Women's", 'Oversized', 'Regular Fit'].map((preset) => {
+                      const isPresetActive = (formData.typeLabel || 'Unisex') === preset;
+                      return (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => {
+                            let g: 'male' | 'female' | 'unisex' = 'unisex';
+                            if (preset === "Men's") g = 'male';
+                            if (preset === "Women's") g = 'female';
+                            setFormData({
+                              ...formData,
+                              typeLabel: preset,
+                              gender: g
+                            });
+                          }}
+                          className={`px-2.5 py-1 text-xs rounded-lg font-medium border cursor-pointer transition-all ${
+                            isPresetActive
+                              ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                              : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-stone-400'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Editable Free Text Input for custom label */}
+                  <input
+                    type="text"
+                    value={formData.typeLabel || ''}
+                    onChange={(e) => setFormData({ ...formData, typeLabel: e.target.value })}
+                    placeholder="e.g. Unisex, Men's, Custom label..."
+                    className="w-full px-3.5 py-2 rounded-xl border border-stone-200 bg-white text-xs font-sans text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 transition-all font-semibold"
+                  />
                 </div>
 
                 {/* Live Catalog Status */}

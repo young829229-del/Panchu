@@ -9,7 +9,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { CustomerAccountPage } from './components/CustomerAccountPage';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
-import { Product, CartItem } from './types';
+import { Product, CartItem, CategoryItem } from './types';
 import { ALL_PRODUCTS, APPROVED_MALE_BANNER_URL, APPROVED_FEMALE_BANNER_URL } from './data/products';
 import {
   subscribeProducts,
@@ -17,7 +17,10 @@ import {
   subscribeBanners,
   seedInitialBannersIfEmpty,
   getCanonicalBannersSync,
-  getCanonicalProductsSync
+  getCanonicalProductsSync,
+  subscribeCategories,
+  seedInitialCategoriesIfEmpty,
+  getCanonicalCategoriesSync
 } from './services/firebaseService';
 import { auth } from './firebase';
 import {
@@ -93,9 +96,27 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [gender, setGender] = useState<'male' | 'female'>('male');
   const [banners, setBanners] = useState<{ male: string; female: string }>(() => getCanonicalBannersSync());
+  const [categories, setCategories] = useState<CategoryItem[]>(() => getCanonicalCategoriesSync());
 
   const catalogRef = useRef<HTMLDivElement>(null);
   const preloadedImagesRef = useRef<Set<string>>(new Set());
+
+  // Subscribe to real-time Firebase categories collection & auto-seed if empty
+  useEffect(() => {
+    seedInitialCategoriesIfEmpty().catch(err => {
+      console.warn('Initial categories check/seed:', err);
+    });
+
+    const unsubscribe = subscribeCategories((liveCats) => {
+      if (liveCats && liveCats.length > 0) {
+        setCategories(liveCats);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Subscribe to real-time Firebase banners collection
   useEffect(() => {
@@ -527,6 +548,7 @@ export default function App() {
         <div ref={catalogRef}>
           <ProductPage
             products={products}
+            categories={categories}
             onAddToCart={handleAddToCart}
             onBuyNow={handleBuyNow}
             onSelectProduct={handleSelectProduct}

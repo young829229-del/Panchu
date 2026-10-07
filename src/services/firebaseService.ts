@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
-import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc, PaymentSettings } from '../types';
+import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc, PaymentSettings, CategoryItem } from '../types';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 import { ALL_PRODUCTS } from '../data/products';
 
@@ -40,9 +40,122 @@ export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   codQrImageUrl: null
 };
 
+export const DEFAULT_CATEGORIES: CategoryItem[] = [
+  { id: 'all', name: 'All', slug: 'all', order: 0, enabled: true },
+  { id: 'best-selling', name: 'Best Selling', slug: 'best-selling', order: 1, enabled: true },
+  { id: 'summer', name: 'Summer', slug: 'summer', order: 2, enabled: true },
+  { id: 'winter', name: 'Winter', slug: 'winter', order: 3, enabled: true },
+  { id: 'shirts', name: 'Shirts', slug: 'shirts', order: 4, enabled: true },
+  { id: 'oversized', name: 'Oversized', slug: 'oversized', order: 5, enabled: true }
+];
+
+export const DEFAULT_SIZES: string[] = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+
+export const DEFAULT_PRODUCT_TYPES: string[] = [
+  'Unisex',
+  "Men's",
+  "Women's",
+  'Oversized',
+  'Regular Fit'
+];
+
 const CANONICAL_BANNERS_KEY = 'panchu_canonical_banners';
 const CANONICAL_PRODUCTS_KEY = 'panchu_canonical_products';
 const CANONICAL_PAYMENT_SETTINGS_KEY = 'panchu_canonical_payment_settings';
+const CANONICAL_CATEGORIES_KEY = 'panchu_canonical_categories';
+const CANONICAL_SIZES_KEY = 'panchu_canonical_sizes';
+const CANONICAL_PRODUCT_TYPES_KEY = 'panchu_canonical_product_types';
+
+/**
+ * Returns the currently confirmed Category list synchronously from canonical cache.
+ */
+export function getCanonicalCategoriesSync(): CategoryItem[] {
+  if (typeof window === 'undefined') return DEFAULT_CATEGORIES;
+  try {
+    const saved = localStorage.getItem(CANONICAL_CATEGORIES_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((c, idx) => ({
+          id: c.id || `cat-${idx}`,
+          name: c.name || '',
+          slug: c.slug || (c.name ? c.name.toLowerCase().replace(/\s+/g, '-') : `cat-${idx}`),
+          order: typeof c.order === 'number' ? c.order : idx,
+          enabled: c.enabled !== false,
+          description: c.description || ''
+        }));
+      }
+    }
+  } catch (e) {
+    console.debug('Error reading canonical categories:', e);
+  }
+  return DEFAULT_CATEGORIES;
+}
+
+export function setCanonicalCategoriesSync(categories: CategoryItem[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CANONICAL_CATEGORIES_KEY, JSON.stringify(categories));
+  } catch (e) {
+    console.debug('Error writing canonical categories cache:', e);
+  }
+}
+
+/**
+ * Returns currently confirmed Apparel Sizes synchronously from canonical cache.
+ */
+export function getCanonicalSizesSync(): string[] {
+  if (typeof window === 'undefined') return DEFAULT_SIZES;
+  try {
+    const saved = localStorage.getItem(CANONICAL_SIZES_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((s): s is string => typeof s === 'string' && s.trim().length > 0);
+      }
+    }
+  } catch (e) {
+    console.debug('Error reading canonical sizes:', e);
+  }
+  return DEFAULT_SIZES;
+}
+
+export function setCanonicalSizesSync(sizes: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CANONICAL_SIZES_KEY, JSON.stringify(sizes));
+  } catch (e) {
+    console.debug('Error writing canonical sizes cache:', e);
+  }
+}
+
+/**
+ * Returns currently confirmed Product Type labels synchronously from canonical cache.
+ */
+export function getCanonicalProductTypesSync(): string[] {
+  if (typeof window === 'undefined') return DEFAULT_PRODUCT_TYPES;
+  try {
+    const saved = localStorage.getItem(CANONICAL_PRODUCT_TYPES_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
+      }
+    }
+  } catch (e) {
+    console.debug('Error reading canonical product types:', e);
+  }
+  return DEFAULT_PRODUCT_TYPES;
+}
+
+export function setCanonicalProductTypesSync(types: string[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CANONICAL_PRODUCT_TYPES_KEY, JSON.stringify(types));
+  } catch (e) {
+    console.debug('Error writing canonical product types cache:', e);
+  }
+}
 
 /**
  * Deduplicates and validates payment methods list
@@ -221,6 +334,13 @@ export function subscribeProducts(
 
           const hasAnyStock = Object.values(stock).some((qty) => Number(qty) > 0);
 
+          const rawCategories = Array.isArray(data.categories) && data.categories.length > 0
+            ? data.categories.map((c: any) => String(c).trim()).filter(Boolean)
+            : (data.category ? [String(data.category).trim()] : ['All']);
+          const typeLabel = typeof data.typeLabel === 'string' && data.typeLabel.trim().length > 0
+            ? data.typeLabel.trim()
+            : 'Unisex';
+
           products.push({
             id: docSnap.id,
             productId: docSnap.id,
@@ -234,7 +354,9 @@ export function subscribeProducts(
             details: Array.isArray(data.details) ? data.details : [],
             composition: data.composition || '',
             color: data.color || '',
-            category: data.category || 'Tees',
+            category: data.category || rawCategories[0] || 'Tees',
+            categories: rawCategories,
+            typeLabel,
             collection: data.collection || 'General',
             gender: data.gender || 'unisex',
             image: data.image || (Array.isArray(data.images) && data.images[0]) || '',
@@ -571,6 +693,13 @@ export async function saveProductToFirestore(
 
     const anyStock = Object.values(stock).some(q => q > 0);
 
+    const categoriesList = Array.isArray(productData.categories) && productData.categories.length > 0
+      ? Array.from(new Set(productData.categories.map((c) => String(c).trim()).filter(Boolean)))
+      : (productData.category ? [String(productData.category).trim()] : ['All']);
+
+    const primaryCategory = categoriesList[0] || productData.category || 'Tees';
+    const typeLabel = productData.typeLabel?.trim() || 'Unisex';
+
     const docData: Record<string, any> = {
       name: productData.name?.trim() || 'Untitled Product',
       subtitle: productData.subtitle?.trim() || '',
@@ -578,16 +707,18 @@ export async function saveProductToFirestore(
       MRP: Number(productData.MRP || productData.originalPrice) || Number(productData.price) || 0,
       originalPrice: Number(productData.originalPrice || productData.MRP) || Number(productData.price) || 0,
       description: productData.description?.trim() || '',
-      category: productData.category || 'Tees',
+      category: primaryCategory,
+      categories: categoriesList,
+      typeLabel: typeLabel,
       collection: productData.collection || 'General',
-      gender: productData.gender || 'male',
+      gender: productData.gender || 'unisex',
       image: mainImage,
       images: images,
       additionalImages: images,
       sizes: sizes,
       stock: stock,
       featured: Boolean(productData.featured),
-      bestSelling: Boolean(productData.bestSelling),
+      bestSelling: Boolean(productData.bestSelling) || categoriesList.includes('Best Selling'),
       badge: productData.badge?.trim() || '',
       active: productData.active !== false,
       inStock: productData.inStock !== false && anyStock,
@@ -1538,5 +1669,212 @@ export async function uploadPaymentScreenshot(file: File, orderId?: string): Pro
   }
 
   return downloadUrl;
+}
+
+/**
+ * Realtime subscription to store categories
+ */
+export function subscribeCategories(
+  callback: (categories: CategoryItem[]) => void
+): () => void {
+  const path = 'settings/categories';
+  try {
+    const docRef = doc(db, 'settings', 'categories');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (Array.isArray(data?.categories) && data.categories.length > 0) {
+            const categories: CategoryItem[] = data.categories.map((c: any, idx: number) => ({
+              id: c.id || `cat-${idx}`,
+              name: c.name || '',
+              slug: c.slug || (c.name ? c.name.toLowerCase().replace(/\s+/g, '-') : `cat-${idx}`),
+              order: typeof c.order === 'number' ? c.order : idx,
+              enabled: c.enabled !== false,
+              description: c.description || ''
+            }));
+            categories.sort((a, b) => a.order - b.order);
+            setCanonicalCategoriesSync(categories);
+            callback(categories);
+            return;
+          }
+        }
+        const cached = getCanonicalCategoriesSync();
+        callback(cached);
+      },
+      (error) => {
+        console.warn('Firestore categories listener notification:', error?.message || error);
+        callback(getCanonicalCategoriesSync());
+      }
+    );
+    return unsubscribe;
+  } catch (error) {
+    console.warn('Firestore categories setup error:', error);
+    callback(getCanonicalCategoriesSync());
+    return () => {};
+  }
+}
+
+/**
+ * Saves categories list to Firestore & canonical cache
+ */
+export async function saveCategoriesToFirestore(categories: CategoryItem[]): Promise<void> {
+  const path = 'settings/categories';
+  try {
+    const cleanCategories = categories.map((c, idx) => ({
+      id: c.id?.trim() || `cat-${idx}-${Date.now()}`,
+      name: c.name?.trim() || `Category ${idx + 1}`,
+      slug: c.slug?.trim() || c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || `cat-${idx}`,
+      order: typeof c.order === 'number' ? c.order : idx,
+      enabled: c.enabled !== false,
+      description: c.description?.trim() || ''
+    }));
+    cleanCategories.sort((a, b) => a.order - b.order);
+
+    const docRef = doc(db, 'settings', 'categories');
+    await setDoc(docRef, {
+      categories: cleanCategories,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    setCanonicalCategoriesSync(cleanCategories);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Seeds initial default categories if not already present in Firestore
+ */
+export async function seedInitialCategoriesIfEmpty(): Promise<void> {
+  const path = 'settings/categories';
+  try {
+    const docRef = doc(db, 'settings', 'categories');
+    const snap = await getDoc(docRef);
+    if (!snap.exists() || !Array.isArray(snap.data()?.categories) || snap.data()?.categories.length === 0) {
+      await setDoc(docRef, {
+        categories: DEFAULT_CATEGORIES,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      setCanonicalCategoriesSync(DEFAULT_CATEGORIES);
+    }
+  } catch (error) {
+    console.debug('Categories seed check note:', error);
+  }
+}
+
+/**
+ * Realtime subscription to store apparel sizes
+ */
+export function subscribeSizes(
+  callback: (sizes: string[]) => void
+): () => void {
+  const path = 'settings/sizes';
+  try {
+    const docRef = doc(db, 'settings', 'sizes');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (Array.isArray(data?.sizes) && data.sizes.length > 0) {
+            const sizes = data.sizes.filter((s: any): s is string => typeof s === 'string' && s.trim().length > 0);
+            setCanonicalSizesSync(sizes);
+            callback(sizes);
+            return;
+          }
+        }
+        callback(getCanonicalSizesSync());
+      },
+      (error) => {
+        console.warn('Firestore sizes listener notification:', error?.message || error);
+        callback(getCanonicalSizesSync());
+      }
+    );
+    return unsubscribe;
+  } catch (error) {
+    console.warn('Firestore sizes setup error:', error);
+    callback(getCanonicalSizesSync());
+    return () => {};
+  }
+}
+
+/**
+ * Saves apparel sizes list to Firestore & canonical cache
+ */
+export async function saveSizesToFirestore(sizes: string[]): Promise<void> {
+  const path = 'settings/sizes';
+  try {
+    const cleanSizes = Array.from(new Set(sizes.map(s => String(s).trim()).filter(Boolean)));
+    const docRef = doc(db, 'settings', 'sizes');
+    await setDoc(docRef, {
+      sizes: cleanSizes,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    setCanonicalSizesSync(cleanSizes);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Realtime subscription to product type / tag labels
+ */
+export function subscribeProductTypes(
+  callback: (types: string[]) => void
+): () => void {
+  const path = 'settings/product_types';
+  try {
+    const docRef = doc(db, 'settings', 'product_types');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (Array.isArray(data?.productTypes) && data.productTypes.length > 0) {
+            const types = data.productTypes.filter((t: any): t is string => typeof t === 'string' && t.trim().length > 0);
+            setCanonicalProductTypesSync(types);
+            callback(types);
+            return;
+          }
+        }
+        callback(getCanonicalProductTypesSync());
+      },
+      (error) => {
+        console.warn('Firestore product types listener notification:', error?.message || error);
+        callback(getCanonicalProductTypesSync());
+      }
+    );
+    return unsubscribe;
+  } catch (error) {
+    console.warn('Firestore product types setup error:', error);
+    callback(getCanonicalProductTypesSync());
+    return () => {};
+  }
+}
+
+/**
+ * Saves product type labels to Firestore & canonical cache
+ */
+export async function saveProductTypesToFirestore(types: string[]): Promise<void> {
+  const path = 'settings/product_types';
+  try {
+    const cleanTypes = Array.from(new Set(types.map(t => String(t).trim()).filter(Boolean)));
+    const docRef = doc(db, 'settings', 'product_types');
+    await setDoc(docRef, {
+      productTypes: cleanTypes,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    setCanonicalProductTypesSync(cleanTypes);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
 }
 

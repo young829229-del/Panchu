@@ -13,8 +13,10 @@
         "priceDisplay": { "type": "string", "maxLength": 50 },
         "description": { "type": "string", "maxLength": 3000 },
         "category": { "type": "string", "maxLength": 100 },
+        "categories": { "type": "array", "maxLength": 20 },
         "collection": { "type": "string", "maxLength": 100 },
         "gender": { "type": "string", "enum": ["male", "female", "unisex"] },
+        "typeLabel": { "type": "string", "maxLength": 100 },
         "image": { "type": "string", "maxLength": 1000 },
         "images": { "type": "array", "maxLength": 10 },
         "additionalImages": { "type": "array", "maxLength": 10 },
@@ -100,12 +102,30 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["screenshotEnabled", "paymentMethods"]
+    },
+    "CategorySettings": {
+      "title": "CategorySettings",
+      "description": "Store categories ordered list and enabled flags",
+      "type": "object",
+      "properties": {
+        "categories": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "SizeSettings": {
+      "title": "SizeSettings",
+      "description": "Store apparel size options",
+      "type": "object",
+      "properties": {
+        "sizes": { "type": "array" },
+        "updatedAt": { "type": "string" }
+      }
     }
   },
   "firestore": {
     "/settings/{settingId}": {
       "schema": "PaymentSettings",
-      "description": "Live store configuration for checkout payments and QR controls"
+      "description": "Live store configuration for checkout payments, categories, sizes and QR controls"
     },
     "/banners/{bannerId}": {
       "schema": "Banner",
