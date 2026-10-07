@@ -144,7 +144,7 @@ export const ProductPage: React.FC<ProductPageProps> = ({
     return valid.length > 0 ? valid : [selectedProduct.image];
   }, [selectedProduct]);
 
-  // Helper to filter products for each dynamic category
+  // Helper to filter products for each dynamic category (Product categories is the single source of truth)
   const getProductsForCategory = (cat: CategoryItem) => {
     const catNameLower = cat.name.trim().toLowerCase();
     const catSlugLower = cat.slug.trim().toLowerCase();
@@ -153,35 +153,23 @@ export const ProductPage: React.FC<ProductPageProps> = ({
       const matchesGender = p.gender === activeGender || p.gender === 'unisex';
       if (!matchesGender) return false;
 
-      // 1. Explicit multi-category assignment check
-      if (Array.isArray(p.categories) && p.categories.some(c => {
-        const cLower = String(c).trim().toLowerCase();
-        return cLower === catNameLower || cLower === catSlugLower;
-      })) {
+      // "ALL" category displays all products matching gender
+      if (catNameLower === 'all' || catSlugLower === 'all') {
         return true;
       }
 
-      // 2. Legacy category string check
+      // 1. Explicit multi-category assignment check (Single Source of Truth)
+      if (Array.isArray(p.categories)) {
+        return p.categories.some(c => {
+          const cLower = String(c).trim().toLowerCase();
+          return cLower === catNameLower || cLower === catSlugLower;
+        });
+      }
+
+      // 2. Legacy category string check only if p.categories has never been set
       if (p.category) {
         const cLower = p.category.trim().toLowerCase();
         if (cLower === catNameLower || cLower === catSlugLower) return true;
-      }
-
-      // 3. Fallbacks for default collections
-      if (catNameLower === 'best selling' && (p.bestSelling || p.badge?.toLowerCase().includes('best') || p.id.includes('bestselling'))) {
-        return true;
-      }
-      if (catNameLower === 'summer' && (p.collection?.toLowerCase().includes('summer') || p.id.includes('summer'))) {
-        return true;
-      }
-      if (catNameLower === 'winter' && (p.collection?.toLowerCase().includes('winter') || p.id.includes('winter'))) {
-        return true;
-      }
-      if (catNameLower === 'shirts' && (p.name.toLowerCase().includes('tee') || p.name.toLowerCase().includes('shirt') || p.description.toLowerCase().includes('tee'))) {
-        return true;
-      }
-      if (catNameLower === 'oversized' && (p.name.toLowerCase().includes('oversize') || p.typeLabel?.toLowerCase().includes('oversize') || p.description.toLowerCase().includes('oversize'))) {
-        return true;
       }
 
       return false;

@@ -68,9 +68,18 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
     };
   }, []);
 
-  const initialCategoriesList = Array.isArray(initialProduct.categories) && initialProduct.categories.length > 0
+  const initialCategoriesList = Array.isArray(initialProduct.categories)
     ? initialProduct.categories
-    : (initialProduct.category ? [initialProduct.category] : ['Best Selling']);
+    : (() => {
+        const cats: string[] = [];
+        if (initialProduct.category) cats.push(initialProduct.category);
+        if (initialProduct.bestSelling || initialProduct.badge?.toLowerCase().includes('best')) cats.push('Best Selling');
+        if (initialProduct.collection?.toLowerCase().includes('summer') || initialProduct.id?.includes('summer')) cats.push('Summer');
+        if (initialProduct.collection?.toLowerCase().includes('winter') || initialProduct.id?.includes('winter')) cats.push('Winter');
+        if (initialProduct.name?.toLowerCase().includes('hood') || initialProduct.name?.toLowerCase().includes('oversize')) cats.push('Oversized');
+        if (initialProduct.name?.toLowerCase().includes('tee') || initialProduct.name?.toLowerCase().includes('shirt')) cats.push('Shirts');
+        return cats.length > 0 ? Array.from(new Set(cats)) : ['Best Selling'];
+      })();
 
   const initialSizesList = Array.isArray(initialProduct.sizes) && initialProduct.sizes.length > 0
     ? initialProduct.sizes
@@ -165,17 +174,24 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
 
   const handleToggleCategory = (catName: string) => {
     const current = formData.categories || [];
+    const normalizedName = catName.trim();
+    const isAlreadySelected = current.some(
+      (c) => c.toLowerCase() === normalizedName.toLowerCase()
+    );
+
     let updated: string[];
-    if (current.includes(catName)) {
-      updated = current.filter(c => c !== catName);
-      if (updated.length === 0) updated = [catName]; // keep at least 1
+    if (isAlreadySelected) {
+      updated = current.filter(
+        (c) => c.toLowerCase() !== normalizedName.toLowerCase()
+      );
     } else {
-      updated = [...current, catName];
+      updated = [...current, normalizedName];
     }
+
     setFormData({
       ...formData,
       categories: updated,
-      category: updated[0] || 'Tees'
+      category: updated[0] || ''
     });
   };
 
@@ -799,149 +815,171 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
               </div>
             </div>
 
-            {/* CARD 5: Category Assignment & Product Type */}
+            {/* CARD 5: Category Assignment (Checkboxes) & Product Type */}
             <div className="bg-white rounded-2xl p-5 sm:p-7 border border-stone-200 shadow-2xs space-y-5">
               <div className="border-b border-stone-100 pb-3 flex items-center justify-between">
                 <div>
-                  <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wide">
-                    Categories & Product Type
+                  <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wide flex items-center gap-2">
+                    <Tag className="w-4 h-4 text-[#ff4d4f]" />
+                    <span>Categories</span>
                   </h2>
                   <p className="text-xs text-stone-500 mt-0.5">
-                    Assign product to one or multiple categories and define display label.
+                    Select which storefront collections this product belongs to.
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCatInput(!showAddCatInput)}
+                  className="text-xs font-semibold text-[#ff4d4f] hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>New Category</span>
+                </button>
               </div>
 
-              <div className="space-y-4">
-                {/* 1. Multi-Category Assignment */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-xs font-bold text-stone-800">
-                      Product Categories * (Select All That Apply)
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowAddCatInput(!showAddCatInput)}
-                      className="text-[11px] font-bold text-[#ff4d4f] hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>New Category</span>
-                    </button>
-                  </div>
-
-                  {showAddCatInput && (
-                    <div className="flex items-center gap-1.5 p-2 bg-stone-50 rounded-xl border border-stone-200 mb-2.5">
-                      <input
-                        type="text"
-                        placeholder="New category name..."
-                        value={newCustomCatInput}
-                        onChange={(e) => setNewCustomCatInput(e.target.value)}
-                        className="px-2.5 py-1 text-xs rounded-lg border border-stone-300 bg-white flex-1 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddNewCategoryOnTheFly}
-                        className="px-2.5 py-1 text-xs bg-stone-900 text-white rounded-lg font-bold cursor-pointer"
-                      >
-                        Add
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Multi-Select Category Badges */}
-                  <div className="flex flex-wrap gap-2">
-                    {availableCategories.filter(c => c.enabled !== false).map((cat) => {
-                      const isSelected = (formData.categories || []).includes(cat.name);
-                      return (
-                        <button
-                          key={cat.id}
-                          type="button"
-                          onClick={() => handleToggleCategory(cat.name)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-sans font-semibold transition-all cursor-pointer flex items-center gap-1.5 border ${
-                            isSelected
-                              ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                              : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-stone-400'
-                          }`}
-                        >
-                          {isSelected && <Check className="w-3 h-3 text-white" />}
-                          <span>{cat.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[11px] text-stone-400 mt-1.5">
-                    This product will appear under all selected categories across the website.
-                  </p>
-                </div>
-
-                {/* 2. Product Type / Tag Label (Unisex, Men's, Women's, Oversized, Custom) */}
-                <div className="pt-3 border-t border-stone-100 space-y-2">
-                  <label className="block text-xs font-bold text-stone-800">
-                    Product Type / Tag Label
-                  </label>
-                  <p className="text-[11px] text-stone-500">
-                    Display text shown on product pages and cards (default is "Unisex").
-                  </p>
-
-                  <div className="flex flex-wrap gap-1.5">
-                    {['Unisex', "Men's", "Women's", 'Oversized', 'Regular Fit'].map((preset) => {
-                      const isPresetActive = (formData.typeLabel || 'Unisex') === preset;
-                      return (
-                        <button
-                          key={preset}
-                          type="button"
-                          onClick={() => {
-                            let g: 'male' | 'female' | 'unisex' = 'unisex';
-                            if (preset === "Men's") g = 'male';
-                            if (preset === "Women's") g = 'female';
-                            setFormData({
-                              ...formData,
-                              typeLabel: preset,
-                              gender: g
-                            });
-                          }}
-                          className={`px-2.5 py-1 text-xs rounded-lg font-medium border cursor-pointer transition-all ${
-                            isPresetActive
-                              ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
-                              : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-stone-400'
-                          }`}
-                        >
-                          {preset}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {/* Editable Free Text Input for custom label */}
+              {showAddCatInput && (
+                <div className="flex items-center gap-2 p-2 bg-stone-50 rounded-xl border border-stone-200">
                   <input
                     type="text"
-                    value={formData.typeLabel || ''}
-                    onChange={(e) => setFormData({ ...formData, typeLabel: e.target.value })}
-                    placeholder="e.g. Unisex, Men's, Custom label..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-stone-200 bg-white text-xs font-sans text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 transition-all font-semibold"
+                    placeholder="New category name (e.g. Winter, Hoodies)..."
+                    value={newCustomCatInput}
+                    onChange={(e) => setNewCustomCatInput(e.target.value)}
+                    className="px-2.5 py-1 text-xs rounded-lg border border-stone-300 bg-white flex-1 focus:outline-none"
                   />
-                </div>
-
-                {/* Live Catalog Status */}
-                <div className="pt-3 border-t border-stone-100 flex items-center justify-between">
-                  <div>
-                    <span className="text-xs font-bold text-stone-900 block">Catalog Visibility</span>
-                    <span className="text-[11px] text-stone-500">Show in live store search & listings</span>
-                  </div>
                   <button
                     type="button"
-                    onClick={() => setFormData({ ...formData, active: !formData.active })}
-                    className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${
-                      formData.active ? 'bg-emerald-600' : 'bg-stone-300'
-                    }`}
+                    onClick={handleAddNewCategoryOnTheFly}
+                    className="px-2.5 py-1 text-xs bg-stone-900 hover:bg-black text-white rounded-lg font-bold cursor-pointer shrink-0"
                   >
-                    <div
-                      className={`bg-white w-4 h-4 rounded-full shadow-xs transform transition-transform ${
-                        formData.active ? 'translate-x-5' : 'translate-x-0'
-                      }`}
-                    />
+                    Add & Select
                   </button>
                 </div>
+              )}
+
+              {/* Category Checkboxes List */}
+              <div className="space-y-2">
+                {availableCategories.filter(c => c.enabled !== false).map((cat) => {
+                  const catName = cat.name.trim();
+                  const isChecked = (formData.categories || []).some(
+                    c => c.toLowerCase() === catName.toLowerCase() || c.toLowerCase() === cat.slug.toLowerCase()
+                  );
+
+                  return (
+                    <label
+                      key={`cat-cb-${cat.id}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleToggleCategory(catName);
+                      }}
+                      className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none ${
+                        isChecked
+                          ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
+                          : 'bg-[#faf9f8] hover:bg-stone-100 text-stone-800 border-stone-200/90'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        {/* Checkbox box indicator */}
+                        <div
+                          className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors ${
+                            isChecked
+                              ? 'bg-white text-stone-900 border-white'
+                              : 'bg-white text-transparent border-stone-300'
+                          }`}
+                        >
+                          {isChecked ? (
+                            <Check className="w-3.5 h-3.5 stroke-[3]" />
+                          ) : (
+                            <span className="w-3.5 h-3.5" />
+                          )}
+                        </div>
+                        <span className="text-xs sm:text-sm font-bold uppercase tracking-wide">
+                          {catName}
+                        </span>
+                      </div>
+
+                      <span
+                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
+                          isChecked ? 'bg-white/20 text-white' : 'bg-stone-200/70 text-stone-500'
+                        }`}
+                      >
+                        {isChecked ? 'SELECTED' : 'OFF'}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <p className="text-[11px] text-stone-400">
+                This product will automatically appear under all selected categories across the storefront.
+              </p>
+
+              {/* Product Type / Tag Label (Unisex, Men's, Women's, Oversized, Custom) */}
+              <div className="pt-4 border-t border-stone-100 space-y-2.5">
+                <label className="block text-xs font-bold text-stone-800">
+                  Product Type / Tag Label
+                </label>
+                <p className="text-[11px] text-stone-500">
+                  Display text shown on product pages and cards (default is "Unisex").
+                </p>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {['Unisex', "Men's", "Women's", 'Oversized', 'Regular Fit'].map((preset) => {
+                    const isPresetActive = (formData.typeLabel || 'Unisex') === preset;
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          let g: 'male' | 'female' | 'unisex' = 'unisex';
+                          if (preset === "Men's") g = 'male';
+                          if (preset === "Women's") g = 'female';
+                          setFormData({
+                            ...formData,
+                            typeLabel: preset,
+                            gender: g
+                          });
+                        }}
+                        className={`px-2.5 py-1 text-xs rounded-lg font-medium border cursor-pointer transition-all ${
+                          isPresetActive
+                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                            : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-stone-400'
+                        }`}
+                      >
+                        {preset}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Editable Free Text Input for custom label */}
+                <input
+                  type="text"
+                  value={formData.typeLabel || ''}
+                  onChange={(e) => setFormData({ ...formData, typeLabel: e.target.value })}
+                  placeholder="e.g. Unisex, Men's, Custom label..."
+                  className="w-full px-3.5 py-2 rounded-xl border border-stone-200 bg-white text-xs font-sans text-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-900/10 focus:border-stone-900 transition-all font-semibold"
+                />
+              </div>
+
+              {/* Live Catalog Status */}
+              <div className="pt-3 border-t border-stone-100 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-stone-900 block">Catalog Visibility</span>
+                  <span className="text-[11px] text-stone-500">Show in live store search & listings</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, active: !formData.active })}
+                  className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer ${
+                    formData.active ? 'bg-emerald-600' : 'bg-stone-300'
+                  }`}
+                >
+                  <div
+                    className={`bg-white w-4 h-4 rounded-full shadow-xs transform transition-transform ${
+                      formData.active ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
 

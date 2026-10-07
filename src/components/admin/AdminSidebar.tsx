@@ -52,7 +52,7 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
     },
     {
       id: 'categories',
-      label: 'Categories / Product Settings',
+      label: 'Categories',
       icon: Layers
     },
     {

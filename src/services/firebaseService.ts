@@ -334,9 +334,9 @@ export function subscribeProducts(
 
           const hasAnyStock = Object.values(stock).some((qty) => Number(qty) > 0);
 
-          const rawCategories = Array.isArray(data.categories) && data.categories.length > 0
+          const rawCategories = Array.isArray(data.categories)
             ? data.categories.map((c: any) => String(c).trim()).filter(Boolean)
-            : (data.category ? [String(data.category).trim()] : ['All']);
+            : (data.category ? [String(data.category).trim()] : []);
           const typeLabel = typeof data.typeLabel === 'string' && data.typeLabel.trim().length > 0
             ? data.typeLabel.trim()
             : 'Unisex';
@@ -693,9 +693,9 @@ export async function saveProductToFirestore(
 
     const anyStock = Object.values(stock).some(q => q > 0);
 
-    const categoriesList = Array.isArray(productData.categories) && productData.categories.length > 0
+    const categoriesList = Array.isArray(productData.categories)
       ? Array.from(new Set(productData.categories.map((c) => String(c).trim()).filter(Boolean)))
-      : (productData.category ? [String(productData.category).trim()] : ['All']);
+      : (productData.category ? [String(productData.category).trim()] : []);
 
     const primaryCategory = categoriesList[0] || productData.category || 'Tees';
     const typeLabel = productData.typeLabel?.trim() || 'Unisex';
@@ -718,7 +718,7 @@ export async function saveProductToFirestore(
       sizes: sizes,
       stock: stock,
       featured: Boolean(productData.featured),
-      bestSelling: Boolean(productData.bestSelling) || categoriesList.includes('Best Selling'),
+      bestSelling: categoriesList.some(c => c.toLowerCase() === 'best selling') || (Array.isArray(productData.categories) ? false : Boolean(productData.bestSelling)),
       badge: productData.badge?.trim() || '',
       active: productData.active !== false,
       inStock: productData.inStock !== false && anyStock,

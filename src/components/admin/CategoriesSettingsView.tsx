@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Layers,
+  Tag,
   Plus,
   Trash2,
   Edit2,
@@ -8,28 +8,17 @@ import {
   X,
   ArrowUp,
   ArrowDown,
-  Save,
-  Tag,
-  Maximize2,
-  Sliders,
   AlertCircle,
-  Loader2,
-  Sparkles
+  RotateCcw,
+  PackageOpen,
+  Info
 } from 'lucide-react';
 import { CategoryItem, Product } from '../../types';
 import {
   subscribeCategories,
   saveCategoriesToFirestore,
   getCanonicalCategoriesSync,
-  subscribeSizes,
-  saveSizesToFirestore,
-  getCanonicalSizesSync,
-  subscribeProductTypes,
-  saveProductTypesToFirestore,
-  getCanonicalProductTypesSync,
-  DEFAULT_CATEGORIES,
-  DEFAULT_SIZES,
-  DEFAULT_PRODUCT_TYPES
+  DEFAULT_CATEGORIES
 } from '../../services/firebaseService';
 
 interface CategoriesSettingsViewProps {
@@ -48,24 +37,6 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
   const [categorySuccessMsg, setCategorySuccessMsg] = useState<string>('');
   const [categoryErrorMsg, setCategoryErrorMsg] = useState<string>('');
 
-  // Sizes State
-  const [sizes, setSizes] = useState<string[]>(() => getCanonicalSizesSync());
-  const [newSizeName, setNewSizeName] = useState<string>('');
-  const [editingSizeIdx, setEditingSizeIdx] = useState<number | null>(null);
-  const [editingSizeValue, setEditingSizeValue] = useState<string>('');
-  const [isSavingSizes, setIsSavingSizes] = useState<boolean>(false);
-  const [sizeSuccessMsg, setSizeSuccessMsg] = useState<string>('');
-  const [sizeErrorMsg, setSizeErrorMsg] = useState<string>('');
-
-  // Product Type Labels State
-  const [productTypes, setProductTypes] = useState<string[]>(() => getCanonicalProductTypesSync());
-  const [newTypeLabel, setNewTypeLabel] = useState<string>('');
-  const [editingTypeIdx, setEditingTypeIdx] = useState<number | null>(null);
-  const [editingTypeValue, setEditingTypeValue] = useState<string>('');
-  const [isSavingTypes, setIsSavingTypes] = useState<boolean>(false);
-  const [typeSuccessMsg, setTypeSuccessMsg] = useState<string>('');
-  const [typeErrorMsg, setTypeErrorMsg] = useState<string>('');
-
   // Subscriptions to live Firestore
   useEffect(() => {
     const unsubCat = subscribeCategories((liveCats) => {
@@ -74,22 +45,8 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
       }
     });
 
-    const unsubSizes = subscribeSizes((liveSizes) => {
-      if (liveSizes && liveSizes.length > 0) {
-        setSizes(liveSizes);
-      }
-    });
-
-    const unsubTypes = subscribeProductTypes((liveTypes) => {
-      if (liveTypes && liveTypes.length > 0) {
-        setProductTypes(liveTypes);
-      }
-    });
-
     return () => {
       unsubCat();
-      unsubSizes();
-      unsubTypes();
     };
   }, []);
 
@@ -122,25 +79,10 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
     try {
       setIsSavingCategories(true);
       await saveCategoriesToFirestore(updated);
-      setCategorySuccessMsg(`Category "${trimmed}" added and published to store!`);
+      setCategorySuccessMsg(`Category "${trimmed}" created! It is now available in the product editor.`);
       setTimeout(() => setCategorySuccessMsg(''), 4000);
     } catch (err: any) {
       setCategoryErrorMsg(err?.message || 'Failed to save new category.');
-    } finally {
-      setIsSavingCategories(false);
-    }
-  };
-
-  const handleToggleEnableCategory = async (catId: string) => {
-    const updated = categories.map(c => c.id === catId ? { ...c, enabled: !c.enabled } : c);
-    setCategories(updated);
-    try {
-      setIsSavingCategories(true);
-      await saveCategoriesToFirestore(updated);
-      setCategorySuccessMsg('Category visibility updated!');
-      setTimeout(() => setCategorySuccessMsg(''), 3000);
-    } catch (err: any) {
-      setCategoryErrorMsg(err?.message || 'Failed to update category.');
     } finally {
       setIsSavingCategories(false);
     }
@@ -151,12 +93,12 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
     setEditingName(cat.name);
   };
 
-  const handleSaveEditCategory = async (catId: string) => {
+  const handleSaveEditCategory = async (id: string) => {
     const trimmed = editingName.trim();
     if (!trimmed) return;
 
-    const updated = categories.map(c => {
-      if (c.id === catId) {
+    const updated = categories.map((c) => {
+      if (c.id === id) {
         return {
           ...c,
           name: trimmed,
@@ -173,10 +115,33 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
     try {
       setIsSavingCategories(true);
       await saveCategoriesToFirestore(updated);
-      setCategorySuccessMsg(`Category renamed to "${trimmed}"! Store updated.`);
+      setCategorySuccessMsg(`Category renamed to "${trimmed}"! Store updated in real-time.`);
       setTimeout(() => setCategorySuccessMsg(''), 4000);
     } catch (err: any) {
-      setCategoryErrorMsg(err?.message || 'Failed to update category.');
+      setCategoryErrorMsg(err?.message || 'Failed to rename category.');
+    } finally {
+      setIsSavingCategories(false);
+    }
+  };
+
+  const handleToggleEnableCategory = async (id: string) => {
+    const updated = categories.map((c) => {
+      if (c.id === id) {
+        return { ...c, enabled: !c.enabled };
+      }
+      return c;
+    });
+
+    setCategories(updated);
+
+    try {
+      setIsSavingCategories(true);
+      await saveCategoriesToFirestore(updated);
+      const toggled = updated.find(c => c.id === id);
+      setCategorySuccessMsg(`Category "${toggled?.name}" is now ${toggled?.enabled ? 'Active' : 'Hidden'} on storefront.`);
+      setTimeout(() => setCategorySuccessMsg(''), 3000);
+    } catch (err: any) {
+      setCategoryErrorMsg(err?.message || 'Failed to toggle category.');
     } finally {
       setIsSavingCategories(false);
     }
@@ -184,10 +149,11 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
 
   const handleDeleteCategory = async (cat: CategoryItem) => {
     if (categories.length <= 1) {
-      setCategoryErrorMsg('You must have at least one category.');
+      setCategoryErrorMsg('You must keep at least one category.');
       return;
     }
-    if (!window.confirm(`Are you sure you want to delete category "${cat.name}"? Products assigned to it will remain intact.`)) {
+
+    if (!window.confirm(`Delete category "${cat.name}" from storefront? Product data will remain intact.`)) {
       return;
     }
 
@@ -220,7 +186,7 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
     try {
       setIsSavingCategories(true);
       await saveCategoriesToFirestore(updated);
-      setCategorySuccessMsg('Category order updated and applied to store!');
+      setCategorySuccessMsg('Category order updated!');
       setTimeout(() => setCategorySuccessMsg(''), 3000);
     } catch (err: any) {
       setCategoryErrorMsg(err?.message || 'Failed to update category order.');
@@ -237,7 +203,7 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
     try {
       setIsSavingCategories(true);
       await saveCategoriesToFirestore(DEFAULT_CATEGORIES);
-      setCategorySuccessMsg('Categories reset to defaults.');
+      setCategorySuccessMsg('Categories reset to standard defaults.');
       setTimeout(() => setCategorySuccessMsg(''), 4000);
     } catch (err: any) {
       setCategoryErrorMsg(err?.message || 'Failed to reset categories.');
@@ -246,203 +212,17 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
     }
   };
 
-  // --- Size Handlers ---
-  const handleAddSize = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = newSizeName.trim().toUpperCase();
-    if (!trimmed) return;
-
-    if (sizes.includes(trimmed)) {
-      setSizeErrorMsg(`Size "${trimmed}" already exists.`);
-      return;
-    }
-
-    const updated = [...sizes, trimmed];
-    setSizes(updated);
-    setNewSizeName('');
-    setSizeErrorMsg('');
-
-    try {
-      setIsSavingSizes(true);
-      await saveSizesToFirestore(updated);
-      setSizeSuccessMsg(`Size "${trimmed}" added! Now available in product editor.`);
-      setTimeout(() => setSizeSuccessMsg(''), 4000);
-    } catch (err: any) {
-      setSizeErrorMsg(err?.message || 'Failed to save new size.');
-    } finally {
-      setIsSavingSizes(false);
-    }
-  };
-
-  const handleRemoveSize = async (sizeToRemove: string) => {
-    if (sizes.length <= 1) {
-      setSizeErrorMsg('Must have at least one apparel size.');
-      return;
-    }
-    if (!window.confirm(`Remove size "${sizeToRemove}" from store size options? Existing product stock data will remain safe.`)) {
-      return;
-    }
-
-    const updated = sizes.filter(s => s !== sizeToRemove);
-    setSizes(updated);
-
-    try {
-      setIsSavingSizes(true);
-      await saveSizesToFirestore(updated);
-      setSizeSuccessMsg(`Size "${sizeToRemove}" removed.`);
-      setTimeout(() => setSizeSuccessMsg(''), 4000);
-    } catch (err: any) {
-      setSizeErrorMsg(err?.message || 'Failed to delete size.');
-    } finally {
-      setIsSavingSizes(false);
-    }
-  };
-
-  const handleStartEditSize = (idx: number, val: string) => {
-    setEditingSizeIdx(idx);
-    setEditingSizeValue(val);
-  };
-
-  const handleSaveEditSize = async (idx: number) => {
-    const trimmed = editingSizeValue.trim().toUpperCase();
-    if (!trimmed) return;
-
-    const updated = [...sizes];
-    updated[idx] = trimmed;
-    setSizes(updated);
-    setEditingSizeIdx(null);
-    setEditingSizeValue('');
-
-    try {
-      setIsSavingSizes(true);
-      await saveSizesToFirestore(updated);
-      setSizeSuccessMsg(`Size renamed to "${trimmed}"!`);
-      setTimeout(() => setSizeSuccessMsg(''), 4000);
-    } catch (err: any) {
-      setSizeErrorMsg(err?.message || 'Failed to save size.');
-    } finally {
-      setIsSavingSizes(false);
-    }
-  };
-
-  const handleMoveSize = async (idx: number, direction: 'left' | 'right') => {
-    const targetIdx = direction === 'left' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= sizes.length) return;
-
-    const reordered = [...sizes];
-    const [moved] = reordered.splice(idx, 1);
-    reordered.splice(targetIdx, 0, moved);
-    setSizes(reordered);
-
-    try {
-      setIsSavingSizes(true);
-      await saveSizesToFirestore(reordered);
-    } catch (err: any) {
-      setSizeErrorMsg(err?.message || 'Failed to update size order.');
-    } finally {
-      setIsSavingSizes(false);
-    }
-  };
-
-  // --- Product Type Labels Handlers ---
-  const handleAddTypeLabel = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const trimmed = newTypeLabel.trim();
-    if (!trimmed) return;
-
-    if (productTypes.includes(trimmed)) {
-      setTypeErrorMsg(`Label "${trimmed}" already exists.`);
-      return;
-    }
-
-    const updated = [...productTypes, trimmed];
-    setProductTypes(updated);
-    setNewTypeLabel('');
-    setTypeErrorMsg('');
-
-    try {
-      setIsSavingTypes(true);
-      await saveProductTypesToFirestore(updated);
-      setTypeSuccessMsg(`Product type "${trimmed}" added!`);
-      setTimeout(() => setTypeSuccessMsg(''), 4000);
-    } catch (err: any) {
-      setTypeErrorMsg(err?.message || 'Failed to save product type.');
-    } finally {
-      setIsSavingTypes(false);
-    }
-  };
-
-  const handleRemoveTypeLabel = async (labelToRemove: string) => {
-    if (productTypes.length <= 1) {
-      setTypeErrorMsg('Must have at least one product type label.');
-      return;
-    }
-    const updated = productTypes.filter(t => t !== labelToRemove);
-    setProductTypes(updated);
-
-    try {
-      setIsSavingTypes(true);
-      await saveProductTypesToFirestore(updated);
-      setTypeSuccessMsg(`Label "${labelToRemove}" removed.`);
-      setTimeout(() => setTypeSuccessMsg(''), 4000);
-    } catch (err: any) {
-      setTypeErrorMsg(err?.message || 'Failed to delete type label.');
-    } finally {
-      setIsSavingTypes(false);
-    }
-  };
-
-  const handleStartEditType = (idx: number, val: string) => {
-    setEditingTypeIdx(idx);
-    setEditingTypeValue(val);
-  };
-
-  const handleSaveEditType = async (idx: number) => {
-    const trimmed = editingTypeValue.trim();
-    if (!trimmed) return;
-
-    const updated = [...productTypes];
-    updated[idx] = trimmed;
-    setProductTypes(updated);
-    setEditingTypeIdx(null);
-    setEditingTypeValue('');
-
-    try {
-      setIsSavingTypes(true);
-      await saveProductTypesToFirestore(updated);
-      setTypeSuccessMsg(`Label updated to "${trimmed}"!`);
-      setTimeout(() => setTypeSuccessMsg(''), 4000);
-    } catch (err: any) {
-      setTypeErrorMsg(err?.message || 'Failed to update type label.');
-    } finally {
-      setIsSavingTypes(false);
-    }
-  };
-
-  // Compute products count per category
-  const getProductCountForCategory = (catName: string, catSlug: string) => {
-    if (catName.toLowerCase() === 'all') return products.length;
-    return products.filter(p => {
-      if (Array.isArray(p.categories) && p.categories.some(c => c.toLowerCase() === catName.toLowerCase())) return true;
-      if (p.category && p.category.toLowerCase() === catName.toLowerCase()) return true;
-      if (catName.toLowerCase() === 'best selling' && (p.bestSelling || p.badge?.toLowerCase().includes('best'))) return true;
-      if (catName.toLowerCase() === 'summer' && p.collection?.toLowerCase().includes('summer')) return true;
-      if (catName.toLowerCase() === 'winter' && p.collection?.toLowerCase().includes('winter')) return true;
-      return false;
-    }).length;
-  };
-
   return (
-    <div className="space-y-8 pt-2 max-w-6xl">
+    <div className="space-y-6 pt-2 max-w-4xl">
       {/* Header Info */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200 pb-5">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold font-sans text-stone-900 flex items-center gap-2.5">
-            <Layers className="w-6 h-6 text-[#ff4d4f]" />
-            <span>Categories & Product Settings</span>
+            <Tag className="w-6 h-6 text-[#ff4d4f]" />
+            <span>Store Categories</span>
           </h1>
           <p className="text-xs text-stone-500 font-sans mt-1">
-            Manage storefront category tabs & collections, available product sizes, and product type labels. Changes sync to live website in real-time.
+            Create, rename, reorder, and enable/disable storefront categories. Changes update live website navigation and collections automatically.
           </p>
         </div>
 
@@ -450,24 +230,36 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
           <button
             type="button"
             onClick={handleResetCategoriesToDefault}
-            className="px-3 py-2 rounded-xl border border-stone-200 hover:bg-stone-50 text-stone-600 text-xs font-semibold cursor-pointer transition-colors"
-            title="Reset standard categories"
+            className="px-3.5 py-2 rounded-xl border border-stone-200 hover:bg-stone-50 text-stone-600 text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
+            title="Reset to default categories"
           >
-            Reset Defaults
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span>Reset Standard</span>
           </button>
         </div>
       </div>
 
-      {/* SECTION 1: STORE CATEGORIES MANAGEMENT */}
-      <div className="bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-2xs space-y-6">
+      {/* Info Banner explaining the workflow */}
+      <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 flex items-start gap-3 text-xs text-amber-900">
+        <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+        <div className="space-y-1">
+          <p className="font-bold">Product Category Assignment Workflow</p>
+          <p className="text-amber-800">
+            Products are assigned to categories directly inside the product edit form. Go to <strong>Products → Open Product → Edit</strong> and select your desired categories using checkboxes (e.g. Best Selling, Summer, Winter, Shirts, Oversized).
+          </p>
+        </div>
+      </div>
+
+      {/* STORE CATEGORIES MANAGEMENT */}
+      <div className="bg-white rounded-2xl p-6 sm:p-7 border border-stone-200 shadow-2xs space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
           <div>
             <h2 className="text-base font-bold text-stone-900 flex items-center gap-2">
               <Tag className="w-4 h-4 text-stone-700" />
-              <span>Store Categories ({categories.length})</span>
+              <span>Category List ({categories.length})</span>
             </h2>
             <p className="text-xs text-stone-500 mt-0.5">
-              Add, rename, reorder, or toggle categories shown on customer website navigation and collection sections.
+              Add new categories or reorder positions.
             </p>
           </div>
 
@@ -475,10 +267,10 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
           <form onSubmit={handleAddCategory} className="flex items-center gap-2">
             <input
               type="text"
-              placeholder="e.g. Shirts, Oversized..."
+              placeholder="e.g. Summer, Winter, Shirts..."
               value={newCategoryName}
               onChange={(e) => setNewCategoryName(e.target.value)}
-              className="px-3.5 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#ff4d4f]/20 focus:border-[#ff4d4f] min-w-[200px]"
+              className="px-3.5 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#ff4d4f]/20 focus:border-[#ff4d4f] min-w-[220px]"
             />
             <button
               type="submit"
@@ -509,7 +301,6 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
         <div className="border border-stone-200 rounded-xl overflow-hidden divide-y divide-stone-100">
           {categories.map((cat, idx) => {
             const isEditing = editingCategoryId === cat.id;
-            const productCount = getProductCountForCategory(cat.name, cat.slug);
 
             return (
               <div
@@ -582,12 +373,9 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
                       <span className="text-xs sm:text-sm font-bold font-sans text-stone-900 uppercase tracking-wide">
                         {cat.name}
                       </span>
-                      <span className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 text-[10px] font-mono font-semibold">
-                        {productCount} {productCount === 1 ? 'product' : 'products'}
-                      </span>
                       {!cat.enabled && (
                         <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
-                          Disabled
+                          Hidden
                         </span>
                       )}
                     </div>
@@ -638,236 +426,6 @@ export const CategoriesSettingsView: React.FC<CategoriesSettingsViewProps> = ({
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* SECTION 2: APPAREL SIZE MANAGEMENT */}
-      <div className="bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-2xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
-          <div>
-            <h2 className="text-base font-bold text-stone-900 flex items-center gap-2">
-              <Maximize2 className="w-4 h-4 text-stone-700" />
-              <span>Available Product Sizes ({sizes.length})</span>
-            </h2>
-            <p className="text-xs text-stone-500 mt-0.5">
-              Control which sizes can be selected in products (e.g. XS, S, M, L, XL, XXL). Adding a size here makes it available across store editors immediately.
-            </p>
-          </div>
-
-          {/* Quick Add Size */}
-          <form onSubmit={handleAddSize} className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="e.g. XL, XXL, 3XL..."
-              value={newSizeName}
-              onChange={(e) => setNewSizeName(e.target.value)}
-              className="px-3.5 py-2 text-xs font-mono font-bold uppercase rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#ff4d4f]/20 focus:border-[#ff4d4f] w-32"
-            />
-            <button
-              type="submit"
-              disabled={isSavingSizes || !newSizeName.trim()}
-              className="px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Size</span>
-            </button>
-          </form>
-        </div>
-
-        {/* Feedback messages */}
-        {sizeSuccessMsg && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2">
-            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{sizeSuccessMsg}</span>
-          </div>
-        )}
-        {sizeErrorMsg && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-            <span>{sizeErrorMsg}</span>
-          </div>
-        )}
-
-        {/* Sizes Cards / Pills Grid */}
-        <div className="flex flex-wrap gap-3">
-          {sizes.map((size, idx) => {
-            const isEditing = editingSizeIdx === idx;
-
-            return (
-              <div
-                key={`size-${size}-${idx}`}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border border-stone-200 bg-[#faf9f8] hover:border-stone-400 transition-all"
-              >
-                {isEditing ? (
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      value={editingSizeValue}
-                      onChange={(e) => setEditingSizeValue(e.target.value)}
-                      autoFocus
-                      className="w-16 px-1.5 py-0.5 text-xs font-mono font-bold uppercase rounded border border-stone-300 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleSaveEditSize(idx)}
-                      className="p-1 rounded bg-emerald-600 text-white cursor-pointer"
-                    >
-                      <Check className="w-3 h-3" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingSizeIdx(null)}
-                      className="p-1 rounded bg-stone-200 text-stone-700 cursor-pointer"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <span className="text-xs font-bold font-mono text-stone-900 uppercase">
-                      {size}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleStartEditSize(idx, size)}
-                      className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer"
-                      title="Rename Size"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveSize(size)}
-                      className="p-1 text-stone-400 hover:text-red-600 cursor-pointer"
-                      title="Delete Size"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
-                  </>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* SECTION 3: PRODUCT TYPE / TAG LABEL MANAGEMENT */}
-      <div className="bg-white rounded-2xl p-6 sm:p-7 border border-stone-200/80 shadow-2xs space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-100 pb-4">
-          <div>
-            <h2 className="text-base font-bold text-stone-900 flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-stone-700" />
-              <span>Product Type / Tag Labels</span>
-            </h2>
-            <p className="text-xs text-stone-500 mt-0.5">
-              Default wording is <strong>"Unisex"</strong> (instead of hardcoded "Unisex Oversize"). You can configure labels like Unisex, Men's, Women's, Oversized, Regular Fit, or any custom apparel fit labels.
-            </p>
-          </div>
-
-          {/* Quick Add Type Label */}
-          <form onSubmit={handleAddTypeLabel} className="flex items-center gap-2">
-            <input
-              type="text"
-              placeholder="e.g. Regular Fit, Boxy Tee..."
-              value={newTypeLabel}
-              onChange={(e) => setNewTypeLabel(e.target.value)}
-              className="px-3.5 py-2 text-xs rounded-xl border border-stone-300 focus:outline-none focus:ring-2 focus:ring-[#ff4d4f]/20 focus:border-[#ff4d4f] min-w-[200px]"
-            />
-            <button
-              type="submit"
-              disabled={isSavingTypes || !newTypeLabel.trim()}
-              className="px-3.5 py-2 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-all shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Label</span>
-            </button>
-          </form>
-        </div>
-
-        {/* Feedback messages */}
-        {typeSuccessMsg && (
-          <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl text-xs flex items-center gap-2">
-            <Check className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{typeSuccessMsg}</span>
-          </div>
-        )}
-        {typeErrorMsg && (
-          <div className="p-3 bg-red-50 border border-red-200 text-red-800 rounded-xl text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
-            <span>{typeErrorMsg}</span>
-          </div>
-        )}
-
-        {/* Product Type Chips */}
-        <div className="flex flex-wrap gap-2.5">
-          {productTypes.map((label, idx) => {
-            const isEditing = editingTypeIdx === idx;
-            const isDefault = label.toLowerCase() === 'unisex';
-
-            return (
-              <div
-                key={`type-${label}-${idx}`}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-sans transition-all ${
-                  isDefault 
-                    ? 'border-emerald-500 bg-emerald-50/40 text-emerald-950 font-bold' 
-                    : 'border-stone-200 bg-[#faf9f8] text-stone-800 font-semibold hover:border-stone-400'
-                }`}
-              >
-                {isEditing ? (
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      value={editingTypeValue}
-                      onChange={(e) => setEditingTypeValue(e.target.value)}
-                      autoFocus
-                      className="w-28 px-1.5 py-0.5 text-xs font-sans rounded border border-stone-300 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleSaveEditType(idx)}
-                      className="p-1 rounded bg-emerald-600 text-white cursor-pointer"
-                    >
-                      <Check className="w-3 h-3" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingTypeIdx(null)}
-                      className="p-1 rounded bg-stone-200 text-stone-700 cursor-pointer"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <span>{label}</span>
-                    {isDefault && (
-                      <span className="px-1.5 py-0.2 rounded bg-emerald-600 text-white text-[9px] font-bold">
-                        Default
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleStartEditType(idx, label)}
-                      className="p-1 text-stone-400 hover:text-stone-700 cursor-pointer"
-                      title="Edit Label"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                    </button>
-                    {!isDefault && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTypeLabel(label)}
-                        className="p-1 text-stone-400 hover:text-red-600 cursor-pointer"
-                        title="Remove Label"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
-                  </>
-                )}
               </div>
             );
           })}
