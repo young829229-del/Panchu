@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
-import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc, PaymentSettings, CategoryItem } from '../types';
+import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc, PaymentSettings, CategoryItem, HomepageSectionPlacement } from '../types';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 import { ALL_PRODUCTS } from '../data/products';
 
@@ -26,6 +26,46 @@ export const ADMIN_EMAIL_PRIMARY = 'young829229@gmail.com';
 
 export const APPROVED_MALE_BANNER_URL = 'https://i.ibb.co/XrZGLnvw/snaptik-app-7637482582606826773-slide-2.jpg';
 export const APPROVED_FEMALE_BANNER_URL = 'https://i.ibb.co/7dNkX1C3/IMG-20260820-WA0001.jpg';
+
+export const DEFAULT_HOMEPAGE_SECTIONS: HomepageSectionPlacement[] = [
+  {
+    id: 'best-sellers',
+    title: 'Best Sellers',
+    productIds: [
+      'bestselling-first-main-product',
+      'lilly-tee-male',
+      'panchu-hood-1',
+      'xoxo-tee-girl'
+    ]
+  },
+  {
+    id: 'match-partner',
+    title: 'Match With Your Partner',
+    productIds: [
+      'match-partner-grid-1',
+      'match-partner-grid-2',
+      'match-partner-grid-3',
+      'match-partner-grid-4'
+    ]
+  },
+  {
+    id: 'summer',
+    title: 'Summer Collection',
+    productIds: [
+      'lilly-tee-male',
+      'flora-tee-product',
+      'lilly-tee-girl'
+    ]
+  },
+  {
+    id: 'winter',
+    title: 'Winter Collection',
+    productIds: [
+      'panchu-hood-1',
+      'panchu-hood-2'
+    ]
+  }
+];
 
 export const DEFAULT_PAYMENT_SETTINGS: PaymentSettings = {
   qrEnabled: false,
@@ -65,6 +105,40 @@ const CANONICAL_PAYMENT_SETTINGS_KEY = 'panchu_canonical_payment_settings';
 const CANONICAL_CATEGORIES_KEY = 'panchu_canonical_categories';
 const CANONICAL_SIZES_KEY = 'panchu_canonical_sizes';
 const CANONICAL_PRODUCT_TYPES_KEY = 'panchu_canonical_product_types';
+const CANONICAL_HOMEPAGE_SECTIONS_KEY = 'panchu_canonical_homepage_sections_placement';
+
+/**
+ * Returns the currently confirmed Homepage Sections placement synchronously from canonical cache.
+ */
+export function getHomepageSectionsSync(): HomepageSectionPlacement[] {
+  if (typeof window === 'undefined') return DEFAULT_HOMEPAGE_SECTIONS;
+  try {
+    const saved = localStorage.getItem(CANONICAL_HOMEPAGE_SECTIONS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((sec) => ({
+          id: sec.id,
+          title: sec.title || '',
+          subtitle: sec.subtitle || '',
+          productIds: Array.isArray(sec.productIds) ? sec.productIds : []
+        }));
+      }
+    }
+  } catch (e) {
+    console.debug('Error reading canonical homepage sections:', e);
+  }
+  return DEFAULT_HOMEPAGE_SECTIONS;
+}
+
+export function setHomepageSectionsSync(sections: HomepageSectionPlacement[]): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CANONICAL_HOMEPAGE_SECTIONS_KEY, JSON.stringify(sections));
+  } catch (e) {
+    console.debug('Error writing canonical homepage sections cache:', e);
+  }
+}
 
 /**
  * Returns the currently confirmed Category list synchronously from canonical cache.
@@ -1875,6 +1949,96 @@ export async function saveProductTypesToFirestore(types: string[]): Promise<void
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
     throw error;
+  }
+}
+
+/**
+ * Realtime subscription to Homepage Sections placement
+ */
+export function subscribeHomepageSections(
+  callback: (sections: HomepageSectionPlacement[]) => void
+): () => void {
+  const path = 'settings/homepage_sections';
+  try {
+    const docRef = doc(db, 'settings', 'homepage_sections');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (Array.isArray(data?.sections) && data.sections.length > 0) {
+            const sections: HomepageSectionPlacement[] = data.sections.map((s: any) => ({
+              id: String(s.id),
+              title: String(s.title || ''),
+              subtitle: s.subtitle ? String(s.subtitle) : '',
+              productIds: Array.isArray(s.productIds) ? s.productIds.map(String) : []
+            }));
+            setHomepageSectionsSync(sections);
+            callback(sections);
+            return;
+          }
+        }
+        callback(getHomepageSectionsSync());
+      },
+      (error) => {
+        console.warn('Firestore homepage sections listener notification:', error?.message || error);
+        callback(getHomepageSectionsSync());
+      }
+    );
+    return unsubscribe;
+  } catch (error) {
+    console.warn('Firestore homepage sections setup error:', error);
+    callback(getHomepageSectionsSync());
+    return () => {};
+  }
+}
+
+/**
+ * Saves Homepage Sections placement to Firestore and canonical cache
+ */
+export async function saveHomepageSectionsToFirestore(
+  sections: HomepageSectionPlacement[]
+): Promise<void> {
+  const path = 'settings/homepage_sections';
+  try {
+    const cleanSections = sections.map((s) => ({
+      id: s.id.trim(),
+      title: s.title.trim(),
+      subtitle: s.subtitle?.trim() || '',
+      productIds: Array.isArray(s.productIds) ? s.productIds.filter(Boolean) : []
+    }));
+
+    const docRef = doc(db, 'settings', 'homepage_sections');
+    await setDoc(docRef, {
+      sections: cleanSections,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    setHomepageSectionsSync(cleanSections);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Seeds initial default homepage sections if not already present in Firestore
+ */
+export async function seedInitialHomepageSectionsIfEmpty(): Promise<void> {
+  const path = 'settings/homepage_sections';
+  try {
+    const docRef = doc(db, 'settings', 'homepage_sections');
+    const snap = await getDoc(docRef);
+    if (!snap.exists() || !Array.isArray(snap.data()?.sections) || snap.data()?.sections.length === 0) {
+      await setDoc(docRef, {
+        sections: DEFAULT_HOMEPAGE_SECTIONS,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      setHomepageSectionsSync(DEFAULT_HOMEPAGE_SECTIONS);
+    }
+  } catch (error) {
+    console.debug('Homepage sections seed check note:', error);
   }
 }
 

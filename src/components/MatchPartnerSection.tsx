@@ -1,5 +1,5 @@
-import React from 'react';
-import { getMatchPartnerItems, PartnerPair } from '../data/products';
+import React, { useMemo } from 'react';
+import { getMatchPartnerItems, PartnerPair, ALL_PRODUCTS } from '../data/products';
 import { Product } from '../types';
 import { motion } from 'motion/react';
 import { ProductImage } from './ProductImage';
@@ -8,16 +8,41 @@ interface MatchPartnerSectionProps {
   onSelectProduct?: (product: Product) => void;
   theme?: 'light' | 'dark';
   gender?: 'male' | 'female';
+  productIds?: string[];
+  products?: Product[];
 }
 
 export const MatchPartnerSection: React.FC<MatchPartnerSectionProps> = ({
   onSelectProduct,
   theme = 'light',
-  gender = 'male'
+  gender = 'male',
+  productIds,
+  products
 }) => {
   const isDark = theme === 'dark';
   const activeGender = gender === 'female' ? 'female' : 'male';
-  const partnerItems = getMatchPartnerItems(activeGender);
+
+  const partnerItems = useMemo<PartnerPair[]>(() => {
+    if (productIds && productIds.length > 0) {
+      const catalog = products && products.length > 0 ? products : ALL_PRODUCTS;
+      const resolved = productIds
+        .map(id => catalog.find(p => p.id === id || p.productId === id))
+        .filter((p): p is Product => Boolean(p));
+
+      if (resolved.length > 0) {
+        return resolved.map((p, idx) => ({
+          id: `partner-placed-${p.id}-${idx}`,
+          title: p.name,
+          price: p.price,
+          image: p.image,
+          label: p.badge || `PARTNER MATCH ${idx + 1}`,
+          isCoupleImage: idx === 0,
+          productRef: p
+        }));
+      }
+    }
+    return getMatchPartnerItems(activeGender);
+  }, [productIds, products, activeGender]);
 
   return (
     <section id="match-partner" className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${

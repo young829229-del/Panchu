@@ -18,9 +18,7 @@ import {
   seedInitialBannersIfEmpty,
   getCanonicalBannersSync,
   getCanonicalProductsSync,
-  subscribeCategories,
-  seedInitialCategoriesIfEmpty,
-  getCanonicalCategoriesSync
+  seedInitialHomepageSectionsIfEmpty
 } from './services/firebaseService';
 import { auth } from './firebase';
 import {
@@ -96,26 +94,15 @@ export default function App() {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [gender, setGender] = useState<'male' | 'female'>('male');
   const [banners, setBanners] = useState<{ male: string; female: string }>(() => getCanonicalBannersSync());
-  const [categories, setCategories] = useState<CategoryItem[]>(() => getCanonicalCategoriesSync());
 
   const catalogRef = useRef<HTMLDivElement>(null);
   const preloadedImagesRef = useRef<Set<string>>(new Set());
 
-  // Subscribe to real-time Firebase categories collection & auto-seed if empty
+  // Auto-seed initial homepage section placements if empty
   useEffect(() => {
-    seedInitialCategoriesIfEmpty().catch(err => {
-      console.warn('Initial categories check/seed:', err);
+    seedInitialHomepageSectionsIfEmpty().catch(err => {
+      console.warn('Initial homepage sections check/seed:', err);
     });
-
-    const unsubscribe = subscribeCategories((liveCats) => {
-      if (liveCats && liveCats.length > 0) {
-        setCategories(liveCats);
-      }
-    });
-
-    return () => {
-      unsubscribe();
-    };
   }, []);
 
   // Subscribe to real-time Firebase banners collection
@@ -548,7 +535,6 @@ export default function App() {
         <div ref={catalogRef}>
           <ProductPage
             products={products}
-            categories={categories}
             onAddToCart={handleAddToCart}
             onBuyNow={handleBuyNow}
             onSelectProduct={handleSelectProduct}

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { PanchuLogo } from '../PanchuLogo';
 
-export type AdminTab = 'orders' | 'order_history' | 'offers' | 'products' | 'categories' | 'stock' | 'banners' | 'messages' | 'payments' | 'settings' | 'summary';
+export type AdminTab = 'orders' | 'order_history' | 'offers' | 'products' | 'placement' | 'categories' | 'stock' | 'banners' | 'messages' | 'payments' | 'settings' | 'summary';
 
 interface AdminSidebarProps {
   activeTab: AdminTab;
@@ -51,8 +51,8 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       badge: productsCount > 0 ? productsCount : undefined
     },
     {
-      id: 'categories',
-      label: 'Categories',
+      id: 'placement',
+      label: 'Product Placement',
       icon: Layers
     },
     {

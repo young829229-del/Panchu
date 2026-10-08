@@ -42,7 +42,7 @@ import { StockView } from './admin/StockView';
 import { ProductEditorView } from './admin/ProductEditorView';
 import { BannersView } from './admin/BannersView';
 import { PaymentsView } from './admin/PaymentsView';
-import { CategoriesSettingsView } from './admin/CategoriesSettingsView';
+import { HomepagePlacementView } from './admin/HomepagePlacementView';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 
 import {
@@ -1049,9 +1049,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* VIEW 4B: CATEGORIES & PRODUCT SETTINGS */}
-            {activeTab === 'categories' && (
-              <CategoriesSettingsView products={products} />
+            {/* VIEW 4B: HOMEPAGE PRODUCT PLACEMENT */}
+            {(activeTab === 'placement' || activeTab === 'categories') && (
+              <HomepagePlacementView products={products} />
             )}
 
             {/* VIEW 5: BANNERS & HERO */}

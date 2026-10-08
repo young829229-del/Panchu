@@ -7,6 +7,13 @@ export interface CategoryItem {
   description?: string;
 }
 
+export interface HomepageSectionPlacement {
+  id: string; // 'best-sellers' | 'match-partner' | 'summer' | 'winter'
+  title: string;
+  subtitle?: string;
+  productIds: string[];
+}
+
 export interface StoreProductSettings {
   productTypes: string[];
   defaultType: string;

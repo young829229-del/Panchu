@@ -14,15 +14,12 @@ import {
   Eye,
   Tag
 } from 'lucide-react';
-import { Product, CategoryItem } from '../../types';
+import { Product } from '../../types';
 import { PanchuLogo } from '../PanchuLogo';
 import {
-  getCanonicalCategoriesSync,
   getCanonicalSizesSync,
   getCanonicalProductTypesSync,
-  subscribeCategories,
-  subscribeSizes,
-  saveCategoriesToFirestore
+  subscribeSizes
 } from '../../services/firebaseService';
 
 interface ProductEditorViewProps {
@@ -46,24 +43,17 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
   isSaving,
   errorMessage: initialError
 }) => {
-  const [availableCategories, setAvailableCategories] = useState<CategoryItem[]>(() => getCanonicalCategoriesSync());
   const [availableSizes, setAvailableSizes] = useState<string[]>(() => getCanonicalSizesSync());
   const [availableTypes, setAvailableTypes] = useState<string[]>(() => getCanonicalProductTypesSync());
 
-  const [newCustomCatInput, setNewCustomCatInput] = useState('');
-  const [showAddCatInput, setShowAddCatInput] = useState(false);
   const [newCustomSizeInput, setNewCustomSizeInput] = useState('');
   const [showAddSizeInput, setShowAddSizeInput] = useState(false);
 
   useEffect(() => {
-    const unsubCat = subscribeCategories((cats) => {
-      if (cats && cats.length > 0) setAvailableCategories(cats);
-    });
     const unsubSize = subscribeSizes((szs) => {
       if (szs && szs.length > 0) setAvailableSizes(szs);
     });
     return () => {
-      unsubCat();
       unsubSize();
     };
   }, []);
@@ -170,64 +160,6 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
       stock: currentStock,
       inStock: Object.values(currentStock).some((n) => Number(n) > 0)
     });
-  };
-
-  const handleToggleCategory = (catName: string) => {
-    const current = formData.categories || [];
-    const normalizedName = catName.trim();
-    const isAlreadySelected = current.some(
-      (c) => c.toLowerCase() === normalizedName.toLowerCase()
-    );
-
-    let updated: string[];
-    if (isAlreadySelected) {
-      updated = current.filter(
-        (c) => c.toLowerCase() !== normalizedName.toLowerCase()
-      );
-    } else {
-      updated = [...current, normalizedName];
-    }
-
-    setFormData({
-      ...formData,
-      categories: updated,
-      category: updated[0] || ''
-    });
-  };
-
-  const handleAddNewCategoryOnTheFly = async () => {
-    const trimmed = newCustomCatInput.trim();
-    if (!trimmed) return;
-    const exists = availableCategories.some(c => c.name.toLowerCase() === trimmed.toLowerCase());
-    let newCatsList = [...availableCategories];
-    if (!exists) {
-      const newCat: CategoryItem = {
-        id: `cat-${Date.now()}`,
-        name: trimmed,
-        slug: trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''),
-        order: availableCategories.length,
-        enabled: true
-      };
-      newCatsList = [...availableCategories, newCat];
-      setAvailableCategories(newCatsList);
-      try {
-        await saveCategoriesToFirestore(newCatsList);
-      } catch (e) {
-        console.warn('Error saving category on the fly:', e);
-      }
-    }
-
-    const current = formData.categories || [];
-    if (!current.includes(trimmed)) {
-      const updated = [...current, trimmed];
-      setFormData({
-        ...formData,
-        categories: updated,
-        category: updated[0]
-      });
-    }
-    setNewCustomCatInput('');
-    setShowAddCatInput(false);
   };
 
   const handleAddSizeToProduct = (sizeToAdd: string) => {
@@ -815,113 +747,19 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
               </div>
             </div>
 
-            {/* CARD 5: Category Assignment (Checkboxes) & Product Type */}
-            <div className="bg-white rounded-2xl p-5 sm:p-7 border border-stone-200 shadow-2xs space-y-5">
-              <div className="border-b border-stone-100 pb-3 flex items-center justify-between">
-                <div>
-                  <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wide flex items-center gap-2">
-                    <Tag className="w-4 h-4 text-[#ff4d4f]" />
-                    <span>Categories</span>
-                  </h2>
-                  <p className="text-xs text-stone-500 mt-0.5">
-                    Select which storefront collections this product belongs to.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowAddCatInput(!showAddCatInput)}
-                  className="text-xs font-semibold text-[#ff4d4f] hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>New Category</span>
-                </button>
-              </div>
-
-              {showAddCatInput && (
-                <div className="flex items-center gap-2 p-2 bg-stone-50 rounded-xl border border-stone-200">
-                  <input
-                    type="text"
-                    placeholder="New category name (e.g. Winter, Hoodies)..."
-                    value={newCustomCatInput}
-                    onChange={(e) => setNewCustomCatInput(e.target.value)}
-                    className="px-2.5 py-1 text-xs rounded-lg border border-stone-300 bg-white flex-1 focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddNewCategoryOnTheFly}
-                    className="px-2.5 py-1 text-xs bg-stone-900 hover:bg-black text-white rounded-lg font-bold cursor-pointer shrink-0"
-                  >
-                    Add & Select
-                  </button>
-                </div>
-              )}
-
-              {/* Category Checkboxes List */}
-              <div className="space-y-2">
-                {availableCategories.filter(c => c.enabled !== false).map((cat) => {
-                  const catName = cat.name.trim();
-                  const isChecked = (formData.categories || []).some(
-                    c => c.toLowerCase() === catName.toLowerCase() || c.toLowerCase() === cat.slug.toLowerCase()
-                  );
-
-                  return (
-                    <label
-                      key={`cat-cb-${cat.id}`}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleToggleCategory(catName);
-                      }}
-                      className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none ${
-                        isChecked
-                          ? 'bg-stone-900 text-white border-stone-900 shadow-xs'
-                          : 'bg-[#faf9f8] hover:bg-stone-100 text-stone-800 border-stone-200/90'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        {/* Checkbox box indicator */}
-                        <div
-                          className={`w-5 h-5 rounded-md flex items-center justify-center border transition-colors ${
-                            isChecked
-                              ? 'bg-white text-stone-900 border-white'
-                              : 'bg-white text-transparent border-stone-300'
-                          }`}
-                        >
-                          {isChecked ? (
-                            <Check className="w-3.5 h-3.5 stroke-[3]" />
-                          ) : (
-                            <span className="w-3.5 h-3.5" />
-                          )}
-                        </div>
-                        <span className="text-xs sm:text-sm font-bold uppercase tracking-wide">
-                          {catName}
-                        </span>
-                      </div>
-
-                      <span
-                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${
-                          isChecked ? 'bg-white/20 text-white' : 'bg-stone-200/70 text-stone-500'
-                        }`}
-                      >
-                        {isChecked ? 'SELECTED' : 'OFF'}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-
-              <p className="text-[11px] text-stone-400">
-                This product will automatically appear under all selected categories across the storefront.
-              </p>
-
-              {/* Product Type / Tag Label (Unisex, Men's, Women's, Oversized, Custom) */}
-              <div className="pt-4 border-t border-stone-100 space-y-2.5">
-                <label className="block text-xs font-bold text-stone-800">
-                  Product Type / Tag Label
-                </label>
-                <p className="text-[11px] text-stone-500">
-                  Display text shown on product pages and cards (default is "Unisex").
+            {/* CARD 5: Product Type & Tag Label */}
+            <div className="bg-white rounded-2xl p-5 sm:p-7 border border-stone-200 shadow-2xs space-y-4">
+              <div className="border-b border-stone-100 pb-3">
+                <h2 className="text-sm font-bold text-stone-900 uppercase tracking-wide flex items-center gap-2">
+                  <Tag className="w-4 h-4 text-[#ff4d4f]" />
+                  <span>Product Type & Tag Label</span>
+                </h2>
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Display badge shown on storefront product cards (default is "Unisex").
                 </p>
+              </div>
 
+              <div className="space-y-3">
                 <div className="flex flex-wrap gap-1.5">
                   {['Unisex', "Men's", "Women's", 'Oversized', 'Regular Fit'].map((preset) => {
                     const isPresetActive = (formData.typeLabel || 'Unisex') === preset;
@@ -939,9 +777,9 @@ export const ProductEditorView: React.FC<ProductEditorViewProps> = ({
                             gender: g
                           });
                         }}
-                        className={`px-2.5 py-1 text-xs rounded-lg font-medium border cursor-pointer transition-all ${
+                        className={`px-3 py-1.5 text-xs rounded-lg font-medium border cursor-pointer transition-all ${
                           isPresetActive
-                            ? 'bg-emerald-600 text-white border-emerald-600 font-bold'
+                            ? 'bg-black text-white border-black font-bold'
                             : 'bg-stone-50 text-stone-700 border-stone-200 hover:border-stone-400'
                         }`}
                       >
