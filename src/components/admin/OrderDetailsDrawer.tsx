@@ -223,6 +223,12 @@ export const OrderDetailsDrawer: React.FC<OrderDetailsDrawerProps> = ({
             <span>Subtotal</span>
             <span>Rs {order.subtotal?.toLocaleString() || '0'}</span>
           </div>
+          {order.promoCode && (
+            <div className="flex justify-between text-emerald-700 font-semibold">
+              <span>Promo Discount ({order.promoCode})</span>
+              <span>- Rs {(order.discountAmount || 0).toLocaleString()}</span>
+            </div>
+          )}
           <div className="flex justify-between text-stone-600">
             <span>Delivery Fee</span>
             <span>Rs {order.deliveryFee?.toLocaleString() || '0'}</span>

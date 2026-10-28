@@ -86,6 +86,8 @@ export interface Order {
   deliveryOption?: string;
   items: OrderItem[];
   subtotal?: number;
+  promoCode?: string | null;
+  discountAmount?: number;
   deliveryFee?: number;
   totalAmount: number;
   total?: number;
@@ -94,6 +96,26 @@ export interface Order {
   orderStatus: OrderStatus;
   status: OrderStatus;
   createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface PromoCode {
+  id: string;
+  code: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  discount: string;
+  description: string;
+  active: boolean;
+  validUntil: string;
+  minOrderAmount?: number;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface PromoSettings {
+  cartPromoEnabled: boolean;
+  codes: PromoCode[];
   updatedAt?: any;
 }
 

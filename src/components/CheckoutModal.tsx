@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CartItem, OrderItem, PaymentSettings } from '../types';
+import { CartItem, OrderItem, PaymentSettings, PromoCode, PromoSettings } from '../types';
 import {
   X,
+  ArrowLeft,
   CheckCircle2,
   MessageCircle,
   ArrowRight,
@@ -11,15 +12,19 @@ import {
   CreditCard,
   QrCode,
   Upload,
-  Image as ImageIcon,
-  Check
+  Check,
+  Tag,
+  Truck,
+  Building2,
+  Wallet
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   createFirestoreOrder,
   subscribePaymentSettings,
   getCanonicalPaymentSettingsSync,
-  uploadPaymentScreenshot
+  uploadPaymentScreenshot,
+  validatePromoCodeAgainstFirestore
 } from '../services/firebaseService';
 import { getSavedCheckoutDetails, saveCustomerDetailsFromCheckout } from '../services/customerStorage';
 import { auth } from '../firebase';
@@ -29,13 +34,23 @@ interface CheckoutModalProps {
   onClose: () => void;
   items: CartItem[];
   onClearCart: () => void;
+  appliedPromo?: PromoCode | null;
+  discountAmount?: number;
+  promoSettings?: PromoSettings;
+  onClearPromo?: () => void;
+  onApplyPromo?: (promo: PromoCode) => void;
 }
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   isOpen,
   onClose,
   items,
-  onClearCart
+  onClearCart,
+  appliedPromo = null,
+  discountAmount = 0,
+  promoSettings,
+  onClearPromo,
+  onApplyPromo
 }) => {
   const savedDetails = getSavedCheckoutDetails();
 
@@ -44,6 +59,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   
   // Selected Payment Method
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('Cash on Delivery (COD)');
+
+  // Promo Code Input State inside Checkout
+  const [promoInput, setPromoInput] = useState<string>('');
+  const [isValidatingPromo, setIsValidatingPromo] = useState<boolean>(false);
+  const [promoError, setPromoError] = useState<string>('');
+  const [promoSuccess, setPromoSuccess] = useState<string>('');
 
   // Screenshot Upload State
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
@@ -60,8 +81,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [formData, setFormData] = useState({
     name: savedDetails?.name || '',
     phone: savedDetails?.phone || '',
-    location: savedDetails?.location || '',
-    address: savedDetails?.address || '',
+    address: savedDetails?.address || savedDetails?.location || '',
     deliveryOption: 'inside_door' // 'inside_door' = 120, 'outside_office' = 150, 'outside_door' = 180
   });
 
@@ -84,7 +104,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     : formData.deliveryOption === 'outside_door' 
       ? 180 
       : 150;
-  const totalAmount = subtotal + deliveryCharge;
+  const isPromoEligible = Boolean(appliedPromo && (promoSettings?.cartPromoEnabled !== false) && discountAmount > 0);
+  const effectiveDiscount = isPromoEligible ? Math.min(subtotal, Math.max(0, discountAmount)) : 0;
+  const totalAmount = Math.max(0, subtotal - effectiveDiscount) + deliveryCharge;
 
   // Available methods from settings or default fallback
   const availableMethods = paymentSettings.paymentMethods && paymentSettings.paymentMethods.length > 0
@@ -137,6 +159,58 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     if (screenshotInputRef.current) screenshotInputRef.current.value = '';
   };
 
+  // Reset promo messages when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setPromoError('');
+      setPromoSuccess('');
+      setPromoInput('');
+    }
+  }, [isOpen]);
+
+  const handleApplyPromoCode = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setPromoError('');
+    setPromoSuccess('');
+
+    const clean = promoInput.trim().toUpperCase();
+    if (!clean) {
+      setPromoError('Please enter a promo code.');
+      return;
+    }
+
+    if (subtotal <= 0) {
+      setPromoError('Your shopping bag is empty.');
+      return;
+    }
+
+    setIsValidatingPromo(true);
+    try {
+      const result = await validatePromoCodeAgainstFirestore(clean, subtotal);
+      if (!result.valid || !result.promoCode) {
+        setPromoError(result.error || `Promo code "${clean}" is invalid or expired.`);
+      } else {
+        if (onApplyPromo) {
+          onApplyPromo(result.promoCode);
+        }
+        setPromoSuccess(`Promo code "${result.promoCode.code}" applied! (${result.promoCode.discount})`);
+        setPromoInput('');
+      }
+    } catch (err: any) {
+      console.warn('Checkout promo validation exception:', err);
+      setPromoError('Failed to validate promo code. Please try again.');
+    } finally {
+      setIsValidatingPromo(false);
+    }
+  };
+
+  const handleRemoveAppliedPromo = () => {
+    if (onClearPromo) onClearPromo();
+    setPromoError('');
+    setPromoSuccess('');
+    setPromoInput('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
@@ -174,15 +248,39 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         subtotal: item.product.price * item.quantity
       }));
 
-      const completeShippingAddress = `${formData.address.trim()}, ${formData.location.trim()}`;
+      const completeShippingAddress = formData.address.trim();
+
+      // Delivery region string
+      const deliveryLocationLabel = formData.deliveryOption === 'inside_door'
+        ? 'Inside Valley (NPR 120)'
+        : formData.deliveryOption === 'outside_door'
+          ? 'Outside Valley - Home Door Delivery (NPR 180)'
+          : 'Outside Valley - Standard Office Delivery (NPR 150)';
 
       // Save customer guest details for easy checkout next time
       saveCustomerDetailsFromCheckout({
         name: formData.name.trim(),
         phone: formData.phone.trim(),
-        location: formData.location.trim(),
+        location: deliveryLocationLabel,
         address: formData.address.trim()
       });
+
+      // Secure promo code re-validation against database records
+      let finalDiscount = 0;
+      let finalPromoCode: string | null = null;
+
+      if (appliedPromo) {
+        const promoValidation = await validatePromoCodeAgainstFirestore(appliedPromo.code, subtotal);
+        if (!promoValidation.valid || !promoValidation.promoCode) {
+          setErrorMessage(promoValidation.error || 'The applied promo code is no longer valid. Please check your cart.');
+          setIsSubmitting(false);
+          return;
+        }
+        finalDiscount = promoValidation.discountAmount;
+        finalPromoCode = promoValidation.promoCode.code;
+      }
+
+      const calculatedFinalTotal = Math.max(0, subtotal - finalDiscount) + deliveryCharge;
 
       // 1. Create order in Firestore & reduce size-specific stock atomically
       const result = await createFirestoreOrder({
@@ -192,13 +290,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         phone: formData.phone.trim(),
         shippingAddress: completeShippingAddress,
         address: formData.address.trim(),
-        location: formData.location.trim(),
+        location: deliveryLocationLabel,
         deliveryOption: formData.deliveryOption,
         items: orderItems,
         subtotal: subtotal,
+        promoCode: finalPromoCode,
+        discountAmount: finalDiscount,
         deliveryFee: deliveryCharge,
-        totalAmount: totalAmount,
-        total: totalAmount,
+        totalAmount: calculatedFinalTotal,
+        total: calculatedFinalTotal,
         paymentMethod: selectedPaymentMethod,
         paymentScreenshotUrl: uploadedScreenshotUrl,
         orderStatus: 'Pending'
@@ -210,15 +310,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         return;
       }
 
-      // 2. Delivery region string
-      const deliveryLocationLabel = formData.deliveryOption === 'inside_door'
-        ? 'Inside Valley (NPR 120)'
-        : formData.deliveryOption === 'outside_door'
-          ? 'Outside Valley - Home Door Delivery (NPR 180)'
-          : 'Outside Valley - Standard Office Delivery (NPR 150)';
-
-      // 3. Customer details string (Without email)
-      const customerDetailsText = `• Customer Details\n\nName - ${formData.name.trim()}\nPhone - ${formData.phone.trim()}\nLocation - ${formData.location.trim()} (${deliveryLocationLabel})\nAddress - ${formData.address.trim()}`;
+      // 3. Customer details string (Without email and separate location field)
+      const customerDetailsText = `• Customer Details\n\nName - ${formData.name.trim()}\nPhone - ${formData.phone.trim()}\nDelivery Region - ${deliveryLocationLabel}\nAddress - ${formData.address.trim()}`;
 
       // 4. Order items string
       const orderItemsDetails = items.map(item => {
@@ -228,8 +321,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         return `Product - ${item.product.name}\nSize - ${item.size}\nQuantity - ${item.quantity}\nPrice - NPR ${itemPrice}`;
       }).join('\n\n');
 
-      // 5. Complete WhatsApp order message format including selected payment method
-      const fullMessage = `🛍️ PANCHU — NEW ORDER\n\nOrder #: ${orderNum}\n\n${customerDetailsText}\n\n• Order Details\n\n${orderItemsDetails}\n\n• Payment Details\n\nPayment Method - ${selectedPaymentMethod}${uploadedScreenshotUrl ? '\nPayment Slip - Attached with order' : ''}\n\nSubtotal - NPR ${subtotal}\nDelivery Charge - NPR ${deliveryCharge}\nTotal - NPR ${totalAmount}`;
+      // 5. Complete WhatsApp order message format including selected payment method and promo discount
+      const promoText = finalPromoCode && finalDiscount > 0
+        ? `Promo Code - ${finalPromoCode} (-NPR ${finalDiscount})\n`
+        : '';
+
+      const fullMessage = `🛍️ PANCHU — NEW ORDER\n\nOrder #: ${orderNum}\n\n${customerDetailsText}\n\n• Order Details\n\n${orderItemsDetails}\n\n• Payment Details\n\nPayment Method - ${selectedPaymentMethod}${uploadedScreenshotUrl ? '\nPayment Slip - Attached with order' : ''}\n\nSubtotal - NPR ${subtotal}\n${promoText}Delivery Charge - NPR ${deliveryCharge}\nTotal - NPR ${calculatedFinalTotal}`;
 
       setCreatedOrderNum(orderNum);
       setCreatedOrderMessage(fullMessage);
@@ -242,6 +339,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       window.open(whatsappUrl, '_blank');
 
       setIsSuccess(true);
+      if (onClearPromo) onClearPromo();
       onClearCart();
     } catch (err: any) {
       console.error('Checkout submit error:', err);
@@ -263,27 +361,50 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-8 bg-black/80 backdrop-blur-md overflow-y-auto">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="relative w-full max-w-xl bg-white border border-stone-200 shadow-2xl p-6 md:p-8 text-stone-900 my-auto"
-        >
-          {/* Close Button */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.15 }}
+        className="fixed inset-0 z-50 bg-white overflow-y-auto flex flex-col min-h-screen text-stone-900"
+      >
+        {/* Top Header - Full Width Sticky */}
+        <header className="sticky top-0 z-30 px-4 sm:px-8 py-3.5 sm:py-4 bg-white/95 backdrop-blur-md border-b border-stone-200 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="p-1.5 -ml-1 text-stone-700 hover:text-black hover:bg-stone-100 transition-colors cursor-pointer flex items-center gap-1.5"
+              id="checkout-page-back"
+              title="Back to store"
+            >
+              <ArrowLeft className="w-5 h-5" />
+              <span className="hidden sm:inline font-mono text-xs font-bold tracking-wider uppercase">BACK</span>
+            </button>
+            <h1 className="text-lg sm:text-xl font-black font-sans text-black uppercase tracking-tight flex items-center gap-2.5">
+              <span>CHECKOUT</span>
+              <span className="text-xs font-mono font-bold px-2 py-0.5 bg-stone-100 text-stone-700 border border-stone-200">
+                {items.reduce((acc, i) => acc + i.quantity, 0)} {items.reduce((acc, i) => acc + i.quantity, 0) === 1 ? 'ITEM' : 'ITEMS'}
+              </span>
+            </h1>
+          </div>
+
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-2 bg-black text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+            className="p-2 text-stone-700 hover:bg-black hover:text-white transition-colors cursor-pointer"
             id="checkout-modal-close"
+            title="Close checkout"
           >
             <X className="w-5 h-5" />
           </button>
+        </header>
 
+        {/* Full Page Content Container */}
+        <div className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10">
           {isSuccess ? (
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="text-center py-6 space-y-6"
+              className="py-6 sm:py-10 text-center space-y-6"
             >
               <div className="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center mx-auto shadow-xl">
                 <CheckCircle2 className="w-10 h-10 stroke-2" />
@@ -291,17 +412,17 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
               <div>
                 <span className="text-xs font-mono tracking-[0.25em] text-emerald-700 font-bold uppercase">
-                  ORDER {createdOrderNum} SAVED IN FIRESTORE
+                  ORDER {createdOrderNum} RECORDED IN FIRESTORE
                 </span>
                 <h2 className="text-2xl md:text-3xl font-extrabold font-sans text-black uppercase mt-1">
                   WHATSAPP ORDER OPENED
                 </h2>
                 <p className="mt-2 text-xs md:text-sm font-sans text-stone-600 max-w-md mx-auto">
-                  Your order has been recorded with payment method <strong className="text-black font-semibold">{selectedPaymentMethod}</strong> and forwarded to WhatsApp line <span className="font-bold text-black">+970 6374074</span>.
+                  Your order has been recorded with payment method <strong className="text-black font-semibold">{selectedPaymentMethod}</strong> and forwarded to our official WhatsApp line <span className="font-bold text-black">+970 6374074</span>.
                 </p>
               </div>
 
-              {/* Message Preview */}
+              {/* Message Receipt Preview */}
               <div className="p-4 bg-stone-50 border border-stone-200 text-xs font-mono text-stone-800 text-left whitespace-pre-line max-h-56 overflow-y-auto rounded shadow-inner">
                 {createdOrderMessage}
               </div>
@@ -324,84 +445,27 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
               </div>
             </motion.div>
           ) : (
-            <div>
-              <div className="border-b border-stone-200 pb-4 mb-5">
-                <div className="text-xs font-mono tracking-[0.25em] text-stone-500 uppercase">PANCHU CHECKOUT</div>
-                <h2 className="text-xl md:text-2xl font-extrabold font-sans text-black uppercase mt-1">
-                  ORDER DETAILS
-                </h2>
-              </div>
-
+            <form onSubmit={handleSubmit} className="space-y-8">
               {/* Error Banner */}
               {errorMessage && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-mono flex items-start gap-2 rounded">
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-mono flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
                   <span>{errorMessage}</span>
                 </div>
               )}
 
-              {/* Items Summary */}
-              <div className="mb-5 p-4 bg-stone-50 border border-stone-200">
-                <div className="flex items-center justify-between border-b border-stone-200 pb-2 mb-2">
-                  <span className="text-xs font-mono font-bold text-black uppercase flex items-center gap-1.5">
-                    <ShoppingBag className="w-3.5 h-3.5 text-stone-600" /> ORDER SUMMARY
+              {/* SECTION 01: DELIVERY & CONTACT DETAILS */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                  <span className="text-xs font-mono font-bold text-black tracking-wider uppercase flex items-center gap-2">
+                    <span className="text-[10px] px-1.5 py-0.5 bg-black text-white font-mono">01</span>
+                    <span>DELIVERY & CONTACT DETAILS</span>
                   </span>
-                  <span className="text-[11px] font-mono font-bold text-stone-500">
-                    {items.reduce((acc, i) => acc + i.quantity, 0)} ITEMS
-                  </span>
+                  <span className="text-[10px] font-mono text-stone-500 uppercase">* Required</span>
                 </div>
 
-                <div className="max-h-32 overflow-y-auto space-y-1.5 pr-1">
-                  {items.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-xs font-mono">
-                      <span className="text-stone-700 truncate max-w-[240px]">
-                        {item.quantity}x {item.product.name} ({item.size})
-                      </span>
-                      <span className="font-bold text-black">
-                        {item.product.price > 0 
-                          ? `NPR ${item.product.price * item.quantity}` 
-                          : (item.product.priceDisplay ? `NPR ${item.product.priceDisplay}` : 'NPR 0')}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="border-t border-stone-200 pt-2.5 mt-2 space-y-1.5 text-xs font-mono">
-                  <div className="flex justify-between text-stone-600">
-                    <span>SUBTOTAL</span>
-                    <span className="font-bold text-black">NPR {subtotal}</span>
-                  </div>
-                  <div className="flex justify-between text-stone-600">
-                    <span>DELIVERY CHARGE</span>
-                    <span className="font-bold text-stone-800">NPR {deliveryCharge}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm font-mono font-bold text-black border-t border-stone-200 pt-2">
-                    <span>TOTAL DUE</span>
-                    <span className="text-emerald-700">
-                      NPR {totalAmount}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Checkout Form */}
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1">
-                    DELIVERY REGION <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={formData.deliveryOption}
-                    onChange={e => setFormData({ ...formData, deliveryOption: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50 cursor-pointer"
-                  >
-                    <option value="inside_door">Inside Valley (Home Door Delivery) — NPR 120</option>
-                    <option value="outside_office">Outside Valley (Standard Office Delivery) — NPR 150</option>
-                    <option value="outside_door">Outside Valley (Home Door Delivery) — NPR 180</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* 1. Full Name & 2. Phone Number */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
                     <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1">
                       FULL NAME <span className="text-red-500">*</span>
@@ -409,10 +473,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     <input
                       type="text"
                       required
-                      placeholder="e.g. Ram Bahadur"
+                      placeholder="Enter your full name"
                       value={formData.name}
                       onChange={e => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50"
+                      className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/40 transition-colors"
                     />
                   </div>
                   <div>
@@ -422,80 +486,312 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     <input
                       type="tel"
                       required
-                      placeholder="e.g. 9800000000"
+                      placeholder="Enter your phone number"
                       value={formData.phone}
                       onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50"
+                      className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/40 transition-colors"
                     />
                   </div>
                 </div>
 
+                {/* 3. SELECT DELIVERY REGION * */}
                 <div>
-                  <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1">
-                    LOCATION / CITY <span className="text-red-500">*</span>
+                  <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-2">
+                    SELECT DELIVERY REGION <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Kathmandu"
-                    value={formData.location}
-                    onChange={e => setFormData({ ...formData, location: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1">
-                    FULL SHIPPING ADDRESS <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Ward 4, New Baneshwor"
-                    value={formData.address}
-                    onChange={e => setFormData({ ...formData, address: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/50"
-                  />
-                </div>
-
-                {/* PAYMENT SECTION: SELECTABLE PAYMENT METHODS */}
-                <div>
-                  <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1.5">
-                    SELECT PAYMENT METHOD <span className="text-red-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    {availableMethods.map((method) => {
-                      const isSelected = selectedPaymentMethod === method;
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {[
+                      {
+                        id: 'inside_door',
+                        title: 'Inside Valley',
+                        subtitle: 'Home Door Delivery',
+                        fee: 120
+                      },
+                      {
+                        id: 'outside_office',
+                        title: 'Outside Valley',
+                        subtitle: 'Standard Office Pickup',
+                        fee: 150
+                      },
+                      {
+                        id: 'outside_door',
+                        title: 'Outside Valley',
+                        subtitle: 'Home Door Delivery',
+                        fee: 180
+                      }
+                    ].map(opt => {
+                      const isSelected = formData.deliveryOption === opt.id;
                       return (
                         <button
-                          key={method}
+                          key={opt.id}
                           type="button"
-                          onClick={() => setSelectedPaymentMethod(method)}
-                          className={`p-3 border text-left flex items-center justify-between transition-all cursor-pointer ${
+                          onClick={() => setFormData({ ...formData, deliveryOption: opt.id })}
+                          className={`p-3 border text-left transition-all cursor-pointer relative flex flex-col justify-between ${
                             isSelected
                               ? 'border-black bg-stone-900 text-white shadow-xs'
-                              : 'border-stone-300 bg-stone-50/50 hover:bg-stone-100 text-stone-800'
+                              : 'border-stone-200 bg-stone-50/70 hover:bg-stone-100 text-stone-800'
                           }`}
                         >
-                          <span className="text-xs font-mono font-bold truncate">
-                            {method}
-                          </span>
-                          {isSelected && <Check className="w-3.5 h-3.5 shrink-0 ml-1" />}
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <div className="text-xs font-mono font-bold uppercase">{opt.title}</div>
+                              <div className={`text-[10px] font-sans mt-0.5 line-clamp-1 ${isSelected ? 'text-stone-300' : 'text-stone-500'}`}>
+                                {opt.subtitle}
+                              </div>
+                            </div>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-white shrink-0 ml-1" />}
+                          </div>
+                          <div className="mt-2 pt-2 border-t border-stone-200/40 flex justify-between items-center text-[11px] font-mono">
+                            <span className={isSelected ? 'text-stone-400 text-[10px]' : 'text-stone-500 text-[10px]'}>FEE:</span>
+                            <span className="font-bold">NPR {opt.fee}</span>
+                          </div>
                         </button>
                       );
                     })}
                   </div>
                 </div>
 
-                {/* QR CODE SECTION (Only rendered when the selected method's QR is ON and an image exists - Collapsed with NO gap when OFF) */}
+                {/* 4. FULL SHIPPING ADDRESS * (Immediately below delivery region cards) */}
+                <div>
+                  <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase mb-1">
+                    FULL SHIPPING ADDRESS <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    required
+                    rows={3}
+                    placeholder="Enter your exact location, tole, street, house number, and nearby landmark"
+                    value={formData.address}
+                    onChange={e => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-stone-300 text-xs font-mono focus:border-black focus:outline-none bg-stone-50/40 transition-colors resize-y"
+                  />
+                </div>
+              </div>
+
+              {/* SECTION 02: ORDER SUMMARY & PROMO CODE (UP, BEFORE PAYMENT) */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                  <span className="text-xs font-mono font-bold text-black tracking-wider uppercase flex items-center gap-2">
+                    <span className="text-[10px] px-1.5 py-0.5 bg-black text-white font-mono">02</span>
+                    <span>ORDER SUMMARY & PROMO CODE</span>
+                  </span>
+                  <span className="text-[11px] font-mono font-bold text-stone-500">
+                    {items.reduce((acc, i) => acc + i.quantity, 0)} ITEMS
+                  </span>
+                </div>
+
+                <div className="p-4 bg-stone-50/90 border border-stone-200 space-y-4">
+                  {/* Cart Items List with Thumbnail Images */}
+                  <div className="max-h-48 overflow-y-auto space-y-2.5 pr-1 divide-y divide-stone-200/60">
+                    {items.map((item, idx) => (
+                      <div key={idx} className="flex items-center justify-between gap-3 pt-2 first:pt-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          {item.product.image ? (
+                            <img
+                              src={item.product.image}
+                              alt={item.product.name}
+                              className="w-10 h-12 object-cover border border-stone-300 shrink-0 bg-white"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="w-10 h-12 border border-stone-300 bg-stone-100 flex items-center justify-center shrink-0">
+                              <ShoppingBag className="w-4 h-4 text-stone-400" />
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <h4 className="text-xs font-bold font-sans text-black uppercase truncate">
+                              {item.product.name}
+                            </h4>
+                            <div className="flex items-center gap-2 text-[10px] font-mono text-stone-500 mt-0.5">
+                              <span>SIZE: <strong className="text-black">{item.size}</strong></span>
+                              <span>·</span>
+                              <span>QTY: <strong className="text-black">{item.quantity}</strong></span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-xs font-mono font-bold text-black shrink-0 text-right">
+                          {item.product.price > 0 
+                            ? `NPR ${(item.product.price * item.quantity).toLocaleString()}` 
+                            : (item.product.priceDisplay ? `NPR ${item.product.priceDisplay}` : 'NPR 0')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* PROMO CODE SECTION IN CHECKOUT */}
+                  {promoSettings?.cartPromoEnabled !== false && (
+                    <div className="pt-3 border-t border-stone-200">
+                      {appliedPromo ? (
+                        <div className="p-3 bg-white border border-emerald-300 flex items-center justify-between shadow-2xs">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <span className="px-2.5 py-1 bg-black text-white font-mono text-xs font-bold tracking-wider shrink-0 flex items-center gap-1.5">
+                              <Tag className="w-3 h-3 text-emerald-400" />
+                              {appliedPromo.code}
+                            </span>
+                            <div className="min-w-0">
+                              <span className="text-xs font-mono font-bold text-emerald-700 block truncate">
+                                {appliedPromo.discount} APPLIED
+                              </span>
+                              <span className="text-[10px] text-stone-500 font-sans block truncate">
+                                Instant Discount: NPR {effectiveDiscount.toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleRemoveAppliedPromo}
+                            className="px-2.5 py-1 text-[11px] font-mono text-stone-400 hover:text-red-600 border border-stone-200 hover:border-red-200 transition-colors cursor-pointer shrink-0"
+                            title="Remove promo code"
+                            id="checkout-remove-promo-btn"
+                          >
+                            REMOVE
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-[11px] font-mono text-stone-700 font-bold">
+                            <span className="flex items-center gap-1.5">
+                              <Tag className="w-3.5 h-3.5 text-black" />
+                              <span>PROMO CODE / COUPON</span>
+                            </span>
+                          </div>
+
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={promoInput}
+                              onChange={(e) => {
+                                setPromoInput(e.target.value.toUpperCase());
+                                if (promoError) setPromoError('');
+                                if (promoSuccess) setPromoSuccess('');
+                              }}
+                              placeholder="ENTER PROMO CODE (e.g. PARADISE10)"
+                              className="flex-1 px-3 py-2 border border-stone-300 font-mono text-xs text-black placeholder:text-stone-400 uppercase bg-white focus:outline-none focus:border-black transition-colors"
+                              id="checkout-promo-input"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleApplyPromoCode}
+                              disabled={isValidatingPromo || !promoInput.trim()}
+                              className="px-4 py-2 bg-black text-white text-xs font-mono font-bold tracking-wider uppercase hover:bg-neutral-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0 flex items-center justify-center min-w-[78px]"
+                              id="checkout-promo-apply-btn"
+                            >
+                              {isValidatingPromo ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                'APPLY'
+                              )}
+                            </button>
+                          </div>
+
+                          {promoError && (
+                            <div className="flex items-center gap-1.5 text-[11px] text-red-600 font-sans pt-0.5">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                              <span>{promoError}</span>
+                            </div>
+                          )}
+
+                          {promoSuccess && (
+                            <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 font-sans pt-0.5">
+                              <Check className="w-3.5 h-3.5 shrink-0" />
+                              <span>{promoSuccess}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Totals Breakdown */}
+                  <div className="border-t border-stone-200 pt-3 space-y-1.5 text-xs font-mono">
+                    <div className="flex justify-between text-stone-600">
+                      <span>BAG SUBTOTAL</span>
+                      <span className="font-bold text-black">NPR {subtotal.toLocaleString()}</span>
+                    </div>
+
+                    {isPromoEligible && (
+                      <div className="flex justify-between text-emerald-700 font-bold">
+                        <span className="flex items-center gap-1">
+                          <Tag className="w-3 h-3 text-emerald-600" />
+                          PROMO DISCOUNT ({appliedPromo?.code})
+                        </span>
+                        <span>- NPR {effectiveDiscount.toLocaleString()}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between text-stone-600">
+                      <span>DELIVERY CHARGE</span>
+                      <span className="font-bold text-stone-800">NPR {deliveryCharge}</span>
+                    </div>
+
+                    <div className="flex justify-between items-center text-sm font-mono font-bold text-black border-t border-stone-200 pt-2.5">
+                      <span>FINAL TOTAL DUE</span>
+                      <span className="text-base text-emerald-700">
+                        NPR {totalAmount.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 03: PAYMENT METHOD (LAST, AT THE BOTTOM) */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                  <span className="text-xs font-mono font-bold text-black tracking-wider uppercase flex items-center gap-2">
+                    <span className="text-[10px] px-1.5 py-0.5 bg-black text-white font-mono">03</span>
+                    <span>PAYMENT METHOD</span>
+                  </span>
+                  <span className="text-[10px] font-mono text-stone-500 uppercase">Select 1 option</span>
+                </div>
+
+                {/* Available Payment Method Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  {availableMethods.map((method) => {
+                    const isSelected = selectedPaymentMethod === method;
+                    const isCod = method.includes('COD') || method.includes('Cash');
+                    const isEsewa = method.toLowerCase().includes('esewa');
+                    const isBank = method.toLowerCase().includes('bank');
+
+                    return (
+                      <button
+                        key={method}
+                        type="button"
+                        onClick={() => setSelectedPaymentMethod(method)}
+                        className={`p-3.5 border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-black bg-stone-900 text-white shadow-xs'
+                            : 'border-stone-200 bg-stone-50/70 hover:bg-stone-100 text-stone-800'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          {isCod ? (
+                            <Truck className={`w-4 h-4 ${isSelected ? 'text-white' : 'text-stone-600'}`} />
+                          ) : isEsewa ? (
+                            <Wallet className={`w-4 h-4 ${isSelected ? 'text-emerald-400' : 'text-stone-600'}`} />
+                          ) : (
+                            <Building2 className={`w-4 h-4 ${isSelected ? 'text-blue-300' : 'text-stone-600'}`} />
+                          )}
+                          {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                        </div>
+
+                        <span className="text-xs font-mono font-bold line-clamp-1">
+                          {method}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* QR CODE SECTION (Only rendered when selected method's QR is ON - Collapsed with NO gap when OFF) */}
                 {activeQrInfo ? (
-                  <div className="p-4 bg-stone-50 border border-stone-200 rounded text-center space-y-3">
+                  <div className="p-4 bg-stone-50 border border-stone-200 text-center space-y-3">
                     <div className="flex items-center justify-center gap-1.5 text-xs font-mono font-bold text-stone-800 uppercase">
                       <QrCode className="w-4 h-4 text-stone-600" />
                       <span>SCAN {activeQrInfo.label.toUpperCase()} TO PAY</span>
                     </div>
 
-                    <div className="w-44 h-44 bg-white p-2.5 border border-stone-300 rounded-lg mx-auto shadow-xs flex items-center justify-center">
+                    <div className="w-44 h-44 bg-white p-2.5 border border-stone-300 mx-auto shadow-xs flex items-center justify-center">
                       <img
                         src={activeQrInfo.imageUrl}
                         alt={`${selectedPaymentMethod} QR`}
@@ -505,19 +801,19 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     </div>
 
                     <p className="text-[11px] font-mono text-stone-500 max-w-sm mx-auto">
-                      Scan using {selectedPaymentMethod === 'Cash on Delivery (COD)' ? 'your payment app' : selectedPaymentMethod} to complete payment of <strong className="text-stone-900">NPR {totalAmount}</strong>.
+                      Scan using {selectedPaymentMethod === 'Cash on Delivery (COD)' ? 'your payment app' : selectedPaymentMethod} to complete payment of <strong className="text-stone-900">NPR {totalAmount.toLocaleString()}</strong>.
                     </p>
                   </div>
                 ) : null}
 
-                {/* PAYMENT SCREENSHOT UPLOAD SECTION (Only rendered when Screenshot Upload is ON - Collapsed with NO gap when OFF) */}
+                {/* PAYMENT SCREENSHOT UPLOAD SECTION (Only rendered when Screenshot Upload is ON in admin - Collapsed with NO gap when OFF) */}
                 {paymentSettings.screenshotEnabled ? (
-                  <div className="p-3.5 bg-stone-50 border border-stone-200 rounded space-y-2">
+                  <div className="p-3.5 bg-stone-50 border border-stone-200 space-y-2">
                     <label className="block text-[10px] font-mono tracking-wider font-bold text-stone-700 uppercase">
                       PAYMENT SCREENSHOT / SLIP (OPTIONAL)
                     </label>
                     <p className="text-[11px] font-mono text-stone-500">
-                      Attach your eSewa or bank payment confirmation screenshot for fast verification.
+                      Attach your payment confirmation slip for faster verification.
                     </p>
 
                     <input
@@ -529,11 +825,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                     />
 
                     {screenshotPreview ? (
-                      <div className="flex items-center gap-3 bg-white p-2.5 border border-stone-300 rounded">
+                      <div className="flex items-center gap-3 bg-white p-2.5 border border-stone-300">
                         <img
                           src={screenshotPreview}
                           alt="Screenshot Preview"
-                          className="w-12 h-12 object-cover rounded border border-stone-200"
+                          className="w-12 h-12 object-cover border border-stone-200"
                         />
                         <div className="flex-1 min-w-0">
                           <span className="text-xs font-mono font-medium text-stone-800 truncate block">
@@ -546,7 +842,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         <button
                           type="button"
                           onClick={handleRemoveScreenshot}
-                          className="p-1.5 rounded hover:bg-stone-100 text-stone-500 hover:text-red-600 transition-colors cursor-pointer"
+                          className="p-1.5 hover:bg-stone-100 text-stone-500 hover:text-red-600 transition-colors cursor-pointer"
                           title="Remove Screenshot"
                         >
                           <X className="w-4 h-4" />
@@ -556,7 +852,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                       <button
                         type="button"
                         onClick={() => screenshotInputRef.current?.click()}
-                        className="w-full py-2.5 border border-dashed border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-xs font-mono flex items-center justify-center gap-2 rounded transition-colors cursor-pointer"
+                        className="w-full py-2.5 border border-dashed border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-xs font-mono flex items-center justify-center gap-2 transition-colors cursor-pointer"
                       >
                         <Upload className="w-3.5 h-3.5 text-stone-500" />
                         <span>UPLOAD PAYMENT CONFIRMATION SCREENSHOT</span>
@@ -565,30 +861,36 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   </div>
                 ) : null}
 
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800/70 text-white text-xs font-mono font-bold tracking-[0.2em] uppercase transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-lg hover:shadow-emerald-600/30"
-                  id="confirm-whatsapp-order-btn"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4.5 h-4.5 animate-spin text-white" />
-                      <span>{isUploadingScreenshot ? 'UPLOADING SCREENSHOT...' : 'PROCESSING ORDER...'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <MessageCircle className="w-4.5 h-4.5 fill-white" />
-                      <span>CONFIRM ORDER ON WHATSAPP</span>
-                      <ArrowRight className="w-4 h-4 ml-1" />
-                    </>
-                  )}
-                </button>
-              </form>
-            </div>
+                {/* Primary WhatsApp Order Confirmation CTA */}
+                <div className="pt-2">
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800/70 text-white text-xs font-mono font-bold tracking-[0.2em] uppercase transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-lg hover:shadow-emerald-600/30"
+                    id="confirm-whatsapp-order-btn"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4.5 h-4.5 animate-spin text-white" />
+                        <span>{isUploadingScreenshot ? 'UPLOADING SCREENSHOT...' : 'PROCESSING ORDER...'}</span>
+                      </>
+                    ) : (
+                      <>
+                        <MessageCircle className="w-4.5 h-4.5 fill-white" />
+                        <span>CONFIRM ORDER ON WHATSAPP · NPR {totalAmount.toLocaleString()}</span>
+                        <ArrowRight className="w-4 h-4 ml-1" />
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[10px] font-mono text-stone-400 text-center mt-2">
+                    Direct instant order forwarding to Panchu WhatsApp team +970 6374074
+                  </p>
+                </div>
+              </div>
+            </form>
           )}
-        </motion.div>
-      </div>
+        </div>
+      </motion.div>
     </AnimatePresence>
   );
 };

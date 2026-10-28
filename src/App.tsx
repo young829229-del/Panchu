@@ -9,7 +9,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { CustomerAccountPage } from './components/CustomerAccountPage';
 import { CartDrawer } from './components/CartDrawer';
 import { CheckoutModal } from './components/CheckoutModal';
-import { Product, CartItem, CategoryItem } from './types';
+import { Product, CartItem, CategoryItem, PromoCode, PromoSettings } from './types';
 import { ALL_PRODUCTS, APPROVED_MALE_BANNER_URL, APPROVED_FEMALE_BANNER_URL } from './data/products';
 import {
   subscribeProducts,
@@ -18,7 +18,10 @@ import {
   seedInitialBannersIfEmpty,
   getCanonicalBannersSync,
   getCanonicalProductsSync,
-  seedInitialHomepageSectionsIfEmpty
+  seedInitialHomepageSectionsIfEmpty,
+  subscribePromoSettings,
+  getCanonicalPromoSettingsSync,
+  seedInitialPromoSettingsIfEmpty
 } from './services/firebaseService';
 import { auth } from './firebase';
 import {
@@ -95,14 +98,29 @@ export default function App() {
   const [gender, setGender] = useState<'male' | 'female'>('male');
   const [banners, setBanners] = useState<{ male: string; female: string }>(() => getCanonicalBannersSync());
 
+  // Store Promo Settings & Live applied promo
+  const [promoSettings, setPromoSettings] = useState<PromoSettings>(() => getCanonicalPromoSettingsSync());
+  const [appliedPromo, setAppliedPromo] = useState<PromoCode | null>(null);
+
   const catalogRef = useRef<HTMLDivElement>(null);
   const preloadedImagesRef = useRef<Set<string>>(new Set());
 
-  // Auto-seed initial homepage section placements if empty
+  // Auto-seed initial homepage section placements & promo settings if empty
   useEffect(() => {
     seedInitialHomepageSectionsIfEmpty().catch(err => {
       console.warn('Initial homepage sections check/seed:', err);
     });
+    seedInitialPromoSettingsIfEmpty().catch(err => {
+      console.warn('Initial promo settings check/seed:', err);
+    });
+  }, []);
+
+  // Subscribe to real-time Promo Settings from Firestore
+  useEffect(() => {
+    const unsubscribe = subscribePromoSettings((live) => {
+      setPromoSettings(live);
+    });
+    return () => unsubscribe();
   }, []);
 
   // Subscribe to real-time Firebase banners collection
@@ -437,9 +455,27 @@ export default function App() {
 
   const handleClearCart = () => {
     setCartItems([]);
+    setAppliedPromo(null);
   };
 
   const totalCartCount = cartItems.reduce((acc, item) => acc + item.quantity, 0);
+  const cartSubtotal = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+
+  // Authoritative promo discount calculation
+  const promoDiscountAmount = React.useMemo(() => {
+    if (!appliedPromo || !promoSettings.cartPromoEnabled || cartSubtotal <= 0) return 0;
+    if (appliedPromo.minOrderAmount && cartSubtotal < appliedPromo.minOrderAmount) return 0;
+
+    let rawVal = 0;
+    if (appliedPromo.discountType === 'percentage') {
+      const pct = Math.max(0, Math.min(100, Number(appliedPromo.discountValue) || 0));
+      rawVal = Math.round((cartSubtotal * pct) / 100);
+    } else {
+      rawVal = Math.max(0, Number(appliedPromo.discountValue) || 0);
+    }
+
+    return Math.min(cartSubtotal, Math.max(0, rawVal));
+  }, [appliedPromo, promoSettings.cartPromoEnabled, cartSubtotal]);
 
   const heroImage = gender === 'male'
     ? (banners.male || APPROVED_MALE_BANNER_URL)
@@ -557,14 +593,22 @@ export default function App() {
         onUpdateQuantity={handleUpdateQuantity}
         onRemoveItem={handleRemoveItem}
         onCheckout={() => setIsCheckoutOpen(true)}
+        appliedPromo={appliedPromo}
+        discountAmount={promoDiscountAmount}
+        promoSettings={promoSettings}
       />
 
-      {/* Instant Checkout Modal */}
+      {/* Instant Checkout Modal with Promo Code Entry */}
       <CheckoutModal
         isOpen={isCheckoutOpen}
         onClose={() => setIsCheckoutOpen(false)}
         items={cartItems}
         onClearCart={handleClearCart}
+        appliedPromo={appliedPromo}
+        discountAmount={promoDiscountAmount}
+        promoSettings={promoSettings}
+        onClearPromo={() => setAppliedPromo(null)}
+        onApplyPromo={(promo) => setAppliedPromo(promo)}
       />
     </div>
   );

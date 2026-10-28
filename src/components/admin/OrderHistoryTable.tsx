@@ -425,6 +425,11 @@ export const OrderHistoryTable: React.FC<OrderHistoryTableProps> = ({
                         <span className="text-[10px] font-mono font-medium text-stone-500 bg-stone-100 px-1.5 py-0.5 rounded border border-stone-200 truncate max-w-[130px]">
                           {order.paymentMethod || 'COD'}
                         </span>
+                        {order.promoCode && (
+                          <span className="text-[9px] font-mono font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 truncate" title={`Promo code: ${order.promoCode}`}>
+                            {order.promoCode}
+                          </span>
+                        )}
                         {order.paymentScreenshotUrl && (
                           <span className="inline-flex items-center text-emerald-600" title="Payment screenshot attached">
                             <ImageIcon className="w-3 h-3" />

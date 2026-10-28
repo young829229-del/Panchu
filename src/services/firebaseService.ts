@@ -17,12 +17,50 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
-import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc, PaymentSettings, CategoryItem, HomepageSectionPlacement } from '../types';
+import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc, PaymentSettings, CategoryItem, HomepageSectionPlacement, PromoCode, PromoSettings } from '../types';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 import { ALL_PRODUCTS } from '../data/products';
 
 export const ADMIN_EMAILS = ['young829229@gmail.com', 'npdraggers111@gmail.com'];
 export const ADMIN_EMAIL_PRIMARY = 'young829229@gmail.com';
+
+export const DEFAULT_PROMO_CODES: PromoCode[] = [
+  {
+    id: 'first10',
+    code: 'FIRST10',
+    discountType: 'percentage',
+    discountValue: 10,
+    discount: '10% OFF',
+    description: 'Applicable on first order across all oversized collections',
+    active: true,
+    validUntil: '31 Dec 2026'
+  },
+  {
+    id: 'freeship',
+    code: 'FREESHIP',
+    discountType: 'fixed',
+    discountValue: 120,
+    discount: 'Rs 120 OFF',
+    description: 'Free doorstep delivery in Kathmandu Valley on orders over Rs 3,000',
+    active: true,
+    validUntil: 'Ongoing'
+  },
+  {
+    id: 'summer20',
+    code: 'SUMMER20',
+    discountType: 'percentage',
+    discountValue: 20,
+    discount: '20% OFF',
+    description: 'Limited seasonal drop discount on 2+ heavy jersey items',
+    active: false,
+    validUntil: 'Expired'
+  }
+];
+
+export const DEFAULT_PROMO_SETTINGS: PromoSettings = {
+  cartPromoEnabled: true,
+  codes: DEFAULT_PROMO_CODES
+};
 
 export const APPROVED_MALE_BANNER_URL = 'https://i.ibb.co/XrZGLnvw/snaptik-app-7637482582606826773-slide-2.jpg';
 export const APPROVED_FEMALE_BANNER_URL = 'https://i.ibb.co/7dNkX1C3/IMG-20260820-WA0001.jpg';
@@ -106,6 +144,7 @@ const CANONICAL_CATEGORIES_KEY = 'panchu_canonical_categories';
 const CANONICAL_SIZES_KEY = 'panchu_canonical_sizes';
 const CANONICAL_PRODUCT_TYPES_KEY = 'panchu_canonical_product_types';
 const CANONICAL_HOMEPAGE_SECTIONS_KEY = 'panchu_canonical_homepage_sections_placement';
+const CANONICAL_PROMO_SETTINGS_KEY = 'panchu_canonical_promo_settings';
 
 /**
  * Returns the currently confirmed Homepage Sections placement synchronously from canonical cache.
@@ -556,6 +595,8 @@ export async function createFirestoreOrder(
     deliveryOption?: string;
     items: OrderItem[];
     subtotal?: number;
+    promoCode?: string | null;
+    discountAmount?: number;
     deliveryFee?: number;
     totalAmount?: number;
     total?: number;
@@ -574,8 +615,9 @@ export async function createFirestoreOrder(
 
   const resolvedAddress = (orderInput.shippingAddress || orderInput.address || '').trim();
   const resolvedSubtotal = Number(orderInput.subtotal) || 0;
+  const resolvedDiscount = Number(orderInput.discountAmount) || 0;
   const resolvedDeliveryFee = Number(orderInput.deliveryFee) || 0;
-  const resolvedTotal = Number(orderInput.totalAmount !== undefined ? orderInput.totalAmount : orderInput.total) || (resolvedSubtotal + resolvedDeliveryFee);
+  const resolvedTotal = Number(orderInput.totalAmount !== undefined ? orderInput.totalAmount : orderInput.total) || (Math.max(0, resolvedSubtotal - resolvedDiscount) + resolvedDeliveryFee);
 
   // Normalize each ordered item
   const cleanItems = (orderInput.items || []).map((item) => {
@@ -609,6 +651,8 @@ export async function createFirestoreOrder(
     totalAmount: resolvedTotal,
     total: resolvedTotal, // compatibility
     subtotal: resolvedSubtotal,
+    promoCode: orderInput.promoCode ? String(orderInput.promoCode).trim() : null,
+    discountAmount: resolvedDiscount,
     deliveryFee: resolvedDeliveryFee,
     paymentMethod: (orderInput.paymentMethod || 'Cash on Delivery (COD)').trim(),
     paymentScreenshotUrl: orderInput.paymentScreenshotUrl || null,
@@ -2039,6 +2083,328 @@ export async function seedInitialHomepageSectionsIfEmpty(): Promise<void> {
     }
   } catch (error) {
     console.debug('Homepage sections seed check note:', error);
+  }
+}
+
+/**
+ * Returns the currently confirmed Promo Settings synchronously from canonical cache.
+ */
+export function getCanonicalPromoSettingsSync(): PromoSettings {
+  if (typeof window === 'undefined') return DEFAULT_PROMO_SETTINGS;
+  try {
+    const saved = localStorage.getItem(CANONICAL_PROMO_SETTINGS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          cartPromoEnabled: parsed.cartPromoEnabled !== false,
+          codes: Array.isArray(parsed.codes) ? parsed.codes : DEFAULT_PROMO_CODES
+        };
+      }
+    }
+  } catch (e) {
+    console.debug('Error reading canonical promo settings:', e);
+  }
+  return DEFAULT_PROMO_SETTINGS;
+}
+
+export function setCanonicalPromoSettingsSync(settings: PromoSettings): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CANONICAL_PROMO_SETTINGS_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.debug('Error writing canonical promo settings cache:', e);
+  }
+}
+
+/**
+ * Subscribes to real-time Promo Settings & Codes in Firestore settings/promo_codes
+ */
+export function subscribePromoSettings(
+  callback: (settings: PromoSettings) => void
+): () => void {
+  const path = 'settings/promo_codes';
+  try {
+    const docRef = doc(db, 'settings', 'promo_codes');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const cleanCodes: PromoCode[] = Array.isArray(data?.codes)
+            ? data.codes.map((c: any) => ({
+                id: String(c.id || Date.now()),
+                code: String(c.code || '').trim().toUpperCase(),
+                discountType: c.discountType === 'fixed' ? 'fixed' : 'percentage',
+                discountValue: Number(c.discountValue) || 0,
+                discount: String(c.discount || (c.discountType === 'fixed' ? `Rs ${c.discountValue} OFF` : `${c.discountValue}% OFF`)),
+                description: String(c.description || ''),
+                active: c.active !== false,
+                validUntil: String(c.validUntil || 'Ongoing'),
+                minOrderAmount: typeof c.minOrderAmount === 'number' ? c.minOrderAmount : 0
+              }))
+            : DEFAULT_PROMO_CODES;
+
+          const promoSettings: PromoSettings = {
+            cartPromoEnabled: data?.cartPromoEnabled !== false,
+            codes: cleanCodes
+          };
+
+          setCanonicalPromoSettingsSync(promoSettings);
+          callback(promoSettings);
+          return;
+        }
+
+        // Document not yet seeded in Firestore: auto-seed and call callback
+        seedInitialPromoSettingsIfEmpty().catch(() => {});
+        callback(getCanonicalPromoSettingsSync());
+      },
+      (error) => {
+        console.warn('Firestore promo settings listener notification:', error?.message || error);
+        callback(getCanonicalPromoSettingsSync());
+      }
+    );
+    return unsubscribe;
+  } catch (error) {
+    console.warn('Firestore promo settings setup error:', error);
+    callback(getCanonicalPromoSettingsSync());
+    return () => {};
+  }
+}
+
+/**
+ * Saves complete Promo Settings to Firestore and canonical cache
+ */
+export async function savePromoSettingsToFirestore(
+  settings: PromoSettings
+): Promise<void> {
+  const path = 'settings/promo_codes';
+  try {
+    const cleanCodes: PromoCode[] = (settings.codes || []).map((c) => ({
+      id: String(c.id).trim(),
+      code: String(c.code).trim().toUpperCase(),
+      discountType: c.discountType === 'fixed' ? 'fixed' : 'percentage',
+      discountValue: Number(c.discountValue) || 0,
+      discount: String(c.discount).trim(),
+      description: String(c.description || '').trim(),
+      active: c.active !== false,
+      validUntil: String(c.validUntil || 'Ongoing').trim(),
+      minOrderAmount: Number(c.minOrderAmount) || 0
+    }));
+
+    const docRef = doc(db, 'settings', 'promo_codes');
+    await setDoc(docRef, {
+      cartPromoEnabled: settings.cartPromoEnabled !== false,
+      codes: cleanCodes,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    setCanonicalPromoSettingsSync({
+      cartPromoEnabled: settings.cartPromoEnabled !== false,
+      codes: cleanCodes
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Toggles the Cart Promo Code visibility in Firestore
+ */
+export async function toggleCartPromoEnabledInFirestore(enabled: boolean): Promise<void> {
+  const path = 'settings/promo_codes';
+  try {
+    const docRef = doc(db, 'settings', 'promo_codes');
+    await setDoc(docRef, {
+      cartPromoEnabled: Boolean(enabled),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    const current = getCanonicalPromoSettingsSync();
+    setCanonicalPromoSettingsSync({
+      ...current,
+      cartPromoEnabled: Boolean(enabled)
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Adds or updates a single promo code in Firestore
+ */
+export async function savePromoCodeToFirestore(promo: PromoCode): Promise<void> {
+  const current = getCanonicalPromoSettingsSync();
+  const existingIdx = current.codes.findIndex((c) => c.id === promo.id || c.code.trim().toUpperCase() === promo.code.trim().toUpperCase());
+  
+  let newCodes: PromoCode[];
+  if (existingIdx >= 0) {
+    newCodes = [...current.codes];
+    newCodes[existingIdx] = promo;
+  } else {
+    newCodes = [promo, ...current.codes];
+  }
+
+  await savePromoSettingsToFirestore({
+    ...current,
+    codes: newCodes
+  });
+}
+
+/**
+ * Deletes a single promo code from Firestore
+ */
+export async function deletePromoCodeFromFirestore(promoId: string): Promise<void> {
+  const current = getCanonicalPromoSettingsSync();
+  const newCodes = current.codes.filter((c) => c.id !== promoId);
+  await savePromoSettingsToFirestore({
+    ...current,
+    codes: newCodes
+  });
+}
+
+/**
+ * Seeds initial promo codes if Firestore doc is empty or missing
+ */
+export async function seedInitialPromoSettingsIfEmpty(): Promise<void> {
+  const path = 'settings/promo_codes';
+  try {
+    const docRef = doc(db, 'settings', 'promo_codes');
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) {
+      await setDoc(docRef, {
+        cartPromoEnabled: true,
+        codes: DEFAULT_PROMO_CODES,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      setCanonicalPromoSettingsSync(DEFAULT_PROMO_SETTINGS);
+    }
+  } catch (error) {
+    console.debug('Promo settings seed check note:', error);
+  }
+}
+
+/**
+ * Validates a promo code fresh against Firestore and calculates eligible discount in NPR
+ */
+export async function validatePromoCodeAgainstFirestore(
+  codeStr: string,
+  subtotal: number
+): Promise<{
+  valid: boolean;
+  discountAmount: number;
+  error?: string;
+  promoCode?: PromoCode;
+}> {
+  const cleanCode = (codeStr || '').trim().toUpperCase();
+  if (!cleanCode) {
+    return { valid: false, discountAmount: 0, error: 'Please enter a promo code.' };
+  }
+
+  try {
+    const docRef = doc(db, 'settings', 'promo_codes');
+    const snap = await getDoc(docRef);
+
+    let settings: PromoSettings = getCanonicalPromoSettingsSync();
+    if (snap.exists()) {
+      const data = snap.data();
+      settings = {
+        cartPromoEnabled: data.cartPromoEnabled !== false,
+        codes: Array.isArray(data.codes) ? data.codes : []
+      };
+      setCanonicalPromoSettingsSync(settings);
+    }
+
+    // Check if admin has disabled promo codes in cart
+    if (!settings.cartPromoEnabled) {
+      return {
+        valid: false,
+        discountAmount: 0,
+        error: 'Promo code entry is currently disabled.'
+      };
+    }
+
+    const matched = settings.codes.find(
+      (c) => c.code.trim().toUpperCase() === cleanCode
+    );
+
+    if (!matched) {
+      return {
+        valid: false,
+        discountAmount: 0,
+        error: `Promo code "${cleanCode}" is invalid.`
+      };
+    }
+
+    if (!matched.active) {
+      return {
+        valid: false,
+        discountAmount: 0,
+        error: `Promo code "${cleanCode}" is currently inactive.`
+      };
+    }
+
+    // Check expiry
+    if (
+      matched.validUntil &&
+      matched.validUntil.trim().toLowerCase() === 'expired'
+    ) {
+      return {
+        valid: false,
+        discountAmount: 0,
+        error: `Promo code "${cleanCode}" has expired.`
+      };
+    }
+
+    if (matched.validUntil && matched.validUntil.toLowerCase() !== 'ongoing') {
+      const parsedDate = new Date(matched.validUntil);
+      if (!isNaN(parsedDate.getTime())) {
+        parsedDate.setHours(23, 59, 59, 999);
+        if (Date.now() > parsedDate.getTime()) {
+          return {
+            valid: false,
+            discountAmount: 0,
+            error: `Promo code "${cleanCode}" expired on ${matched.validUntil}.`
+          };
+        }
+      }
+    }
+
+    // Check minimum order amount if specified
+    if (matched.minOrderAmount && matched.minOrderAmount > 0 && subtotal < matched.minOrderAmount) {
+      return {
+        valid: false,
+        discountAmount: 0,
+        error: `Minimum order of NPR ${matched.minOrderAmount.toLocaleString()} required for this code.`
+      };
+    }
+
+    // Compute discount amount
+    let rawDiscount = 0;
+    if (matched.discountType === 'percentage') {
+      const pct = Math.max(0, Math.min(100, Number(matched.discountValue) || 0));
+      rawDiscount = Math.round((subtotal * pct) / 100);
+    } else {
+      rawDiscount = Math.max(0, Number(matched.discountValue) || 0);
+    }
+
+    const finalDiscount = Math.min(subtotal, Math.max(0, rawDiscount));
+
+    return {
+      valid: true,
+      discountAmount: finalDiscount,
+      promoCode: matched
+    };
+  } catch (error: any) {
+    console.warn('Promo code validation notice:', error);
+    return {
+      valid: false,
+      discountAmount: 0,
+      error: 'Unable to validate promo code. Please try again.'
+    };
   }
 }
 

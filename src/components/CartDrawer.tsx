@@ -1,5 +1,5 @@
 import React from 'react';
-import { CartItem } from '../types';
+import { CartItem, PromoCode, PromoSettings } from '../types';
 import { X, Trash2, Plus, Minus, ArrowRight, ShoppingBag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -10,6 +10,9 @@ interface CartDrawerProps {
   onUpdateQuantity: (productId: string, size: string, quantity: number) => void;
   onRemoveItem: (productId: string, size: string) => void;
   onCheckout: () => void;
+  appliedPromo?: PromoCode | null;
+  discountAmount?: number;
+  promoSettings?: PromoSettings;
 }
 
 export const CartDrawer: React.FC<CartDrawerProps> = ({
@@ -18,11 +21,16 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   items,
   onUpdateQuantity,
   onRemoveItem,
-  onCheckout
+  onCheckout,
+  appliedPromo = null,
+  discountAmount = 0,
+  promoSettings
 }) => {
   if (!isOpen) return null;
 
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const effectiveDiscount = appliedPromo && (promoSettings?.cartPromoEnabled !== false) ? Math.min(subtotal, discountAmount) : 0;
+  const estimatedTotal = Math.max(0, subtotal - effectiveDiscount);
 
   return (
     <AnimatePresence>
@@ -130,14 +138,23 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           {/* Footer Summary & Checkout */}
           {items.length > 0 && (
             <div className="p-6 border-t border-stone-200 bg-stone-50 space-y-4">
+              {/* Price Breakdown */}
               <div className="space-y-1.5 text-xs font-mono text-stone-600">
                 <div className="flex justify-between">
                   <span>SUBTOTAL</span>
-                  <span className="font-bold text-black">{subtotal > 0 ? `NPR ${subtotal}` : 'Price ××'}</span>
+                  <span className="font-bold text-black">{subtotal > 0 ? `NPR ${subtotal.toLocaleString()}` : 'Price ××'}</span>
                 </div>
+
+                {appliedPromo && effectiveDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-bold">
+                    <span>PROMO ({appliedPromo.code})</span>
+                    <span>- NPR {effectiveDiscount.toLocaleString()}</span>
+                  </div>
+                )}
+
                 <div className="flex justify-between text-sm text-black font-bold pt-2 border-t border-stone-200">
                   <span>ESTIMATED TOTAL</span>
-                  <span>NPR {subtotal}</span>
+                  <span>NPR {estimatedTotal.toLocaleString()}</span>
                 </div>
               </div>
 
