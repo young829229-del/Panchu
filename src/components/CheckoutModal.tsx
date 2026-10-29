@@ -24,8 +24,12 @@ import {
   subscribePaymentSettings,
   getCanonicalPaymentSettingsSync,
   uploadPaymentScreenshot,
-  validatePromoCodeAgainstFirestore
+  validatePromoCodeAgainstFirestore,
+  subscribeSocialsAndContactSettings,
+  getCanonicalSocialsAndContactSync,
+  cleanWhatsAppDigits
 } from '../services/firebaseService';
+import { SocialsAndContactSettings } from '../types';
 import { getSavedCheckoutDetails, saveCustomerDetailsFromCheckout } from '../services/customerStorage';
 import { auth } from '../firebase';
 import { OrderReceiptData } from '../utils/receiptPdfGenerator';
@@ -109,6 +113,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     deliveryOption: 'inside_door' // 'inside_door' = 120, 'outside_office' = 150, 'outside_door' = 180
   });
 
+  // Socials & Contact settings (includes whatsappOrderRedirect toggle and store WhatsApp number)
+  const [socialsAndContact, setSocialsAndContact] = useState<SocialsAndContactSettings>(() => getCanonicalSocialsAndContactSync());
+
   // Subscribe to live Payment Settings
   useEffect(() => {
     const unsubscribe = subscribePaymentSettings((liveSettings) => {
@@ -121,6 +128,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     });
     return () => unsubscribe();
   }, [selectedPaymentMethod]);
+
+  // Subscribe to live Socials & Contact settings
+  useEffect(() => {
+    const unsubscribe = subscribeSocialsAndContactSettings((liveSettings) => {
+      setSocialsAndContact(liveSettings);
+    });
+    return () => unsubscribe();
+  }, []);
 
   const subtotal = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const deliveryCharge = formData.deliveryOption === 'inside_door' 
@@ -359,15 +374,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       setCreatedOrderNum(orderNum);
       setCreatedOrderMessage(fullMessage);
 
-      // Destination store WhatsApp number: 970-6374074 -> 9706374074
-      const storeWhatsAppNumber = '9706374074';
-      const whatsappUrl = `https://wa.me/${storeWhatsAppNumber}?text=${encodeURIComponent(fullMessage)}`;
+      // 6. WhatsApp Order Redirection handling based on admin setting
+      const isWhatsAppRedirectOn = socialsAndContact.whatsappOrderRedirect !== false;
 
-      // 6. Open WhatsApp directly
-      try {
-        window.open(whatsappUrl, '_blank');
-      } catch (e) {
-        console.warn('Could not auto-open WhatsApp:', e);
+      if (isWhatsAppRedirectOn) {
+        // Destination store WhatsApp number from Contact Settings (cleaned to pure international digits)
+        const rawStoreNumber = socialsAndContact.contact?.whatsappNumber || '9706374074';
+        const storeWhatsAppNumber = cleanWhatsAppDigits(rawStoreNumber);
+        const whatsappUrl = `https://wa.me/${storeWhatsAppNumber}?text=${encodeURIComponent(fullMessage)}`;
+
+        // Open WhatsApp directly
+        try {
+          window.open(whatsappUrl, '_blank');
+        } catch (e) {
+          console.warn('Could not auto-open WhatsApp:', e);
+        }
       }
 
       // 7. Store confirmed receipt data for premium success page & digital receipt
@@ -938,12 +959,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                   </div>
                 ) : null}
 
-                {/* Primary WhatsApp Order Confirmation CTA */}
+                {/* Primary Order Confirmation CTA */}
                 <div className="pt-2">
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800/70 text-white text-xs font-mono font-bold tracking-[0.2em] uppercase transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-lg hover:shadow-emerald-600/30"
+                    className={`w-full py-4 text-white text-xs font-mono font-bold tracking-[0.2em] uppercase transition-all flex items-center justify-center gap-2.5 cursor-pointer shadow-lg ${
+                      socialsAndContact.whatsappOrderRedirect !== false
+                        ? 'bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800/70 hover:shadow-emerald-600/30'
+                        : 'bg-stone-900 hover:bg-black disabled:bg-stone-800 hover:shadow-stone-900/30'
+                    }`}
                     id="confirm-whatsapp-order-btn"
                   >
                     {isSubmitting ? (
@@ -951,16 +976,24 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                         <Loader2 className="w-4.5 h-4.5 animate-spin text-white" />
                         <span>{isUploadingScreenshot ? 'UPLOADING SCREENSHOT...' : 'PROCESSING ORDER...'}</span>
                       </>
-                    ) : (
+                    ) : socialsAndContact.whatsappOrderRedirect !== false ? (
                       <>
                         <MessageCircle className="w-4.5 h-4.5 fill-white" />
                         <span>CONFIRM ORDER ON WHATSAPP · NPR {totalAmount.toLocaleString()}</span>
                         <ArrowRight className="w-4 h-4 ml-1" />
                       </>
+                    ) : (
+                      <>
+                        <Check className="w-4.5 h-4.5 text-white" />
+                        <span>CONFIRM ORDER · NPR {totalAmount.toLocaleString()}</span>
+                        <ArrowRight className="w-4 h-4 ml-1" />
+                      </>
                     )}
                   </button>
                   <p className="text-[10px] font-mono text-stone-400 text-center mt-2">
-                    Direct instant order forwarding to Panchu WhatsApp team +970 6374074
+                    {socialsAndContact.whatsappOrderRedirect !== false
+                      ? `Direct instant order forwarding to Panchu WhatsApp team ${socialsAndContact.contact?.whatsappNumber || '+970 6374074'}`
+                      : 'Orders are confirmed directly and verified by the Panchu team'}
                   </p>
                 </div>
               </div>

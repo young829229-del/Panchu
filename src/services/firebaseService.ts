@@ -17,7 +17,25 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
-import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc, PaymentSettings, CategoryItem, HomepageSectionPlacement, PromoCode, PromoSettings, NewsletterSubscriber, OneTimePromoCode, OneTimePromoSettings } from '../types';
+import {
+  Product,
+  Order,
+  OrderItem,
+  OrderStatus,
+  AdminUser,
+  BannerDoc,
+  PaymentSettings,
+  CategoryItem,
+  HomepageSectionPlacement,
+  PromoCode,
+  PromoSettings,
+  NewsletterSubscriber,
+  OneTimePromoCode,
+  OneTimePromoSettings,
+  ContactSettings,
+  SocialLinksSettings,
+  SocialsAndContactSettings
+} from '../types';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 import { ALL_PRODUCTS } from '../data/products';
 
@@ -3039,5 +3057,216 @@ export async function createManualOneTimePromoCode(params: {
     handleFirestoreError(error, OperationType.WRITE, path);
     throw error;
   }
+}
+
+// ==========================================
+// SOCIALS & CONTACT SETTINGS
+// ==========================================
+
+export const DEFAULT_CONTACT_SETTINGS: ContactSettings = {
+  phone: '+977 9706374074',
+  whatsappNumber: '+977 9706374074',
+  email: 'panchuknows999@gmail.com',
+  address: 'Kathmandu, Nepal'
+};
+
+export const DEFAULT_SOCIAL_LINKS: SocialLinksSettings = {
+  instagram: 'https://www.instagram.com/panchu_official3?igsh=NmVqMDJtYnl4cDIz',
+  facebook: 'https://www.facebook.com/panchu.official',
+  tiktok: 'https://www.tiktok.com/@panchu.vs?_r=1&_t=ZS-98na7CYayiv',
+  youtube: 'https://www.youtube.com/@panchu'
+};
+
+export const DEFAULT_SOCIALS_AND_CONTACT_SETTINGS: SocialsAndContactSettings = {
+  contact: DEFAULT_CONTACT_SETTINGS,
+  socials: DEFAULT_SOCIAL_LINKS,
+  whatsappOrderRedirect: true
+};
+
+const CANONICAL_SOCIALS_CONTACT_KEY = 'panchu_canonical_socials_contact';
+
+/**
+ * Cleans phone/whatsapp number to pure international digits suitable for wa.me URL
+ */
+export function cleanWhatsAppDigits(input?: string | null): string {
+  if (!input) return '9779706374074';
+  const digits = input.replace(/\D/g, '');
+  if (!digits) return '9779706374074';
+  // If Nepal 10-digit mobile starting with 98 or 97, add 977
+  if (digits.length === 10 && (digits.startsWith('98') || digits.startsWith('97') || digits.startsWith('96'))) {
+    return `977${digits}`;
+  }
+  return digits;
+}
+
+/**
+ * Returns canonical Socials & Contact settings synchronously from cache
+ */
+export function getCanonicalSocialsAndContactSync(): SocialsAndContactSettings {
+  if (typeof window === 'undefined') return DEFAULT_SOCIALS_AND_CONTACT_SETTINGS;
+  try {
+    const raw = localStorage.getItem(CANONICAL_SOCIALS_CONTACT_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          contact: {
+            phone: typeof parsed.contact?.phone === 'string' && parsed.contact.phone ? parsed.contact.phone : DEFAULT_CONTACT_SETTINGS.phone,
+            whatsappNumber: typeof parsed.contact?.whatsappNumber === 'string' && parsed.contact.whatsappNumber ? parsed.contact.whatsappNumber : DEFAULT_CONTACT_SETTINGS.whatsappNumber,
+            email: typeof parsed.contact?.email === 'string' && parsed.contact.email ? parsed.contact.email : DEFAULT_CONTACT_SETTINGS.email,
+            address: typeof parsed.contact?.address === 'string' && parsed.contact.address ? parsed.contact.address : DEFAULT_CONTACT_SETTINGS.address
+          },
+          socials: {
+            instagram: typeof parsed.socials?.instagram === 'string' ? parsed.socials.instagram : DEFAULT_SOCIAL_LINKS.instagram,
+            facebook: typeof parsed.socials?.facebook === 'string' ? parsed.socials.facebook : DEFAULT_SOCIAL_LINKS.facebook,
+            tiktok: typeof parsed.socials?.tiktok === 'string' ? parsed.socials.tiktok : DEFAULT_SOCIAL_LINKS.tiktok,
+            youtube: typeof parsed.socials?.youtube === 'string' ? parsed.socials.youtube : DEFAULT_SOCIAL_LINKS.youtube
+          },
+          whatsappOrderRedirect: parsed.whatsappOrderRedirect !== false
+        };
+      }
+    }
+  } catch (e) {
+    console.debug('Error reading canonical socials and contact cache:', e);
+  }
+  return DEFAULT_SOCIALS_AND_CONTACT_SETTINGS;
+}
+
+/**
+ * Stores canonical Socials & Contact settings to cache
+ */
+export function setCanonicalSocialsAndContactSync(settings: SocialsAndContactSettings): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CANONICAL_SOCIALS_CONTACT_KEY, JSON.stringify(settings));
+  } catch (e) {
+    console.debug('Error writing canonical socials and contact cache:', e);
+  }
+}
+
+/**
+ * Real-time subscription to Socials & Contact Settings in Firestore doc `settings/socials_contact`
+ */
+export function subscribeSocialsAndContactSettings(
+  callback: (settings: SocialsAndContactSettings) => void
+): () => void {
+  const path = 'settings/socials_contact';
+  try {
+    const docRef = doc(db, 'settings', 'socials_contact');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const cleanSettings: SocialsAndContactSettings = {
+            contact: {
+              phone: typeof data?.contact?.phone === 'string' ? data.contact.phone : (data?.phone || DEFAULT_CONTACT_SETTINGS.phone),
+              whatsappNumber: typeof data?.contact?.whatsappNumber === 'string' ? data.contact.whatsappNumber : (data?.whatsappNumber || DEFAULT_CONTACT_SETTINGS.whatsappNumber),
+              email: typeof data?.contact?.email === 'string' ? data.contact.email : (data?.email || DEFAULT_CONTACT_SETTINGS.email),
+              address: typeof data?.contact?.address === 'string' ? data.contact.address : (data?.address || DEFAULT_CONTACT_SETTINGS.address)
+            },
+            socials: {
+              instagram: typeof data?.socials?.instagram === 'string' ? data.socials.instagram : (data?.instagram || DEFAULT_SOCIAL_LINKS.instagram),
+              facebook: typeof data?.socials?.facebook === 'string' ? data.socials.facebook : (data?.facebook || DEFAULT_SOCIAL_LINKS.facebook),
+              tiktok: typeof data?.socials?.tiktok === 'string' ? data.socials.tiktok : (data?.tiktok || DEFAULT_SOCIAL_LINKS.tiktok),
+              youtube: typeof data?.socials?.youtube === 'string' ? data.socials.youtube : (data?.youtube || DEFAULT_SOCIAL_LINKS.youtube)
+            },
+            whatsappOrderRedirect: data?.whatsappOrderRedirect !== false
+          };
+          setCanonicalSocialsAndContactSync(cleanSettings);
+          callback(cleanSettings);
+        } else {
+          const canonical = getCanonicalSocialsAndContactSync();
+          callback(canonical);
+        }
+      },
+      (error) => {
+        console.warn('Firestore socials_contact listener notice:', error?.message || error);
+        callback(getCanonicalSocialsAndContactSync());
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to attach socials_contact listener:', err);
+    callback(getCanonicalSocialsAndContactSync());
+    return () => {};
+  }
+}
+
+/**
+ * Updates Socials & Contact Settings in Firestore and canonical cache
+ */
+export async function updateSocialsAndContactSettings(
+  patch: Partial<SocialsAndContactSettings>
+): Promise<void> {
+  const path = 'settings/socials_contact';
+  try {
+    const docRef = doc(db, 'settings', 'socials_contact');
+    const existing = getCanonicalSocialsAndContactSync();
+
+    const merged: SocialsAndContactSettings = {
+      contact: {
+        ...existing.contact,
+        ...(patch.contact || {})
+      },
+      socials: {
+        ...existing.socials,
+        ...(patch.socials || {})
+      },
+      whatsappOrderRedirect: patch.whatsappOrderRedirect !== undefined
+        ? patch.whatsappOrderRedirect
+        : existing.whatsappOrderRedirect
+    };
+
+    setCanonicalSocialsAndContactSync(merged);
+
+    await setDoc(
+      docRef,
+      {
+        contact: merged.contact,
+        socials: merged.socials,
+        whatsappOrderRedirect: merged.whatsappOrderRedirect,
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Helper to update only contact details
+ */
+export async function saveContactDetailsToFirestore(
+  contact: Partial<ContactSettings>
+): Promise<void> {
+  await updateSocialsAndContactSettings({ contact: contact as any });
+}
+
+/**
+ * Helper to update a specific social link
+ */
+export async function saveSocialLinkToFirestore(
+  platform: keyof SocialLinksSettings,
+  url: string
+): Promise<void> {
+  const existing = getCanonicalSocialsAndContactSync();
+  await updateSocialsAndContactSettings({
+    socials: {
+      ...existing.socials,
+      [platform]: url.trim()
+    }
+  });
+}
+
+/**
+ * Helper to toggle WhatsApp Order Redirect ON/OFF
+ */
+export async function setWhatsAppOrderRedirectToFirestore(
+  enabled: boolean
+): Promise<void> {
+  await updateSocialsAndContactSettings({ whatsappOrderRedirect: enabled });
 }
 

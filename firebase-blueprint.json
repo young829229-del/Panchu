@@ -180,6 +180,18 @@
         "expiresInDays": { "type": "number" },
         "updatedAt": { "type": "string" }
       }
+    },
+    "SocialsAndContactSettings": {
+      "title": "SocialsAndContactSettings",
+      "description": "Contact info, editable social channels, and WhatsApp Order Redirect toggle",
+      "type": "object",
+      "properties": {
+        "contact": { "type": "object" },
+        "socials": { "type": "object" },
+        "whatsappOrderRedirect": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["contact", "socials", "whatsappOrderRedirect"]
     }
   },
   "firestore": {

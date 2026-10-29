@@ -8,11 +8,12 @@ import {
   Settings,
   CreditCard,
   Layers,
-  Users
+  Users,
+  Share2
 } from 'lucide-react';
 import { PanchuLogo } from '../PanchuLogo';
 
-export type AdminTab = 'orders' | 'order_history' | 'offers' | 'customer_data' | 'products' | 'placement' | 'categories' | 'stock' | 'banners' | 'messages' | 'payments' | 'settings' | 'summary';
+export type AdminTab = 'orders' | 'order_history' | 'offers' | 'customer_data' | 'products' | 'placement' | 'categories' | 'stock' | 'banners' | 'messages' | 'payments' | 'socials_contact' | 'settings' | 'summary';
 
 interface AdminSidebarProps {
   activeTab: AdminTab;
@@ -75,6 +76,11 @@ export const AdminSidebar: React.FC<AdminSidebarProps> = ({
       id: 'customer_data',
       label: 'Customer Data',
       icon: Users
+    },
+    {
+      id: 'socials_contact',
+      label: 'Socials & Contact',
+      icon: Share2
     },
     {
       id: 'payments',

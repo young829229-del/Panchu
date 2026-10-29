@@ -44,6 +44,7 @@ import { BannersView } from './admin/BannersView';
 import { PaymentsView } from './admin/PaymentsView';
 import { HomepagePlacementView } from './admin/HomepagePlacementView';
 import { CustomerDataView } from './admin/CustomerDataView';
+import { SocialsAndContactView } from './admin/SocialsAndContactView';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 
 import {
@@ -1075,6 +1076,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* VIEW 7: PAYMENT SETTINGS */}
             {activeTab === 'payments' && <PaymentsView />}
+
+            {/* VIEW 7B: SOCIALS & CONTACT SETTINGS */}
+            {activeTab === 'socials_contact' && <SocialsAndContactView />}
 
             {/* VIEW 8: SETTINGS & ADMINS */}
             {activeTab === 'settings' && (

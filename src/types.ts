@@ -210,3 +210,24 @@ export interface PaymentSettings {
   codQrEnabled?: boolean;
   codQrImageUrl?: string | null;
 }
+
+export interface ContactSettings {
+  phone: string;
+  whatsappNumber: string;
+  email: string;
+  address: string;
+}
+
+export interface SocialLinksSettings {
+  instagram: string;
+  facebook: string;
+  tiktok: string;
+  youtube: string;
+}
+
+export interface SocialsAndContactSettings {
+  contact: ContactSettings;
+  socials: SocialLinksSettings;
+  whatsappOrderRedirect: boolean;
+  updatedAt?: any;
+}
