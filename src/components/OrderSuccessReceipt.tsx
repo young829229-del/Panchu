@@ -67,15 +67,6 @@ export const OrderSuccessReceipt: React.FC<OrderSuccessReceiptProps> = ({
           </div>
         </section>
 
-        {/* Confirmation Sent Notice */}
-        <section className="mt-6 text-sm text-neutral-800 space-y-1">
-          <p className="text-black">Confirmation sent to:</p>
-          <p className="text-black font-medium">{orderData.phone}</p>
-          <p className="text-neutral-600 text-xs sm:text-sm pt-0.5 leading-relaxed">
-            It includes your confirmation, the items you ordered and a link to your order status.
-          </p>
-        </section>
-
         {/* Divider */}
         <hr className="border-t border-gray-200 my-6" />
 
@@ -86,8 +77,7 @@ export const OrderSuccessReceipt: React.FC<OrderSuccessReceiptProps> = ({
           </h2>
 
           <div className="text-sm text-neutral-700 mt-2 space-y-0.5 leading-relaxed">
-            <p>We will send you an email with tracking information once your order ships.</p>
-            <p>Some items might ship separately</p>
+            <p>We will send you an link with tracking information once your order ships.</p>
           </div>
 
           <div className="mt-5 space-y-1 text-sm text-black leading-snug">
