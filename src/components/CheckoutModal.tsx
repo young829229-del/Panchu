@@ -434,6 +434,26 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   if (!isOpen) return null;
 
+  if (isSuccess && confirmedReceiptData) {
+    return (
+      <AnimatePresence>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="fixed inset-0 z-50 overflow-y-auto bg-white min-h-screen text-black"
+        >
+          <OrderSuccessReceipt
+            orderData={confirmedReceiptData}
+            onContinueShopping={handleClose}
+            theme={theme}
+          />
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
+
   return (
     <AnimatePresence>
       <motion.div
@@ -453,18 +473,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         >
           <div className="flex items-center gap-3">
             <button
-              onClick={isSuccess ? handleClose : onClose}
+              onClick={onClose}
               className={`p-1.5 -ml-1 transition-colors cursor-pointer flex items-center gap-1.5 ${
                 theme === 'dark'
                   ? 'text-stone-300 hover:text-white hover:bg-stone-800'
                   : 'text-stone-700 hover:text-black hover:bg-stone-100'
               }`}
               id="checkout-page-back"
-              title={isSuccess ? 'Back to shop' : 'Back to store'}
+              title="Back to store"
             >
               <ArrowLeft className="w-5 h-5" />
               <span className="hidden sm:inline font-mono text-xs font-bold tracking-wider uppercase">
-                {isSuccess ? 'BACK TO SHOP' : 'BACK'}
+                BACK
               </span>
             </button>
             <h1
@@ -472,24 +492,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 theme === 'dark' ? 'text-white' : 'text-black'
               }`}
             >
-              <span>{isSuccess ? 'ORDER CONFIRMATION' : 'CHECKOUT'}</span>
-              {!isSuccess && (
-                <span
-                  className={`text-xs font-mono font-bold px-2 py-0.5 border ${
-                    theme === 'dark'
-                      ? 'bg-stone-800 text-stone-300 border-stone-700'
-                      : 'bg-stone-100 text-stone-700 border-stone-200'
-                  }`}
-                >
-                  {items.reduce((acc, i) => acc + i.quantity, 0)}{' '}
-                  {items.reduce((acc, i) => acc + i.quantity, 0) === 1 ? 'ITEM' : 'ITEMS'}
-                </span>
-              )}
+              <span>CHECKOUT</span>
+              <span
+                className={`text-xs font-mono font-bold px-2 py-0.5 border ${
+                  theme === 'dark'
+                    ? 'bg-stone-800 text-stone-300 border-stone-700'
+                    : 'bg-stone-100 text-stone-700 border-stone-200'
+                }`}
+              >
+                {items.reduce((acc, i) => acc + i.quantity, 0)}{' '}
+                {items.reduce((acc, i) => acc + i.quantity, 0) === 1 ? 'ITEM' : 'ITEMS'}
+              </span>
             </h1>
           </div>
 
           <button
-            onClick={isSuccess ? handleClose : onClose}
+            onClick={onClose}
             className={`p-2 transition-colors cursor-pointer ${
               theme === 'dark'
                 ? 'text-stone-300 hover:bg-stone-800 hover:text-white'
@@ -503,15 +521,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         </header>
 
         {/* Full Page Content Container */}
-        <div className={`flex-1 w-full ${isSuccess ? 'max-w-4xl' : 'max-w-3xl'} mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10`}>
-          {isSuccess && confirmedReceiptData ? (
-            <OrderSuccessReceipt
-              orderData={confirmedReceiptData}
-              onContinueShopping={handleClose}
-              theme={theme}
-            />
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-8">
+        <div className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10">
+          <form onSubmit={handleSubmit} className="space-y-8">
               {/* Error Banner */}
               {errorMessage && (
                 <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-mono flex items-start gap-2">
@@ -954,7 +965,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
                 </div>
               </div>
             </form>
-          )}
         </div>
       </motion.div>
     </AnimatePresence>
