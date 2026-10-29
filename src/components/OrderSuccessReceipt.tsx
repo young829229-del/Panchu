@@ -1,5 +1,5 @@
 import React from 'react';
-import { OrderReceiptData } from '../utils/receiptPdfGenerator';
+import { OrderReceiptData } from '../types';
 
 interface OrderSuccessReceiptProps {
   orderData: OrderReceiptData;
@@ -76,11 +76,7 @@ export const OrderSuccessReceipt: React.FC<OrderSuccessReceiptProps> = ({
             Deliver to
           </h2>
 
-          <div className="text-sm text-neutral-700 mt-2 space-y-0.5 leading-relaxed">
-            <p>We will send you an link with tracking information once your order ships.</p>
-          </div>
-
-          <div className="mt-5 space-y-1 text-sm text-black leading-snug">
+          <div className="mt-4 space-y-1 text-sm text-black leading-snug">
             <p>{orderData.customerName}</p>
             <p>{orderData.shippingAddress}</p>
             {orderData.deliveryLocationLabel && (

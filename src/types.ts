@@ -223,11 +223,42 @@ export interface SocialLinksSettings {
   facebook: string;
   tiktok: string;
   youtube: string;
+  whatsapp?: string;
+}
+
+export interface SocialActiveSettings {
+  instagram: boolean;
+  facebook: boolean;
+  tiktok: boolean;
+  youtube: boolean;
+  whatsapp?: boolean;
 }
 
 export interface SocialsAndContactSettings {
   contact: ContactSettings;
   socials: SocialLinksSettings;
+  socialsActive: SocialActiveSettings;
   whatsappOrderRedirect: boolean;
   updatedAt?: any;
+}
+
+export interface OrderReceiptData {
+  orderId: string;
+  orderDocId?: string;
+  customerName: string;
+  phone: string;
+  shippingAddress: string;
+  deliveryOption?: string;
+  deliveryLocationLabel?: string;
+  items: OrderItem[];
+  subtotal: number;
+  promoCode?: string | null;
+  discountAmount?: number;
+  deliveryFee: number;
+  totalAmount: number;
+  paymentMethod: string;
+  paymentScreenshotUrl?: string | null;
+  orderStatus: string;
+  createdAt?: any;
+  createdOrderMessage?: string;
 }

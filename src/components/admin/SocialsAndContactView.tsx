@@ -15,12 +15,13 @@ import {
   ShieldCheck,
   Sparkles
 } from 'lucide-react';
-import { ContactSettings, SocialLinksSettings, SocialsAndContactSettings } from '../../types';
+import { ContactSettings, SocialLinksSettings, SocialActiveSettings, SocialsAndContactSettings } from '../../types';
 import {
   subscribeSocialsAndContactSettings,
   updateSocialsAndContactSettings,
   saveContactDetailsToFirestore,
   saveSocialLinkToFirestore,
+  saveSocialActiveToFirestore,
   setWhatsAppOrderRedirectToFirestore,
   getCanonicalSocialsAndContactSync,
   cleanWhatsAppDigits
@@ -111,7 +112,7 @@ export const SocialsAndContactView: React.FC = () => {
 
   // Local form state for Social Links
   const [socialsForm, setSocialsForm] = useState<SocialLinksSettings>(() => settings.socials);
-  const [savingPlatform, setSavingPlatform] = useState<keyof SocialLinksSettings | 'all' | null>(null);
+  const [savingPlatform, setSavingPlatform] = useState<string | null>(null);
   const [socialStatus, setSocialStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // WhatsApp Order Redirect Toggle State
@@ -152,10 +153,10 @@ export const SocialsAndContactView: React.FC = () => {
       setRedirectStatus({
         type: 'success',
         text: nextState
-          ? 'WhatsApp Order Redirect is now ON. Checkout will automatically open WhatsApp with the full order message.'
-          : 'WhatsApp Order Redirect is now OFF. Orders will be saved to database and display the digital receipt on website without opening WhatsApp.'
+          ? 'WhatsApp Order Redirect is now ON.'
+          : 'WhatsApp Order Redirect is now OFF.'
       });
-      setTimeout(() => setRedirectStatus(null), 5000);
+      setTimeout(() => setRedirectStatus(null), 4000);
     } catch (err: any) {
       setRedirectStatus({
         type: 'error',
@@ -174,21 +175,8 @@ export const SocialsAndContactView: React.FC = () => {
     setIsSavingContact(true);
     setContactStatus(null);
 
-    // Basic Validation
-    if (!contactForm.phone.trim()) {
-      setContactStatus({ type: 'error', text: 'Contact phone number is required.' });
-      setIsSavingContact(false);
-      return;
-    }
-
-    if (!contactForm.whatsappNumber.trim()) {
-      setContactStatus({ type: 'error', text: 'WhatsApp number is required.' });
-      setIsSavingContact(false);
-      return;
-    }
-
-    if (!contactForm.email.trim() || !contactForm.email.includes('@')) {
-      setContactStatus({ type: 'error', text: 'Please provide a valid contact email address.' });
+    if (!contactForm.phone.trim() || !contactForm.whatsappNumber.trim() || !contactForm.email.trim()) {
+      setContactStatus({ type: 'error', text: 'Please fill in all required contact fields.' });
       setIsSavingContact(false);
       return;
     }
@@ -217,7 +205,40 @@ export const SocialsAndContactView: React.FC = () => {
   };
 
   // ----------------------------------------------------
-  // Handler 3: Save a Single Social Link
+  // Handler 3: Toggle Social Active Status ON/OFF
+  // ----------------------------------------------------
+  const handleToggleSocialActive = async (platform: keyof SocialActiveSettings) => {
+    const currentState = settings.socialsActive?.[platform] !== false;
+    const nextState = !currentState;
+    setSavingPlatform(`active_${platform}`);
+    setSocialStatus(null);
+
+    try {
+      await saveSocialActiveToFirestore(platform, nextState);
+      setSettings(prev => ({
+        ...prev,
+        socialsActive: {
+          ...prev.socialsActive,
+          [platform]: nextState
+        }
+      }));
+      setSocialStatus({
+        type: 'success',
+        text: `${platform.toUpperCase()} logo is now ${nextState ? 'ACTIVE (shown on website)' : 'DISABLED (hidden from website)'}.`
+      });
+      setTimeout(() => setSocialStatus(null), 4000);
+    } catch (err: any) {
+      setSocialStatus({
+        type: 'error',
+        text: err?.message || `Failed to update ${platform} active status.`
+      });
+    } finally {
+      setSavingPlatform(null);
+    }
+  };
+
+  // ----------------------------------------------------
+  // Handler 4: Save a Single Social Link
   // ----------------------------------------------------
   const handleSaveSingleSocial = async (platform: keyof SocialLinksSettings) => {
     setSavingPlatform(platform);
@@ -245,7 +266,7 @@ export const SocialsAndContactView: React.FC = () => {
   };
 
   // ----------------------------------------------------
-  // Handler 4: Save All Social Links
+  // Handler 5: Save All Social Links
   // ----------------------------------------------------
   const handleSaveAllSocials = async () => {
     setSavingPlatform('all');
@@ -313,7 +334,6 @@ export const SocialsAndContactView: React.FC = () => {
             </p>
           </div>
 
-          {/* Toggle Switch */}
           <button
             type="button"
             onClick={handleToggleRedirect}
@@ -323,7 +343,6 @@ export const SocialsAndContactView: React.FC = () => {
                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                 : 'bg-stone-800 hover:bg-stone-900 text-white'
             }`}
-            id="admin-whatsapp-redirect-toggle-btn"
           >
             {isTogglingRedirect ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -342,42 +361,6 @@ export const SocialsAndContactView: React.FC = () => {
           </button>
         </div>
 
-        {/* Detailed behavior breakdown */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-sans">
-          <div
-            className={`p-3.5 rounded-xl border transition-all ${
-              settings.whatsappOrderRedirect
-                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950 font-medium'
-                : 'bg-stone-50 border-stone-200 text-stone-500 opacity-60'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 font-bold mb-1">
-              <Check className="w-3.5 h-3.5 text-emerald-600" />
-              <span>When ON (Default)</span>
-            </div>
-            <p className="text-[11px] leading-relaxed">
-              Customer taps &ldquo;Confirm Order&rdquo; &rarr; Order is saved in Firebase &rarr; WhatsApp app/web automatically opens with the full order summary message ready to send to your WhatsApp number.
-            </p>
-          </div>
-
-          <div
-            className={`p-3.5 rounded-xl border transition-all ${
-              !settings.whatsappOrderRedirect
-                ? 'bg-stone-100 border-stone-300 text-stone-900 font-medium'
-                : 'bg-stone-50 border-stone-200 text-stone-500 opacity-60'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 font-bold mb-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-stone-700" />
-              <span>When OFF (Direct Web Receipt)</span>
-            </div>
-            <p className="text-[11px] leading-relaxed">
-              Customer taps &ldquo;Confirm Order&rdquo; &rarr; Order is saved directly in Firebase &rarr; Beautiful Order Complete receipt and Order ID are shown directly on the website without opening WhatsApp.
-            </p>
-          </div>
-        </div>
-
-        {/* Status Message */}
         {redirectStatus && (
           <div
             className={`p-3 rounded-xl text-xs font-sans flex items-start gap-2 ${
@@ -411,7 +394,6 @@ export const SocialsAndContactView: React.FC = () => {
 
         <form onSubmit={handleSaveContact} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* 1. Contact Phone Number */}
             <div>
               <label className="block text-[11px] font-mono font-bold uppercase text-stone-700 mb-1 flex items-center gap-1.5">
                 <Phone className="w-3.5 h-3.5 text-stone-500" />
@@ -425,12 +407,8 @@ export const SocialsAndContactView: React.FC = () => {
                 onChange={(e) => setContactForm({ ...contactForm, phone: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-sans focus:border-stone-900 focus:outline-none bg-stone-50/50"
               />
-              <span className="text-[10px] text-stone-400 font-sans mt-0.5 block">
-                Official store hotline shown on contact pages.
-              </span>
             </div>
 
-            {/* 2. WhatsApp Number */}
             <div>
               <label className="block text-[11px] font-mono font-bold uppercase text-stone-700 mb-1 flex items-center gap-1.5">
                 <WhatsAppIcon className="w-3.5 h-3.5 text-emerald-600" />
@@ -439,17 +417,13 @@ export const SocialsAndContactView: React.FC = () => {
               <input
                 type="text"
                 required
-                placeholder="+977 9706374074 or 9706374074"
+                placeholder="+977 9706374074"
                 value={contactForm.whatsappNumber}
                 onChange={(e) => setContactForm({ ...contactForm, whatsappNumber: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-sans focus:border-stone-900 focus:outline-none bg-stone-50/50"
               />
-              <span className="text-[10px] text-stone-400 font-sans mt-0.5 block">
-                Destination number for checkout orders (Cleaned: {cleanWhatsAppDigits(contactForm.whatsappNumber)}).
-              </span>
             </div>
 
-            {/* 3. Contact Email */}
             <div>
               <label className="block text-[11px] font-mono font-bold uppercase text-stone-700 mb-1 flex items-center gap-1.5">
                 <Mail className="w-3.5 h-3.5 text-stone-500" />
@@ -463,12 +437,8 @@ export const SocialsAndContactView: React.FC = () => {
                 onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-sans focus:border-stone-900 focus:outline-none bg-stone-50/50"
               />
-              <span className="text-[10px] text-stone-400 font-sans mt-0.5 block">
-                Inquiry email for customer order support and return requests.
-              </span>
             </div>
 
-            {/* 4. Business Address / Location */}
             <div>
               <label className="block text-[11px] font-mono font-bold uppercase text-stone-700 mb-1 flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-stone-500" />
@@ -481,13 +451,9 @@ export const SocialsAndContactView: React.FC = () => {
                 onChange={(e) => setContactForm({ ...contactForm, address: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-stone-200 text-xs font-sans focus:border-stone-900 focus:outline-none bg-stone-50/50"
               />
-              <span className="text-[10px] text-stone-400 font-sans mt-0.5 block">
-                Primary studio or operating location.
-              </span>
             </div>
           </div>
 
-          {/* Contact Status */}
           {contactStatus && (
             <div
               className={`p-3 rounded-xl text-xs font-sans flex items-start gap-2 ${
@@ -505,7 +471,6 @@ export const SocialsAndContactView: React.FC = () => {
             </div>
           )}
 
-          {/* Submit Button */}
           <div className="pt-2 flex items-center justify-end">
             <button
               type="submit"
@@ -529,16 +494,16 @@ export const SocialsAndContactView: React.FC = () => {
       </section>
 
       {/* ========================================================================= */}
-      {/* SECTION 3: MANAGE SOCIAL MEDIA LINKS                                      */}
+      {/* SECTION 3: MANAGE SOCIAL MEDIA LINKS & ON/OFF TOGGLES                      */}
       {/* ========================================================================= */}
       <section className="p-5 sm:p-6 rounded-2xl bg-white border border-stone-200/80 shadow-2xs space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-100">
           <div>
             <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-stone-900">
-              SOCIAL MEDIA LINKS
+              SOCIAL MEDIA LINKS &amp; DISPLAY TOGGLES
             </h2>
             <p className="text-xs text-stone-500 font-sans mt-0.5">
-              Connect existing storefront logos and icons to live social media links. Leave blank to disable an icon.
+              Toggle each platform ON to display its logo on the website, or OFF to hide it completely.
             </p>
           </div>
 
@@ -562,7 +527,6 @@ export const SocialsAndContactView: React.FC = () => {
           </button>
         </div>
 
-        {/* Global Social Status Message */}
         {socialStatus && (
           <div
             className={`p-3 rounded-xl text-xs font-sans flex items-start gap-2 ${
@@ -580,32 +544,42 @@ export const SocialsAndContactView: React.FC = () => {
           </div>
         )}
 
-        {/* Social Platforms List */}
         <div className="space-y-4">
           {SOCIAL_PLATFORMS.map((platform) => {
             const IconComponent = platform.icon;
             const currentUrl = socialsForm[platform.key] || '';
-            const isSavingThis = savingPlatform === platform.key;
+            const isPlatformActive = settings.socialsActive?.[platform.key] !== false;
+            const isSavingThis = savingPlatform === platform.key || savingPlatform === `active_${platform.key}`;
 
             return (
               <div
                 key={platform.key}
-                className="p-4 rounded-xl border border-stone-200/70 bg-stone-50/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                className={`p-4 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                  isPlatformActive
+                    ? 'border-stone-200/80 bg-stone-50/40'
+                    : 'border-stone-200/40 bg-stone-100/60 opacity-75'
+                }`}
               >
                 {/* Platform Badge & Logo */}
-                <div className="flex items-center gap-3 sm:w-44 shrink-0">
+                <div className="flex items-center gap-3 sm:w-48 shrink-0">
                   <div className={`p-2.5 rounded-xl bg-white border border-stone-200 shadow-2xs ${platform.iconColor}`}>
                     <IconComponent className="w-4 h-4" />
                   </div>
                   <div>
                     <h3 className="text-xs font-bold font-sans text-stone-900">{platform.name}</h3>
-                    <span className="text-[10px] text-stone-400 font-mono">
-                      {currentUrl ? 'Active' : 'Disabled / Empty'}
-                    </span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span
+                        className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                          isPlatformActive ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-600'
+                        }`}
+                      >
+                        {isPlatformActive ? 'SHOWN ON SITE' : 'HIDDEN'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Input & Action Buttons */}
+                {/* Input, Active Toggle & Action Buttons */}
                 <div className="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                   <input
                     type="url"
@@ -618,7 +592,29 @@ export const SocialsAndContactView: React.FC = () => {
                   />
 
                   <div className="flex items-center gap-2">
-                    {/* Individual Save Button */}
+                    {/* ON/OFF Active Toggle Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleToggleSocialActive(platform.key)}
+                      disabled={isSavingThis}
+                      className={`px-3 py-2 rounded-xl text-xs font-semibold font-sans flex items-center gap-1 transition-all cursor-pointer ${
+                        isPlatformActive
+                          ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                          : 'bg-stone-300 text-stone-800 hover:bg-stone-400'
+                      }`}
+                      title={`Toggle ${platform.name} ON/OFF`}
+                    >
+                      {isSavingThis ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : isPlatformActive ? (
+                        <ToggleRight className="w-4 h-4 text-white" />
+                      ) : (
+                        <ToggleLeft className="w-4 h-4 text-stone-700" />
+                      )}
+                      <span>{isPlatformActive ? 'ON' : 'OFF'}</span>
+                    </button>
+
+                    {/* Individual Save Link Button */}
                     <button
                       type="button"
                       onClick={() => handleSaveSingleSocial(platform.key)}

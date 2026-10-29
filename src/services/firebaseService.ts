@@ -34,6 +34,7 @@ import {
   OneTimePromoSettings,
   ContactSettings,
   SocialLinksSettings,
+  SocialActiveSettings,
   SocialsAndContactSettings
 } from '../types';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
@@ -3070,6 +3071,13 @@ export const DEFAULT_CONTACT_SETTINGS: ContactSettings = {
   address: 'Kathmandu, Nepal'
 };
 
+export const DEFAULT_SOCIAL_ACTIVE: SocialActiveSettings = {
+  instagram: true,
+  facebook: true,
+  tiktok: true,
+  youtube: true
+};
+
 export const DEFAULT_SOCIAL_LINKS: SocialLinksSettings = {
   instagram: 'https://www.instagram.com/panchu_official3?igsh=NmVqMDJtYnl4cDIz',
   facebook: 'https://www.facebook.com/panchu.official',
@@ -3080,6 +3088,7 @@ export const DEFAULT_SOCIAL_LINKS: SocialLinksSettings = {
 export const DEFAULT_SOCIALS_AND_CONTACT_SETTINGS: SocialsAndContactSettings = {
   contact: DEFAULT_CONTACT_SETTINGS,
   socials: DEFAULT_SOCIAL_LINKS,
+  socialsActive: DEFAULT_SOCIAL_ACTIVE,
   whatsappOrderRedirect: true
 };
 
@@ -3121,6 +3130,12 @@ export function getCanonicalSocialsAndContactSync(): SocialsAndContactSettings {
             facebook: typeof parsed.socials?.facebook === 'string' ? parsed.socials.facebook : DEFAULT_SOCIAL_LINKS.facebook,
             tiktok: typeof parsed.socials?.tiktok === 'string' ? parsed.socials.tiktok : DEFAULT_SOCIAL_LINKS.tiktok,
             youtube: typeof parsed.socials?.youtube === 'string' ? parsed.socials.youtube : DEFAULT_SOCIAL_LINKS.youtube
+          },
+          socialsActive: {
+            instagram: parsed.socialsActive?.instagram !== false,
+            facebook: parsed.socialsActive?.facebook !== false,
+            tiktok: parsed.socialsActive?.tiktok !== false,
+            youtube: parsed.socialsActive?.youtube !== false
           },
           whatsappOrderRedirect: parsed.whatsappOrderRedirect !== false
         };
@@ -3171,6 +3186,12 @@ export function subscribeSocialsAndContactSettings(
               tiktok: typeof data?.socials?.tiktok === 'string' ? data.socials.tiktok : (data?.tiktok || DEFAULT_SOCIAL_LINKS.tiktok),
               youtube: typeof data?.socials?.youtube === 'string' ? data.socials.youtube : (data?.youtube || DEFAULT_SOCIAL_LINKS.youtube)
             },
+            socialsActive: {
+              instagram: data?.socialsActive?.instagram !== false,
+              facebook: data?.socialsActive?.facebook !== false,
+              tiktok: data?.socialsActive?.tiktok !== false,
+              youtube: data?.socialsActive?.youtube !== false
+            },
             whatsappOrderRedirect: data?.whatsappOrderRedirect !== false
           };
           setCanonicalSocialsAndContactSync(cleanSettings);
@@ -3213,6 +3234,10 @@ export async function updateSocialsAndContactSettings(
         ...existing.socials,
         ...(patch.socials || {})
       },
+      socialsActive: {
+        ...existing.socialsActive,
+        ...(patch.socialsActive || {})
+      },
       whatsappOrderRedirect: patch.whatsappOrderRedirect !== undefined
         ? patch.whatsappOrderRedirect
         : existing.whatsappOrderRedirect
@@ -3225,6 +3250,7 @@ export async function updateSocialsAndContactSettings(
       {
         contact: merged.contact,
         socials: merged.socials,
+        socialsActive: merged.socialsActive,
         whatsappOrderRedirect: merged.whatsappOrderRedirect,
         updatedAt: serverTimestamp()
       },
@@ -3257,6 +3283,22 @@ export async function saveSocialLinkToFirestore(
     socials: {
       ...existing.socials,
       [platform]: url.trim()
+    }
+  });
+}
+
+/**
+ * Helper to update a specific social platform active status (ON/OFF)
+ */
+export async function saveSocialActiveToFirestore(
+  platform: keyof SocialActiveSettings,
+  active: boolean
+): Promise<void> {
+  const existing = getCanonicalSocialsAndContactSync();
+  await updateSocialsAndContactSettings({
+    socialsActive: {
+      ...existing.socialsActive,
+      [platform]: active
     }
   });
 }

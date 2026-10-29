@@ -29,10 +29,9 @@ import {
   getCanonicalSocialsAndContactSync,
   cleanWhatsAppDigits
 } from '../services/firebaseService';
-import { SocialsAndContactSettings } from '../types';
+import { OrderReceiptData, SocialsAndContactSettings } from '../types';
 import { getSavedCheckoutDetails, saveCustomerDetailsFromCheckout } from '../services/customerStorage';
 import { auth } from '../firebase';
-import { OrderReceiptData } from '../utils/receiptPdfGenerator';
 import { OrderSuccessReceipt } from './OrderSuccessReceipt';
 
 interface CheckoutModalProps {
