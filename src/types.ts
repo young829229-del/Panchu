@@ -119,6 +119,53 @@ export interface PromoSettings {
   updatedAt?: any;
 }
 
+export interface NewsletterSubscriber {
+  id: string;
+  email: string;
+  subscribedAt: any;
+  status: 'active' | 'unsubscribed';
+  welcomePromoCode: string;
+  welcomePromoCodeStatus?: 'unused' | 'redeemed' | 'expired' | 'disabled';
+  welcomePromoCodeRedeemedAt?: any;
+  welcomePromoCodeRedeemedOrderId?: string | null;
+  emailConsent: boolean;
+  consentSource: string;
+  consentTimestamp: any;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+export interface OneTimePromoCode {
+  id: string;
+  code: string;
+  subscriberId?: string;
+  customerEmail: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  discount: string;
+  minOrderAmount?: number;
+  maxDiscountAmount?: number | null;
+  description?: string;
+  status: 'unused' | 'redeemed' | 'expired' | 'disabled';
+  createdAt: any;
+  expiresAt?: string | null;
+  redeemedAt?: any;
+  redeemedOrderId?: string | null;
+  disabledAt?: any;
+  createdBy: 'newsletter_welcome' | 'admin';
+  updatedAt?: any;
+}
+
+export interface OneTimePromoSettings {
+  enabled: boolean;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  minOrderAmount: number;
+  maxDiscountAmount?: number | null;
+  expiresInDays?: number | null;
+  updatedAt?: any;
+}
+
 export interface UserProfile {
   uid: string;
   email: string;

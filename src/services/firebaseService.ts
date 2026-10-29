@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { db, storage, auth, handleFirestoreError, OperationType } from '../firebase';
-import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc, PaymentSettings, CategoryItem, HomepageSectionPlacement, PromoCode, PromoSettings } from '../types';
+import { Product, Order, OrderItem, OrderStatus, AdminUser, BannerDoc, PaymentSettings, CategoryItem, HomepageSectionPlacement, PromoCode, PromoSettings, NewsletterSubscriber, OneTimePromoCode, OneTimePromoSettings } from '../types';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 import { ALL_PRODUCTS } from '../data/products';
 
@@ -666,8 +666,10 @@ export async function createFirestoreOrder(
     updatedAt: serverTimestamp()
   };
 
+  const appliedCodeStr = orderInput.promoCode ? String(orderInput.promoCode).trim().toUpperCase() : null;
+
   try {
-    // 1. Attempt atomic transaction with inventory update
+    // 1. Attempt atomic transaction with inventory update & one-time promo code redemption
     await runTransaction(db, async (transaction) => {
       const productDocs: { ref: any; data: any; item: typeof cleanItems[0] }[] = [];
 
@@ -690,6 +692,27 @@ export async function createFirestoreOrder(
         }
       }
 
+      // Check if one-time promo code applies and is unused
+      let oneTimePromoRef: any = null;
+      let oneTimeSubscriberRef: any = null;
+      if (appliedCodeStr) {
+        try {
+          const otRef = doc(db, 'oneTimePromoCodes', appliedCodeStr);
+          const otSnap = await transaction.get(otRef);
+          if (otSnap.exists()) {
+            const otData = otSnap.data();
+            if (otData.status === 'unused') {
+              oneTimePromoRef = otRef;
+              if (otData.subscriberId) {
+                oneTimeSubscriberRef = doc(db, 'newsletterSubscribers', otData.subscriberId);
+              }
+            }
+          }
+        } catch {
+          // Non-fatal if code is not a one-time code or read is restricted
+        }
+      }
+
       // Decrement size stock for existing product docs
       for (const { ref: pRef, data: pData, item } of productDocs) {
         const stock = { ...(pData.stock || {}) };
@@ -704,6 +727,24 @@ export async function createFirestoreOrder(
           inStock: anyStockLeft,
           updatedAt: serverTimestamp()
         });
+      }
+
+      // Redeem one-time promo code atomically if matched
+      if (oneTimePromoRef) {
+        transaction.update(oneTimePromoRef, {
+          status: 'redeemed',
+          redeemedOrderId: generatedOrderId,
+          redeemedAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        if (oneTimeSubscriberRef) {
+          transaction.update(oneTimeSubscriberRef, {
+            welcomePromoCodeStatus: 'redeemed',
+            welcomePromoCodeRedeemedOrderId: generatedOrderId,
+            welcomePromoCodeRedeemedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        }
       }
 
       // Set the order in Firestore 'orders' collection
@@ -721,6 +762,11 @@ export async function createFirestoreOrder(
     // 2. Direct fallback write to orders collection
     try {
       await setDoc(newOrderRef, orderPayload);
+      if (appliedCodeStr) {
+        markOneTimePromoCodeRedeemed(appliedCodeStr, generatedOrderId).catch((err) => {
+          console.debug('Fallback one-time promo redemption notice:', err);
+        });
+      }
       return {
         success: true,
         orderId: generatedOrderId,
@@ -2327,11 +2373,96 @@ export async function validatePromoCodeAgainstFirestore(
       };
     }
 
-    const matched = settings.codes.find(
+    let matched = settings.codes.find(
       (c) => c.code.trim().toUpperCase() === cleanCode
     );
 
+    // If not found in general promo codes, check the one-time promo codes collection
     if (!matched) {
+      try {
+        const oneTimeDocRef = doc(db, 'oneTimePromoCodes', cleanCode);
+        const oneTimeSnap = await getDoc(oneTimeDocRef);
+        if (oneTimeSnap.exists()) {
+          const otData = oneTimeSnap.data();
+
+          if (otData.status === 'redeemed') {
+            return {
+              valid: false,
+              discountAmount: 0,
+              error: `This one-time promo code has already been redeemed${otData.redeemedOrderId ? ` with order ${otData.redeemedOrderId}` : ''}.`
+            };
+          }
+
+          if (otData.status === 'disabled' || otData.disabledAt) {
+            return {
+              valid: false,
+              discountAmount: 0,
+              error: `Promo code "${cleanCode}" has been disabled.`
+            };
+          }
+
+          if (otData.status === 'expired') {
+            return {
+              valid: false,
+              discountAmount: 0,
+              error: `Promo code "${cleanCode}" has expired.`
+            };
+          }
+
+          if (otData.expiresAt) {
+            const expDate = new Date(otData.expiresAt);
+            if (!isNaN(expDate.getTime())) {
+              expDate.setHours(23, 59, 59, 999);
+              if (Date.now() > expDate.getTime()) {
+                return {
+                  valid: false,
+                  discountAmount: 0,
+                  error: `Promo code "${cleanCode}" expired on ${otData.expiresAt}.`
+                };
+              }
+            }
+          }
+
+          if (otData.minOrderAmount && otData.minOrderAmount > 0 && subtotal < otData.minOrderAmount) {
+            return {
+              valid: false,
+              discountAmount: 0,
+              error: `Minimum order of NPR ${otData.minOrderAmount.toLocaleString()} required for this code.`
+            };
+          }
+
+          let rawDiscount = 0;
+          if (otData.discountType === 'percentage') {
+            const pct = Math.max(0, Math.min(100, Number(otData.discountValue) || 5));
+            rawDiscount = Math.round((subtotal * pct) / 100);
+            if (otData.maxDiscountAmount && otData.maxDiscountAmount > 0) {
+              rawDiscount = Math.min(rawDiscount, otData.maxDiscountAmount);
+            }
+          } else {
+            rawDiscount = Math.max(0, Number(otData.discountValue) || 0);
+          }
+
+          const finalDiscount = Math.min(subtotal, Math.max(0, rawDiscount));
+          return {
+            valid: true,
+            discountAmount: finalDiscount,
+            promoCode: {
+              id: cleanCode,
+              code: cleanCode,
+              discountType: otData.discountType || 'percentage',
+              discountValue: otData.discountValue || 5,
+              discount: otData.discount || (otData.discountType === 'fixed' ? `Rs ${otData.discountValue} OFF` : `${otData.discountValue}% OFF`),
+              description: otData.description || 'Welcome Subscriber 5% Discount',
+              active: true,
+              validUntil: otData.expiresAt || 'One-time use',
+              minOrderAmount: otData.minOrderAmount || 0
+            }
+          };
+        }
+      } catch (otErr) {
+        console.warn('One-time code lookup check notice:', otErr);
+      }
+
       return {
         valid: false,
         discountAmount: 0,
@@ -2405,6 +2536,508 @@ export async function validatePromoCodeAgainstFirestore(
       discountAmount: 0,
       error: 'Unable to validate promo code. Please try again.'
     };
+  }
+}
+
+/**
+ * Generates an unpredictable uppercase one-time code with prefix "PNXM"
+ * Suffix avoids visually ambiguous characters (0, O, 1, I, L)
+ */
+export function generateSecurePnxmCode(length: number = 4): string {
+  const alphabet = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+  let suffix = '';
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.getRandomValues) {
+    const bytes = new Uint8Array(length);
+    window.crypto.getRandomValues(bytes);
+    for (let i = 0; i < length; i++) {
+      suffix += alphabet.charAt(bytes[i] % alphabet.length);
+    }
+  } else {
+    for (let i = 0; i < length; i++) {
+      suffix += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
+    }
+  }
+  return `PNXM${suffix}`;
+}
+
+export const DEFAULT_ONE_TIME_PROMO_SETTINGS: OneTimePromoSettings = {
+  enabled: true,
+  discountType: 'percentage',
+  discountValue: 5,
+  minOrderAmount: 0,
+  maxDiscountAmount: null,
+  expiresInDays: null
+};
+
+/**
+ * Realtime subscription to One-Time Promo Code Settings in Firestore settings/one_time_promo_settings
+ */
+export function subscribeOneTimePromoSettings(
+  callback: (settings: OneTimePromoSettings) => void
+): () => void {
+  const path = 'settings/one_time_promo_settings';
+  try {
+    const docRef = doc(db, 'settings', 'one_time_promo_settings');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const d = docSnap.data();
+          callback({
+            enabled: d.enabled !== false,
+            discountType: d.discountType === 'fixed' ? 'fixed' : 'percentage',
+            discountValue: Number(d.discountValue) > 0 ? Number(d.discountValue) : 5,
+            minOrderAmount: Number(d.minOrderAmount) >= 0 ? Number(d.minOrderAmount) : 0,
+            maxDiscountAmount: typeof d.maxDiscountAmount === 'number' && d.maxDiscountAmount > 0 ? d.maxDiscountAmount : null,
+            expiresInDays: typeof d.expiresInDays === 'number' && d.expiresInDays > 0 ? d.expiresInDays : null,
+            updatedAt: d.updatedAt
+          });
+        } else {
+          callback(DEFAULT_ONE_TIME_PROMO_SETTINGS);
+        }
+      },
+      (error) => {
+        console.warn('One-time promo settings listener notice:', error?.message || error);
+        callback(DEFAULT_ONE_TIME_PROMO_SETTINGS);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('One-time promo settings attach error:', err);
+    callback(DEFAULT_ONE_TIME_PROMO_SETTINGS);
+    return () => {};
+  }
+}
+
+/**
+ * Saves One-Time Promo Code Settings to Firestore
+ */
+export async function saveOneTimePromoSettings(
+  settings: Partial<OneTimePromoSettings>
+): Promise<void> {
+  const path = 'settings/one_time_promo_settings';
+  try {
+    const docRef = doc(db, 'settings', 'one_time_promo_settings');
+    await setDoc(docRef, {
+      enabled: settings.enabled !== false,
+      discountType: settings.discountType === 'fixed' ? 'fixed' : 'percentage',
+      discountValue: Math.max(1, Math.min(100, Number(settings.discountValue) || 5)),
+      minOrderAmount: Math.max(0, Number(settings.minOrderAmount) || 0),
+      maxDiscountAmount: settings.maxDiscountAmount ? Math.max(1, Number(settings.maxDiscountAmount)) : null,
+      expiresInDays: settings.expiresInDays ? Math.max(1, Number(settings.expiresInDays)) : null,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Subscribes a user to the newsletter with persistent Firestore storage & idempotent welcome promo code generation.
+ * Prevents duplicates; if email already subscribed, returns existing code without generating duplicate records.
+ */
+export async function subscribeToNewsletter(email: string): Promise<{
+  success: boolean;
+  isExisting: boolean;
+  promoCode: string;
+  error?: string;
+}> {
+  const normalizedEmail = (email || '').trim().toLowerCase();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!normalizedEmail || !emailRegex.test(normalizedEmail)) {
+    return {
+      success: false,
+      isExisting: false,
+      promoCode: '',
+      error: 'Please enter a valid email address.'
+    };
+  }
+
+  // Deterministic identifier preventing duplicate records
+  const subscriberId = `sub_${normalizedEmail.replace(/[^a-z0-9]/g, '_')}`;
+
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+      const subRef = doc(db, 'newsletterSubscribers', subscriberId);
+      const subSnap = await transaction.get(subRef);
+
+      // Idempotency: Return existing welcome code if already subscribed
+      if (subSnap.exists()) {
+        const existingData = subSnap.data();
+        return {
+          success: true,
+          isExisting: true,
+          promoCode: existingData.welcomePromoCode || '',
+          error: undefined
+        };
+      }
+
+      // Fetch active one-time promo settings
+      let discountType: 'percentage' | 'fixed' = 'percentage';
+      let discountValue = 5;
+      let minOrderAmount = 0;
+      let maxDiscountAmount: number | null = null;
+      let expiresInDays: number | null = null;
+
+      try {
+        const settingsRef = doc(db, 'settings', 'one_time_promo_settings');
+        const settingsSnap = await transaction.get(settingsRef);
+        if (settingsSnap.exists()) {
+          const s = settingsSnap.data();
+          if (s.enabled !== false) {
+            discountType = s.discountType === 'fixed' ? 'fixed' : 'percentage';
+            discountValue = Number(s.discountValue) > 0 ? Number(s.discountValue) : 5;
+            minOrderAmount = Number(s.minOrderAmount) >= 0 ? Number(s.minOrderAmount) : 0;
+            maxDiscountAmount = typeof s.maxDiscountAmount === 'number' && s.maxDiscountAmount > 0 ? s.maxDiscountAmount : null;
+            expiresInDays = typeof s.expiresInDays === 'number' && s.expiresInDays > 0 ? s.expiresInDays : null;
+          }
+        }
+      } catch {
+        // Fall back to defaults
+      }
+
+      // Generate unique code with collision checking
+      let generatedCode = '';
+      let codeExists = true;
+      let attempts = 0;
+
+      while (codeExists && attempts < 5) {
+        generatedCode = generateSecurePnxmCode(4);
+        const codeRef = doc(db, 'oneTimePromoCodes', generatedCode);
+        const codeSnap = await transaction.get(codeRef);
+        if (!codeSnap.exists()) {
+          codeExists = false;
+        }
+        attempts++;
+      }
+
+      if (codeExists || !generatedCode) {
+        generatedCode = `PNXM${Date.now().toString(36).slice(-4).toUpperCase()}`;
+      }
+
+      let expiresAt: string | null = null;
+      if (expiresInDays && expiresInDays > 0) {
+        const expDate = new Date();
+        expDate.setDate(expDate.getDate() + expiresInDays);
+        expiresAt = expDate.toISOString().split('T')[0];
+      }
+
+      const displayDiscount = discountType === 'percentage'
+        ? `${discountValue}% OFF`
+        : `Rs ${discountValue} OFF`;
+
+      const codeDocRef = doc(db, 'oneTimePromoCodes', generatedCode);
+      transaction.set(codeDocRef, {
+        id: generatedCode,
+        code: generatedCode,
+        subscriberId: subscriberId,
+        customerEmail: normalizedEmail,
+        discountType,
+        discountValue,
+        discount: displayDiscount,
+        minOrderAmount,
+        maxDiscountAmount,
+        description: 'Welcome 5% off first order',
+        status: 'unused',
+        createdAt: serverTimestamp(),
+        expiresAt,
+        redeemedAt: null,
+        redeemedOrderId: null,
+        disabledAt: null,
+        createdBy: 'newsletter_welcome',
+        updatedAt: serverTimestamp()
+      });
+
+      transaction.set(subRef, {
+        id: subscriberId,
+        email: normalizedEmail,
+        subscribedAt: serverTimestamp(),
+        status: 'active',
+        welcomePromoCode: generatedCode,
+        welcomePromoCodeStatus: 'unused',
+        emailConsent: true,
+        consentSource: 'website_footer_newsletter',
+        consentTimestamp: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      return {
+        success: true,
+        isExisting: false,
+        promoCode: generatedCode
+      };
+    });
+
+    return result;
+  } catch (error: any) {
+    console.error('Newsletter subscribe error:', error);
+    return {
+      success: false,
+      isExisting: false,
+      promoCode: '',
+      error: error?.message || 'Unable to complete subscription. Please try again.'
+    };
+  }
+}
+
+/**
+ * Real-time subscription to Newsletter Subscribers (Admin only)
+ */
+export function subscribeNewsletterSubscribers(
+  callback: (subscribers: NewsletterSubscriber[]) => void
+): () => void {
+  const path = 'newsletterSubscribers';
+  try {
+    const refCol = collection(db, path);
+    const q = query(refCol);
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: NewsletterSubscriber[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          list.push({
+            id: docSnap.id,
+            email: d.email || '',
+            subscribedAt: d.subscribedAt,
+            status: (d.status === 'unsubscribed' ? 'unsubscribed' : 'active') as 'active' | 'unsubscribed',
+            welcomePromoCode: d.welcomePromoCode || '',
+            welcomePromoCodeStatus: d.welcomePromoCodeStatus || 'unused',
+            welcomePromoCodeRedeemedAt: d.welcomePromoCodeRedeemedAt,
+            welcomePromoCodeRedeemedOrderId: d.welcomePromoCodeRedeemedOrderId || null,
+            emailConsent: d.emailConsent !== false,
+            consentSource: d.consentSource || 'website_footer_newsletter',
+            consentTimestamp: d.consentTimestamp,
+            createdAt: d.createdAt,
+            updatedAt: d.updatedAt
+          });
+        });
+
+        // Sort newest first
+        list.sort((a, b) => {
+          const tA = a.subscribedAt?.seconds ? a.subscribedAt.seconds * 1000 : (a.subscribedAt ? new Date(a.subscribedAt).getTime() : 0);
+          const tB = b.subscribedAt?.seconds ? b.subscribedAt.seconds * 1000 : (b.subscribedAt ? new Date(b.subscribedAt).getTime() : 0);
+          return tB - tA;
+        });
+
+        callback(list);
+      },
+      (error) => {
+        console.warn('Newsletter subscribers listener notice:', error?.message || error);
+        callback([]);
+      }
+    );
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Newsletter subscribers attach notice:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Updates a subscriber's active/unsubscribed status
+ */
+export async function updateSubscriberStatus(
+  subscriberId: string,
+  status: 'active' | 'unsubscribed'
+): Promise<void> {
+  const path = `newsletterSubscribers/${subscriberId}`;
+  try {
+    const docRef = doc(db, 'newsletterSubscribers', subscriberId);
+    await updateDoc(docRef, {
+      status,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Real-time subscription to One-Time Promo Codes (Admin only)
+ */
+export function subscribeOneTimePromoCodes(
+  callback: (codes: OneTimePromoCode[]) => void
+): () => void {
+  const path = 'oneTimePromoCodes';
+  try {
+    const refCol = collection(db, path);
+    const q = query(refCol);
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const list: OneTimePromoCode[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          list.push({
+            id: docSnap.id,
+            code: d.code || docSnap.id,
+            subscriberId: d.subscriberId,
+            customerEmail: d.customerEmail || '',
+            discountType: d.discountType === 'fixed' ? 'fixed' : 'percentage',
+            discountValue: Number(d.discountValue) || 5,
+            discount: d.discount || (d.discountType === 'fixed' ? `Rs ${d.discountValue} OFF` : `${d.discountValue}% OFF`),
+            minOrderAmount: Number(d.minOrderAmount) || 0,
+            maxDiscountAmount: typeof d.maxDiscountAmount === 'number' ? d.maxDiscountAmount : null,
+            description: d.description || '',
+            status: d.status || 'unused',
+            createdAt: d.createdAt,
+            expiresAt: d.expiresAt || null,
+            redeemedAt: d.redeemedAt,
+            redeemedOrderId: d.redeemedOrderId || null,
+            disabledAt: d.disabledAt,
+            createdBy: d.createdBy || 'newsletter_welcome',
+            updatedAt: d.updatedAt
+          });
+        });
+
+        // Sort newest first
+        list.sort((a, b) => {
+          const tA = a.createdAt?.seconds ? a.createdAt.seconds * 1000 : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+          const tB = b.createdAt?.seconds ? b.createdAt.seconds * 1000 : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+          return tB - tA;
+        });
+
+        callback(list);
+      },
+      (error) => {
+        console.warn('One-time promo codes listener notice:', error?.message || error);
+        callback([]);
+      }
+    );
+
+    return unsubscribe;
+  } catch (err) {
+    console.warn('One-time promo codes attach notice:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Disables a one-time promo code
+ */
+export async function disableOneTimePromoCode(code: string): Promise<void> {
+  const cleanCode = code.trim().toUpperCase();
+  const path = `oneTimePromoCodes/${cleanCode}`;
+  try {
+    const codeRef = doc(db, 'oneTimePromoCodes', cleanCode);
+    const snap = await getDoc(codeRef);
+    if (!snap.exists()) throw new Error(`Code ${cleanCode} does not exist.`);
+
+    const data = snap.data();
+    await updateDoc(codeRef, {
+      status: 'disabled',
+      disabledAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    if (data.subscriberId) {
+      const subRef = doc(db, 'newsletterSubscribers', data.subscriberId);
+      await updateDoc(subRef, {
+        welcomePromoCodeStatus: 'disabled',
+        updatedAt: serverTimestamp()
+      }).catch((e) => console.debug('Sub sync disable notice:', e));
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+/**
+ * Marks a one-time promo code as redeemed with associated order ID
+ */
+export async function markOneTimePromoCodeRedeemed(code: string, orderId: string): Promise<void> {
+  const cleanCode = code.trim().toUpperCase();
+  try {
+    const codeRef = doc(db, 'oneTimePromoCodes', cleanCode);
+    const snap = await getDoc(codeRef);
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+    await updateDoc(codeRef, {
+      status: 'redeemed',
+      redeemedOrderId: orderId,
+      redeemedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    if (data.subscriberId) {
+      const subRef = doc(db, 'newsletterSubscribers', data.subscriberId);
+      await updateDoc(subRef, {
+        welcomePromoCodeStatus: 'redeemed',
+        welcomePromoCodeRedeemedOrderId: orderId,
+        welcomePromoCodeRedeemedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      }).catch((e) => console.debug('Sub sync redeem notice:', e));
+    }
+  } catch (err) {
+    console.warn('markOneTimePromoCodeRedeemed notice:', err);
+  }
+}
+
+/**
+ * Allows an admin to manually issue a custom one-time code
+ */
+export async function createManualOneTimePromoCode(params: {
+  customerEmail: string;
+  discountType: 'percentage' | 'fixed';
+  discountValue: number;
+  minOrderAmount?: number;
+  maxDiscountAmount?: number | null;
+  expiresInDays?: number | null;
+}): Promise<OneTimePromoCode> {
+  const normalizedEmail = (params.customerEmail || '').trim().toLowerCase();
+  const code = generateSecurePnxmCode(4);
+  const path = `oneTimePromoCodes/${code}`;
+
+  let expiresAt: string | null = null;
+  if (params.expiresInDays && params.expiresInDays > 0) {
+    const d = new Date();
+    d.setDate(d.getDate() + params.expiresInDays);
+    expiresAt = d.toISOString().split('T')[0];
+  }
+
+  const displayDiscount = params.discountType === 'percentage'
+    ? `${params.discountValue}% OFF`
+    : `Rs ${params.discountValue} OFF`;
+
+  const newCode: OneTimePromoCode = {
+    id: code,
+    code,
+    customerEmail: normalizedEmail,
+    discountType: params.discountType,
+    discountValue: params.discountValue,
+    discount: displayDiscount,
+    minOrderAmount: params.minOrderAmount || 0,
+    maxDiscountAmount: params.maxDiscountAmount || null,
+    description: `Admin generated for ${normalizedEmail || 'customer'}`,
+    status: 'unused',
+    createdAt: new Date().toISOString(),
+    expiresAt,
+    redeemedAt: null,
+    redeemedOrderId: null,
+    disabledAt: null,
+    createdBy: 'admin'
+  };
+
+  try {
+    const docRef = doc(db, 'oneTimePromoCodes', code);
+    await setDoc(docRef, {
+      ...newCode,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    return newCode;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
   }
 }
 

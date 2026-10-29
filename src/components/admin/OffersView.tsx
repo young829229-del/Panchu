@@ -25,6 +25,7 @@ import {
   toggleCartPromoEnabledInFirestore,
   DEFAULT_PROMO_SETTINGS
 } from '../../services/firebaseService';
+import { OneTimePromoCodesSection } from './OneTimePromoCodesSection';
 
 export const OffersView: React.FC = () => {
   const [promoSettings, setPromoSettings] = useState<PromoSettings>(() => getCanonicalPromoSettingsSync());
@@ -385,6 +386,9 @@ export const OffersView: React.FC = () => {
           ))
         )}
       </div>
+
+      {/* ONE-TIME PROMO CODES SECTION (Positioned directly below existing promo codes) */}
+      <OneTimePromoCodesSection />
 
       {/* Create / Edit Promo Code Modal */}
       {isModalOpen && (

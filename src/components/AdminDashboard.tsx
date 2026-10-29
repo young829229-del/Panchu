@@ -43,6 +43,7 @@ import { ProductEditorView } from './admin/ProductEditorView';
 import { BannersView } from './admin/BannersView';
 import { PaymentsView } from './admin/PaymentsView';
 import { HomepagePlacementView } from './admin/HomepagePlacementView';
+import { CustomerDataView } from './admin/CustomerDataView';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 
 import {
@@ -955,6 +956,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
             {/* VIEW 2: OFFERS */}
             {activeTab === 'offers' && <OffersView />}
+
+            {/* VIEW 3: CUSTOMER DATA & GMAIL ANNOUNCEMENTS */}
+            {activeTab === 'customer_data' && (
+              <CustomerDataView initialSearchQuery={searchQuery} />
+            )}
 
             {/* VIEW 4: PRODUCTS */}
             {activeTab === 'products' && (

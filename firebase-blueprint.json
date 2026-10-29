@@ -120,6 +120,66 @@
         "sizes": { "type": "array" },
         "updatedAt": { "type": "string" }
       }
+    },
+    "NewsletterSubscriber": {
+      "title": "NewsletterSubscriber",
+      "description": "Subscribers from storefront newsletter with recorded consent and welcome promo code",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 200 },
+        "email": { "type": "string", "maxLength": 200 },
+        "subscribedAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "unsubscribed"] },
+        "welcomePromoCode": { "type": "string", "maxLength": 50 },
+        "welcomePromoCodeStatus": { "type": "string", "enum": ["unused", "redeemed", "expired", "disabled"] },
+        "welcomePromoCodeRedeemedOrderId": { "type": "string", "maxLength": 100 },
+        "emailConsent": { "type": "boolean" },
+        "consentSource": { "type": "string", "maxLength": 100 },
+        "consentTimestamp": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["email", "status", "welcomePromoCode", "emailConsent"]
+    },
+    "OneTimePromoCode": {
+      "title": "OneTimePromoCode",
+      "description": "Single-use welcome promo code atomically redeemed in checkout",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 50 },
+        "code": { "type": "string", "maxLength": 50 },
+        "subscriberId": { "type": "string", "maxLength": 200 },
+        "customerEmail": { "type": "string", "maxLength": 200 },
+        "discountType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "discountValue": { "type": "number" },
+        "discount": { "type": "string", "maxLength": 50 },
+        "minOrderAmount": { "type": "number" },
+        "maxDiscountAmount": { "type": "number" },
+        "description": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["unused", "redeemed", "expired", "disabled"] },
+        "createdAt": { "type": "string" },
+        "expiresAt": { "type": "string" },
+        "redeemedAt": { "type": "string" },
+        "redeemedOrderId": { "type": "string", "maxLength": 100 },
+        "disabledAt": { "type": "string" },
+        "createdBy": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["code", "discountType", "discountValue", "status"]
+    },
+    "OneTimePromoSettings": {
+      "title": "OneTimePromoSettings",
+      "description": "Configurable terms for one-time subscriber promo codes",
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "discountType": { "type": "string", "enum": ["percentage", "fixed"] },
+        "discountValue": { "type": "number" },
+        "minOrderAmount": { "type": "number" },
+        "maxDiscountAmount": { "type": "number" },
+        "expiresInDays": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -138,6 +198,14 @@
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "Guest and customer orders created upon checkout and viewed by admins"
+    },
+    "/newsletterSubscribers/{subscriberId}": {
+      "schema": "NewsletterSubscriber",
+      "description": "Subscribers from storefront newsletter with recorded consent and welcome promo code"
+    },
+    "/oneTimePromoCodes/{code}": {
+      "schema": "OneTimePromoCode",
+      "description": "Single-use welcome promo code atomically redeemed in checkout"
     },
     "/admin_users/{adminUserId}": {
       "schema": "Admin",

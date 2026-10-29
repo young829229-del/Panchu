@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Mail, Check, ArrowRight } from 'lucide-react';
+import { Mail, Check, ArrowRight, Loader2 } from 'lucide-react';
+import { subscribeToNewsletter } from '../services/firebaseService';
 
 interface GetDiscountSectionProps {
   theme?: 'light' | 'dark';
@@ -9,33 +10,44 @@ export const GetDiscountSection: React.FC<GetDiscountSectionProps> = ({ theme = 
   const isDark = theme === 'dark';
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isExistingSubscriber, setIsExistingSubscriber] = useState(false);
   const [discountCode, setDiscountCode] = useState('');
 
-  const generateUniqueCode = () => {
-    const digit = Math.floor(Math.random() * 10);
-    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const letter = alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-    return `PNXM${digit}${letter}`;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const clean = email.trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    if (!email.trim()) {
+    if (!clean) {
       setError('Please enter your email address.');
       return;
     }
 
-    if (!emailRegex.test(email.trim())) {
+    if (!emailRegex.test(clean)) {
       setError('Please enter a valid email address.');
       return;
     }
 
     setError('');
-    setDiscountCode(generateUniqueCode());
-    setIsSubscribed(true);
+    setIsSubmitting(true);
+
+    try {
+      const result = await subscribeToNewsletter(clean);
+      if (!result.success) {
+        setError(result.error || 'Failed to subscribe. Please try again.');
+      } else {
+        setDiscountCode(result.promoCode);
+        setIsExistingSubscriber(result.isExisting);
+        setIsSubscribed(true);
+      }
+    } catch (err: any) {
+      console.error('Newsletter submit error:', err);
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -54,7 +66,12 @@ export const GetDiscountSection: React.FC<GetDiscountSectionProps> = ({ theme = 
         {isSubscribed ? (
           <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400 font-inter text-xs flex items-center justify-center gap-2 max-w-md mx-auto">
             <Check className="w-4 h-4 flex-shrink-0" />
-            <span>Success! Your unique 5% OFF code is <strong className="font-mono text-sm tracking-widest">{discountCode}</strong>. Use it at checkout!</span>
+            <span>
+              {isExistingSubscriber
+                ? <>You're already subscribed! Your 5% OFF welcome code is <strong className="font-mono text-sm tracking-widest">{discountCode}</strong>. Use it at checkout!</>
+                : <>Success! Your unique 5% OFF code is <strong className="font-mono text-sm tracking-widest">{discountCode}</strong>. Use it at checkout!</>
+              }
+            </span>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-2">
@@ -62,6 +79,7 @@ export const GetDiscountSection: React.FC<GetDiscountSectionProps> = ({ theme = 
               <input
                 type="email"
                 value={email}
+                disabled={isSubmitting}
                 onChange={(e) => {
                   setEmail(e.target.value);
                   if (error) setError('');
@@ -77,11 +95,16 @@ export const GetDiscountSection: React.FC<GetDiscountSectionProps> = ({ theme = 
               />
               <button
                 type="submit"
-                className="px-6 py-3 bg-red-600 hover:bg-red-700 text-white text-xs font-montserrat font-bold tracking-widest uppercase transition-all flex items-center justify-center gap-2 cursor-pointer flex-shrink-0"
+                disabled={isSubmitting}
+                className="px-6 py-3 bg-red-600 hover:bg-red-700 disabled:opacity-75 text-white text-xs font-montserrat font-bold tracking-widest uppercase transition-all flex items-center justify-center gap-2 cursor-pointer flex-shrink-0"
                 id="btn-get-discount"
               >
-                <span>GET 5% OFF</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <span>{isSubmitting ? 'PROCESSING...' : 'GET 5% OFF'}</span>
+                {isSubmitting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <ArrowRight className="w-3.5 h-3.5" />
+                )}
               </button>
             </div>
             {error && (

@@ -124,10 +124,52 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin() && isValidId(settingId);
     }
 
+    function isValidSubscriber(data) {
+      return data.email is string && data.email.size() >= 3 && data.email.size() <= 200 &&
+             data.status in ['active', 'unsubscribed'] &&
+             data.emailConsent == true &&
+             data.welcomePromoCode is string && data.welcomePromoCode.size() > 0 && data.welcomePromoCode.size() <= 50;
+    }
+
+    function isValidOneTimeCode(data) {
+      return data.code is string && data.code.size() > 0 && data.code.size() <= 50 &&
+             data.discountType in ['percentage', 'fixed'] &&
+             data.discountValue is number && data.discountValue > 0 &&
+             data.status in ['unused', 'redeemed', 'expired', 'disabled'];
+    }
+
     // Categories Collection: Public read, Admin write
     match /categories/{categoryId} {
       allow read, get, list: if true;
       allow create, update, delete: if isAdmin() && isValidId(categoryId);
+    }
+
+    // Newsletter Subscribers: Public create with validation, only Admin can read, list, delete
+    match /newsletterSubscribers/{subscriberId} {
+      allow create: if isValidId(subscriberId) && isValidSubscriber(incoming());
+      allow get, list, delete: if isAdmin();
+      allow update: if isValidId(subscriberId) && (
+        isAdmin() ||
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['welcomePromoCodeStatus', 'welcomePromoCodeRedeemedAt', 'welcomePromoCodeRedeemedOrderId', 'updatedAt'])
+        )
+      );
+    }
+
+    // One-Time Promo Codes: Public single-get for checkout validation, Admin list/manage, atomic redemption
+    match /oneTimePromoCodes/{code} {
+      allow get: if isValidId(code);
+      allow list: if isAdmin();
+      allow create: if isValidId(code) && isValidOneTimeCode(incoming());
+      allow update: if isValidId(code) && (
+        isAdmin() ||
+        (
+          existing().status == 'unused' &&
+          incoming().status == 'redeemed' &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'redeemedOrderId', 'redeemedAt', 'updatedAt'])
+        )
+      );
+      allow delete: if isAdmin() && isValidId(code);
     }
   }
 }
