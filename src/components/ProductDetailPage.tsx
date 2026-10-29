@@ -7,6 +7,7 @@ import { ProductGallerySwipe } from './ProductGallerySwipe';
 import { FooterSection } from './FooterSection';
 import { GetDiscountSection } from './GetDiscountSection';
 import { ArrowLeft, Check, Plus, Minus, ShoppingBag } from 'lucide-react';
+import { triggerCartFlyAnimation } from '../utils/cartFlyAnimation';
 
 interface ProductDetailPageProps {
   product: Product;
@@ -70,9 +71,15 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     return sourceList.filter(p => p.id !== product.id && p.gender === product.gender).slice(0, 4);
   }, [product, products]);
 
-  const handleAddToCartClick = () => {
+  const handleAddToCartClick = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (!product.inStock) return;
     onAddToCart(product, selectedSize, quantity);
+
+    triggerCartFlyAnimation({
+      imageUrl: product.image,
+      sourceElement: e?.currentTarget || document.getElementById('detail-add-to-cart-btn')
+    });
+
     setIsAdded(true);
     setTimeout(() => setIsAdded(false), 1500);
   };
@@ -291,6 +298,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
                           ? 'bg-white text-black hover:bg-neutral-200'
                           : 'bg-black text-white hover:bg-neutral-800'
                     }`}
+                    id="detail-add-to-cart-btn"
                   >
                     {isAdded ? <Check className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
                     <span>{isAdded ? 'ADDED TO BAG' : 'ADD TO BAG'}</span>

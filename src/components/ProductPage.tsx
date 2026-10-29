@@ -16,6 +16,7 @@ import {
   getHomepageSectionsSync,
   subscribeHomepageSections
 } from '../services/firebaseService';
+import { triggerCartFlyAnimation } from '../utils/cartFlyAnimation';
 
 interface ProductPageProps {
   onAddToCart: (product: Product, size: string, quantity: number) => void;
@@ -144,9 +145,15 @@ export const ProductPage: React.FC<ProductPageProps> = ({
     return valid.length > 0 ? valid : [selectedProduct.image];
   }, [selectedProduct]);
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (!selectedProduct.inStock) return;
     onAddToCart(selectedProduct, selectedSize, quantity);
+
+    triggerCartFlyAnimation({
+      imageUrl: selectedProduct.image,
+      sourceElement: e?.currentTarget || document.getElementById('add-to-cart-top-btn')
+    });
+
     setIsAdded(true);
     setTimeout(() => setIsAdded(false), 1500);
   };
