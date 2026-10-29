@@ -28,6 +28,8 @@ import {
 } from '../services/firebaseService';
 import { getSavedCheckoutDetails, saveCustomerDetailsFromCheckout } from '../services/customerStorage';
 import { auth } from '../firebase';
+import { OrderReceiptData } from '../utils/receiptPdfGenerator';
+import { OrderSuccessReceipt } from './OrderSuccessReceipt';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -39,6 +41,7 @@ interface CheckoutModalProps {
   promoSettings?: PromoSettings;
   onClearPromo?: () => void;
   onApplyPromo?: (promo: PromoCode) => void;
+  theme?: 'light' | 'dark';
 }
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({
@@ -50,7 +53,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   discountAmount = 0,
   promoSettings,
   onClearPromo,
-  onApplyPromo
+  onApplyPromo,
+  theme = 'light'
 }) => {
   const savedDetails = getSavedCheckoutDetails();
 
@@ -77,6 +81,26 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [createdOrderNum, setCreatedOrderNum] = useState<string>('');
   const [createdOrderMessage, setCreatedOrderMessage] = useState<string>('');
+  const [confirmedReceiptData, setConfirmedReceiptData] = useState<OrderReceiptData | null>(null);
+  const isSubmittingRef = useRef<boolean>(false);
+
+  // Restore latest order receipt from current session if modal reopens after order
+  useEffect(() => {
+    if (isOpen && items.length === 0 && !confirmedReceiptData) {
+      try {
+        const stored = sessionStorage.getItem('panchu_last_order_receipt');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && parsed.orderId) {
+            setConfirmedReceiptData(parsed);
+            setIsSuccess(true);
+          }
+        }
+      } catch (e) {
+        // non-blocking
+      }
+    }
+  }, [isOpen, items.length, confirmedReceiptData]);
 
   const [formData, setFormData] = useState({
     name: savedDetails?.name || '',
@@ -213,6 +237,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setErrorMessage('');
     setIsSubmitting(true);
 
@@ -274,6 +300,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         if (!promoValidation.valid || !promoValidation.promoCode) {
           setErrorMessage(promoValidation.error || 'The applied promo code is no longer valid. Please check your cart.');
           setIsSubmitting(false);
+          isSubmittingRef.current = false;
           return;
         }
         finalDiscount = promoValidation.discountAmount;
@@ -307,6 +334,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       if (!result.success) {
         setErrorMessage(result.error || 'Failed to submit order. Please try again.');
         setIsSubmitting(false);
+        isSubmittingRef.current = false;
         return;
       }
 
@@ -336,7 +364,40 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       const whatsappUrl = `https://wa.me/${storeWhatsAppNumber}?text=${encodeURIComponent(fullMessage)}`;
 
       // 6. Open WhatsApp directly
-      window.open(whatsappUrl, '_blank');
+      try {
+        window.open(whatsappUrl, '_blank');
+      } catch (e) {
+        console.warn('Could not auto-open WhatsApp:', e);
+      }
+
+      // 7. Store confirmed receipt data for premium success page & digital receipt
+      const receipt: OrderReceiptData = {
+        orderId: orderNum,
+        orderDocId: result.orderId || orderNum,
+        customerName: formData.name.trim(),
+        phone: formData.phone.trim(),
+        shippingAddress: completeShippingAddress,
+        deliveryOption: formData.deliveryOption,
+        deliveryLocationLabel: deliveryLocationLabel,
+        items: orderItems,
+        subtotal: subtotal,
+        promoCode: finalPromoCode,
+        discountAmount: finalDiscount,
+        deliveryFee: deliveryCharge,
+        totalAmount: calculatedFinalTotal,
+        paymentMethod: selectedPaymentMethod,
+        paymentScreenshotUrl: uploadedScreenshotUrl || null,
+        orderStatus: 'Pending',
+        createdAt: new Date().toISOString(),
+        createdOrderMessage: fullMessage
+      };
+
+      setConfirmedReceiptData(receipt);
+      try {
+        sessionStorage.setItem('panchu_last_order_receipt', JSON.stringify(receipt));
+      } catch (e) {
+        // non-blocking
+      }
 
       setIsSuccess(true);
       if (onClearPromo) onClearPromo();
@@ -346,7 +407,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       setErrorMessage(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
+  };
+
+  const handleClose = () => {
+    if (isSuccess) {
+      setIsSuccess(false);
+      setConfirmedReceiptData(null);
+      try {
+        sessionStorage.removeItem('panchu_last_order_receipt');
+      } catch (e) {
+        // non-blocking
+      }
+    }
+    onClose();
   };
 
   const handleReopenWhatsApp = () => {
@@ -366,84 +441,75 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
-        className="fixed inset-0 z-50 bg-white overflow-y-auto flex flex-col min-h-screen text-stone-900"
+        className={`fixed inset-0 z-50 overflow-y-auto flex flex-col min-h-screen ${
+          theme === 'dark' ? 'bg-[#09090b] text-stone-100' : 'bg-white text-stone-900'
+        }`}
       >
         {/* Top Header - Full Width Sticky */}
-        <header className="sticky top-0 z-30 px-4 sm:px-8 py-3.5 sm:py-4 bg-white/95 backdrop-blur-md border-b border-stone-200 flex items-center justify-between">
+        <header
+          className={`sticky top-0 z-30 px-4 sm:px-8 py-3.5 sm:py-4 backdrop-blur-md border-b flex items-center justify-between no-print ${
+            theme === 'dark' ? 'bg-[#0d0d0d]/95 border-stone-800' : 'bg-white/95 border-stone-200'
+          }`}
+        >
           <div className="flex items-center gap-3">
             <button
-              onClick={onClose}
-              className="p-1.5 -ml-1 text-stone-700 hover:text-black hover:bg-stone-100 transition-colors cursor-pointer flex items-center gap-1.5"
+              onClick={isSuccess ? handleClose : onClose}
+              className={`p-1.5 -ml-1 transition-colors cursor-pointer flex items-center gap-1.5 ${
+                theme === 'dark'
+                  ? 'text-stone-300 hover:text-white hover:bg-stone-800'
+                  : 'text-stone-700 hover:text-black hover:bg-stone-100'
+              }`}
               id="checkout-page-back"
-              title="Back to store"
+              title={isSuccess ? 'Back to shop' : 'Back to store'}
             >
               <ArrowLeft className="w-5 h-5" />
-              <span className="hidden sm:inline font-mono text-xs font-bold tracking-wider uppercase">BACK</span>
-            </button>
-            <h1 className="text-lg sm:text-xl font-black font-sans text-black uppercase tracking-tight flex items-center gap-2.5">
-              <span>CHECKOUT</span>
-              <span className="text-xs font-mono font-bold px-2 py-0.5 bg-stone-100 text-stone-700 border border-stone-200">
-                {items.reduce((acc, i) => acc + i.quantity, 0)} {items.reduce((acc, i) => acc + i.quantity, 0) === 1 ? 'ITEM' : 'ITEMS'}
+              <span className="hidden sm:inline font-mono text-xs font-bold tracking-wider uppercase">
+                {isSuccess ? 'BACK TO SHOP' : 'BACK'}
               </span>
+            </button>
+            <h1
+              className={`text-lg sm:text-xl font-black font-sans uppercase tracking-tight flex items-center gap-2.5 ${
+                theme === 'dark' ? 'text-white' : 'text-black'
+              }`}
+            >
+              <span>{isSuccess ? 'ORDER CONFIRMATION' : 'CHECKOUT'}</span>
+              {!isSuccess && (
+                <span
+                  className={`text-xs font-mono font-bold px-2 py-0.5 border ${
+                    theme === 'dark'
+                      ? 'bg-stone-800 text-stone-300 border-stone-700'
+                      : 'bg-stone-100 text-stone-700 border-stone-200'
+                  }`}
+                >
+                  {items.reduce((acc, i) => acc + i.quantity, 0)}{' '}
+                  {items.reduce((acc, i) => acc + i.quantity, 0) === 1 ? 'ITEM' : 'ITEMS'}
+                </span>
+              )}
             </h1>
           </div>
 
           <button
-            onClick={onClose}
-            className="p-2 text-stone-700 hover:bg-black hover:text-white transition-colors cursor-pointer"
+            onClick={isSuccess ? handleClose : onClose}
+            className={`p-2 transition-colors cursor-pointer ${
+              theme === 'dark'
+                ? 'text-stone-300 hover:bg-stone-800 hover:text-white'
+                : 'text-stone-700 hover:bg-black hover:text-white'
+            }`}
             id="checkout-modal-close"
-            title="Close checkout"
+            title="Close"
           >
             <X className="w-5 h-5" />
           </button>
         </header>
 
         {/* Full Page Content Container */}
-        <div className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10">
-          {isSuccess ? (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="py-6 sm:py-10 text-center space-y-6"
-            >
-              <div className="w-16 h-16 bg-emerald-600 text-white rounded-full flex items-center justify-center mx-auto shadow-xl">
-                <CheckCircle2 className="w-10 h-10 stroke-2" />
-              </div>
-
-              <div>
-                <span className="text-xs font-mono tracking-[0.25em] text-emerald-700 font-bold uppercase">
-                  ORDER {createdOrderNum} RECORDED IN FIRESTORE
-                </span>
-                <h2 className="text-2xl md:text-3xl font-extrabold font-sans text-black uppercase mt-1">
-                  WHATSAPP ORDER OPENED
-                </h2>
-                <p className="mt-2 text-xs md:text-sm font-sans text-stone-600 max-w-md mx-auto">
-                  Your order has been recorded with payment method <strong className="text-black font-semibold">{selectedPaymentMethod}</strong> and forwarded to our official WhatsApp line <span className="font-bold text-black">+970 6374074</span>.
-                </p>
-              </div>
-
-              {/* Message Receipt Preview */}
-              <div className="p-4 bg-stone-50 border border-stone-200 text-xs font-mono text-stone-800 text-left whitespace-pre-line max-h-56 overflow-y-auto rounded shadow-inner">
-                {createdOrderMessage}
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
-                <button
-                  onClick={handleReopenWhatsApp}
-                  className="px-6 py-3.5 bg-emerald-600 text-white text-xs font-mono tracking-wider font-bold uppercase hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
-                >
-                  <MessageCircle className="w-4 h-4 fill-white" />
-                  <span>RE-OPEN WHATSAPP ORDER</span>
-                </button>
-
-                <button
-                  onClick={onClose}
-                  className="px-6 py-3.5 bg-black text-white text-xs font-mono tracking-widest uppercase hover:bg-neutral-800 transition-colors cursor-pointer"
-                >
-                  BACK TO CATALOG
-                </button>
-              </div>
-            </motion.div>
+        <div className={`flex-1 w-full ${isSuccess ? 'max-w-4xl' : 'max-w-3xl'} mx-auto px-4 sm:px-6 md:px-8 py-6 md:py-10`}>
+          {isSuccess && confirmedReceiptData ? (
+            <OrderSuccessReceipt
+              orderData={confirmedReceiptData}
+              onContinueShopping={handleClose}
+              theme={theme}
+            />
           ) : (
             <form onSubmit={handleSubmit} className="space-y-8">
               {/* Error Banner */}

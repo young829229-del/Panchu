@@ -609,6 +609,7 @@ export default function App() {
         promoSettings={promoSettings}
         onClearPromo={() => setAppliedPromo(null)}
         onApplyPromo={(promo) => setAppliedPromo(promo)}
+        theme={theme}
       />
     </div>
   );
