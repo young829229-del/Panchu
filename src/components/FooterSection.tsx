@@ -130,7 +130,7 @@ export const FooterSection: React.FC<FooterSectionProps> = ({
             {/* Social Icons Group - TikTok, Instagram, Facebook, YouTube, WhatsApp */}
             <div className="flex items-center justify-center md:justify-end gap-4 shrink-0 pt-0.5">
               {/* TikTok */}
-              {settings.socials.tiktok && (
+              {settings.socials.tiktok && settings.socialsActive?.tiktok !== false && (
                 <a
                   href={settings.socials.tiktok}
                   target="_blank"
@@ -147,7 +147,7 @@ export const FooterSection: React.FC<FooterSectionProps> = ({
               )}
 
               {/* Instagram */}
-              {settings.socials.instagram && (
+              {settings.socials.instagram && settings.socialsActive?.instagram !== false && (
                 <a
                   href={settings.socials.instagram}
                   target="_blank"
@@ -164,7 +164,7 @@ export const FooterSection: React.FC<FooterSectionProps> = ({
               )}
 
               {/* Facebook */}
-              {settings.socials.facebook && (
+              {settings.socials.facebook && settings.socialsActive?.facebook !== false && (
                 <a
                   href={settings.socials.facebook}
                   target="_blank"
@@ -181,7 +181,7 @@ export const FooterSection: React.FC<FooterSectionProps> = ({
               )}
 
               {/* YouTube */}
-              {settings.socials.youtube && (
+              {settings.socials.youtube && settings.socialsActive?.youtube !== false && (
                 <a
                   href={settings.socials.youtube}
                   target="_blank"

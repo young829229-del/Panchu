@@ -341,7 +341,7 @@ export const TermsPage: React.FC<TermsPageProps> = ({ onBack, theme = 'dark' }) 
               {/* Social Channels downside of terms/contact */}
               <div className="pt-3 flex items-center gap-4">
                 <span className="text-xs font-montserrat font-bold text-neutral-400 uppercase tracking-widest">Connect with Us:</span>
-                {settings.socials.tiktok && (
+                {settings.socials.tiktok && settings.socialsActive?.tiktok !== false && (
                   <a 
                     href={settings.socials.tiktok} 
                     target="_blank" 
@@ -354,7 +354,7 @@ export const TermsPage: React.FC<TermsPageProps> = ({ onBack, theme = 'dark' }) 
                     </svg>
                   </a>
                 )}
-                {settings.socials.instagram && (
+                {settings.socials.instagram && settings.socialsActive?.instagram !== false && (
                   <a 
                     href={settings.socials.instagram} 
                     target="_blank" 
@@ -367,7 +367,7 @@ export const TermsPage: React.FC<TermsPageProps> = ({ onBack, theme = 'dark' }) 
                     </svg>
                   </a>
                 )}
-                {settings.socials.facebook && (
+                {settings.socials.facebook && settings.socialsActive?.facebook !== false && (
                   <a 
                     href={settings.socials.facebook} 
                     target="_blank" 
@@ -380,7 +380,7 @@ export const TermsPage: React.FC<TermsPageProps> = ({ onBack, theme = 'dark' }) 
                     </svg>
                   </a>
                 )}
-                {settings.socials.youtube && (
+                {settings.socials.youtube && settings.socialsActive?.youtube !== false && (
                   <a 
                     href={settings.socials.youtube} 
                     target="_blank" 
