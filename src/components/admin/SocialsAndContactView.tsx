@@ -99,6 +99,14 @@ const SOCIAL_PLATFORMS: SocialPlatformDef[] = [
     description: 'YouTube channel for campaign films, drop previews, and BTS.',
     icon: YouTubeIcon,
     iconColor: 'text-[#ff0000]'
+  },
+  {
+    key: 'whatsapp',
+    name: 'WhatsApp Desk',
+    placeholder: '+977 9706374074',
+    description: 'WhatsApp direct chat link shown in footer and contact sections.',
+    icon: WhatsAppIcon,
+    iconColor: 'text-emerald-600'
   }
 ];
 
@@ -245,20 +253,20 @@ export const SocialsAndContactView: React.FC = () => {
     setSocialStatus(null);
 
     const rawUrl = socialsForm[platform] || '';
-    const cleanUrl = normalizeUrl(rawUrl);
+    const cleanUrl = platform === 'whatsapp' ? rawUrl.trim() : normalizeUrl(rawUrl);
 
     try {
       await saveSocialLinkToFirestore(platform, cleanUrl);
       setSocialsForm(prev => ({ ...prev, [platform]: cleanUrl }));
       setSocialStatus({
         type: 'success',
-        text: `${platform.toUpperCase()} link updated successfully!`
+        text: `${platform.toUpperCase()} link saved to Firebase successfully!`
       });
       setTimeout(() => setSocialStatus(null), 4000);
     } catch (err: any) {
       setSocialStatus({
         type: 'error',
-        text: err?.message || `Failed to update ${platform} link.`
+        text: err?.message || `Failed to save ${platform} link to Firebase.`
       });
     } finally {
       setSavingPlatform(null);
@@ -276,7 +284,8 @@ export const SocialsAndContactView: React.FC = () => {
       instagram: normalizeUrl(socialsForm.instagram || ''),
       facebook: normalizeUrl(socialsForm.facebook || ''),
       tiktok: normalizeUrl(socialsForm.tiktok || ''),
-      youtube: normalizeUrl(socialsForm.youtube || '')
+      youtube: normalizeUrl(socialsForm.youtube || ''),
+      whatsapp: socialsForm.whatsapp || ''
     };
 
     try {
@@ -284,13 +293,13 @@ export const SocialsAndContactView: React.FC = () => {
       setSocialsForm(normalizedSocials);
       setSocialStatus({
         type: 'success',
-        text: 'All social media links updated and published live!'
+        text: 'All social media links saved to Firebase and updated live!'
       });
       setTimeout(() => setSocialStatus(null), 4000);
     } catch (err: any) {
       setSocialStatus({
         type: 'error',
-        text: err?.message || 'Failed to save social links.'
+        text: err?.message || 'Failed to save social links to Firebase.'
       });
     } finally {
       setSavingPlatform(null);

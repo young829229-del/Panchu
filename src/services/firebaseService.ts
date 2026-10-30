@@ -3075,14 +3075,16 @@ export const DEFAULT_SOCIAL_ACTIVE: SocialActiveSettings = {
   instagram: true,
   facebook: true,
   tiktok: true,
-  youtube: true
+  youtube: true,
+  whatsapp: true
 };
 
 export const DEFAULT_SOCIAL_LINKS: SocialLinksSettings = {
   instagram: 'https://www.instagram.com/panchu_official3?igsh=NmVqMDJtYnl4cDIz',
   facebook: 'https://www.facebook.com/panchu.official',
   tiktok: 'https://www.tiktok.com/@panchu.vs?_r=1&_t=ZS-98na7CYayiv',
-  youtube: 'https://www.youtube.com/@panchu'
+  youtube: 'https://www.youtube.com/@panchu',
+  whatsapp: '+977 9706374074'
 };
 
 export const DEFAULT_SOCIALS_AND_CONTACT_SETTINGS: SocialsAndContactSettings = {
@@ -3129,13 +3131,15 @@ export function getCanonicalSocialsAndContactSync(): SocialsAndContactSettings {
             instagram: typeof parsed.socials?.instagram === 'string' ? parsed.socials.instagram : DEFAULT_SOCIAL_LINKS.instagram,
             facebook: typeof parsed.socials?.facebook === 'string' ? parsed.socials.facebook : DEFAULT_SOCIAL_LINKS.facebook,
             tiktok: typeof parsed.socials?.tiktok === 'string' ? parsed.socials.tiktok : DEFAULT_SOCIAL_LINKS.tiktok,
-            youtube: typeof parsed.socials?.youtube === 'string' ? parsed.socials.youtube : DEFAULT_SOCIAL_LINKS.youtube
+            youtube: typeof parsed.socials?.youtube === 'string' ? parsed.socials.youtube : DEFAULT_SOCIAL_LINKS.youtube,
+            whatsapp: typeof parsed.socials?.whatsapp === 'string' ? parsed.socials.whatsapp : DEFAULT_SOCIAL_LINKS.whatsapp
           },
           socialsActive: {
             instagram: parsed.socialsActive?.instagram !== false,
             facebook: parsed.socialsActive?.facebook !== false,
             tiktok: parsed.socialsActive?.tiktok !== false,
-            youtube: parsed.socialsActive?.youtube !== false
+            youtube: parsed.socialsActive?.youtube !== false,
+            whatsapp: parsed.socialsActive?.whatsapp !== false
           },
           whatsappOrderRedirect: parsed.whatsappOrderRedirect !== false
         };
@@ -3156,6 +3160,59 @@ export function setCanonicalSocialsAndContactSync(settings: SocialsAndContactSet
     localStorage.setItem(CANONICAL_SOCIALS_CONTACT_KEY, JSON.stringify(settings));
   } catch (e) {
     console.debug('Error writing canonical socials and contact cache:', e);
+  }
+}
+
+/**
+ * Direct async fetch from Firestore for Socials & Contact settings
+ */
+export async function getSocialsAndContactSettingsFromFirestore(): Promise<SocialsAndContactSettings> {
+  const path = 'settings/socials_contact';
+  try {
+    const docRef = doc(db, 'settings', 'socials_contact');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const settings: SocialsAndContactSettings = {
+        contact: {
+          phone: typeof data?.contact?.phone === 'string' ? data.contact.phone : (data?.phone || DEFAULT_CONTACT_SETTINGS.phone),
+          whatsappNumber: typeof data?.contact?.whatsappNumber === 'string' ? data.contact.whatsappNumber : (data?.whatsappNumber || DEFAULT_CONTACT_SETTINGS.whatsappNumber),
+          email: typeof data?.contact?.email === 'string' ? data.contact.email : (data?.email || DEFAULT_CONTACT_SETTINGS.email),
+          address: typeof data?.contact?.address === 'string' ? data.contact.address : (data?.address || DEFAULT_CONTACT_SETTINGS.address)
+        },
+        socials: {
+          instagram: typeof data?.socials?.instagram === 'string' ? data.socials.instagram : (data?.instagram || DEFAULT_SOCIAL_LINKS.instagram),
+          facebook: typeof data?.socials?.facebook === 'string' ? data.socials.facebook : (data?.facebook || DEFAULT_SOCIAL_LINKS.facebook),
+          tiktok: typeof data?.socials?.tiktok === 'string' ? data.socials.tiktok : (data?.tiktok || DEFAULT_SOCIAL_LINKS.tiktok),
+          youtube: typeof data?.socials?.youtube === 'string' ? data.socials.youtube : (data?.youtube || DEFAULT_SOCIAL_LINKS.youtube),
+          whatsapp: typeof data?.socials?.whatsapp === 'string' ? data.socials.whatsapp : (data?.whatsapp || DEFAULT_SOCIAL_LINKS.whatsapp)
+        },
+        socialsActive: {
+          instagram: data?.socialsActive?.instagram !== false,
+          facebook: data?.socialsActive?.facebook !== false,
+          tiktok: data?.socialsActive?.tiktok !== false,
+          youtube: data?.socialsActive?.youtube !== false,
+          whatsapp: data?.socialsActive?.whatsapp !== false
+        },
+        whatsappOrderRedirect: data?.whatsappOrderRedirect !== false
+      };
+      setCanonicalSocialsAndContactSync(settings);
+      return settings;
+    } else {
+      await setDoc(docRef, {
+        contact: DEFAULT_CONTACT_SETTINGS,
+        socials: DEFAULT_SOCIAL_LINKS,
+        socialsActive: DEFAULT_SOCIAL_ACTIVE,
+        whatsappOrderRedirect: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      setCanonicalSocialsAndContactSync(DEFAULT_SOCIALS_AND_CONTACT_SETTINGS);
+      return DEFAULT_SOCIALS_AND_CONTACT_SETTINGS;
+    }
+  } catch (error) {
+    console.error('Error fetching socials_contact from Firestore:', error);
+    return getCanonicalSocialsAndContactSync();
   }
 }
 
@@ -3184,19 +3241,29 @@ export function subscribeSocialsAndContactSettings(
               instagram: typeof data?.socials?.instagram === 'string' ? data.socials.instagram : (data?.instagram || DEFAULT_SOCIAL_LINKS.instagram),
               facebook: typeof data?.socials?.facebook === 'string' ? data.socials.facebook : (data?.facebook || DEFAULT_SOCIAL_LINKS.facebook),
               tiktok: typeof data?.socials?.tiktok === 'string' ? data.socials.tiktok : (data?.tiktok || DEFAULT_SOCIAL_LINKS.tiktok),
-              youtube: typeof data?.socials?.youtube === 'string' ? data.socials.youtube : (data?.youtube || DEFAULT_SOCIAL_LINKS.youtube)
+              youtube: typeof data?.socials?.youtube === 'string' ? data.socials.youtube : (data?.youtube || DEFAULT_SOCIAL_LINKS.youtube),
+              whatsapp: typeof data?.socials?.whatsapp === 'string' ? data.socials.whatsapp : (data?.whatsapp || DEFAULT_SOCIAL_LINKS.whatsapp)
             },
             socialsActive: {
               instagram: data?.socialsActive?.instagram !== false,
               facebook: data?.socialsActive?.facebook !== false,
               tiktok: data?.socialsActive?.tiktok !== false,
-              youtube: data?.socialsActive?.youtube !== false
+              youtube: data?.socialsActive?.youtube !== false,
+              whatsapp: data?.socialsActive?.whatsapp !== false
             },
             whatsappOrderRedirect: data?.whatsappOrderRedirect !== false
           };
           setCanonicalSocialsAndContactSync(cleanSettings);
           callback(cleanSettings);
         } else {
+          setDoc(docRef, {
+            contact: DEFAULT_CONTACT_SETTINGS,
+            socials: DEFAULT_SOCIAL_LINKS,
+            socialsActive: DEFAULT_SOCIAL_ACTIVE,
+            whatsappOrderRedirect: true,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          }).catch(err => console.warn('Could not auto-seed settings/socials_contact:', err));
           const canonical = getCanonicalSocialsAndContactSync();
           callback(canonical);
         }
@@ -3223,39 +3290,39 @@ export async function updateSocialsAndContactSettings(
   const path = 'settings/socials_contact';
   try {
     const docRef = doc(db, 'settings', 'socials_contact');
-    const existing = getCanonicalSocialsAndContactSync();
-
-    const merged: SocialsAndContactSettings = {
-      contact: {
-        ...existing.contact,
-        ...(patch.contact || {})
-      },
-      socials: {
-        ...existing.socials,
-        ...(patch.socials || {})
-      },
-      socialsActive: {
-        ...existing.socialsActive,
-        ...(patch.socialsActive || {})
-      },
-      whatsappOrderRedirect: patch.whatsappOrderRedirect !== undefined
-        ? patch.whatsappOrderRedirect
-        : existing.whatsappOrderRedirect
+    const updateObj: Record<string, any> = {
+      updatedAt: serverTimestamp()
     };
 
-    setCanonicalSocialsAndContactSync(merged);
+    if (patch.contact) {
+      if (patch.contact.phone !== undefined) updateObj['contact.phone'] = patch.contact.phone;
+      if (patch.contact.whatsappNumber !== undefined) updateObj['contact.whatsappNumber'] = patch.contact.whatsappNumber;
+      if (patch.contact.email !== undefined) updateObj['contact.email'] = patch.contact.email;
+      if (patch.contact.address !== undefined) updateObj['contact.address'] = patch.contact.address;
+    }
 
-    await setDoc(
-      docRef,
-      {
-        contact: merged.contact,
-        socials: merged.socials,
-        socialsActive: merged.socialsActive,
-        whatsappOrderRedirect: merged.whatsappOrderRedirect,
-        updatedAt: serverTimestamp()
-      },
-      { merge: true }
-    );
+    if (patch.socials) {
+      if (patch.socials.instagram !== undefined) updateObj['socials.instagram'] = patch.socials.instagram;
+      if (patch.socials.facebook !== undefined) updateObj['socials.facebook'] = patch.socials.facebook;
+      if (patch.socials.tiktok !== undefined) updateObj['socials.tiktok'] = patch.socials.tiktok;
+      if (patch.socials.youtube !== undefined) updateObj['socials.youtube'] = patch.socials.youtube;
+      if (patch.socials.whatsapp !== undefined) updateObj['socials.whatsapp'] = patch.socials.whatsapp;
+    }
+
+    if (patch.socialsActive) {
+      if (patch.socialsActive.instagram !== undefined) updateObj['socialsActive.instagram'] = patch.socialsActive.instagram;
+      if (patch.socialsActive.facebook !== undefined) updateObj['socialsActive.facebook'] = patch.socialsActive.facebook;
+      if (patch.socialsActive.tiktok !== undefined) updateObj['socialsActive.tiktok'] = patch.socialsActive.tiktok;
+      if (patch.socialsActive.youtube !== undefined) updateObj['socialsActive.youtube'] = patch.socialsActive.youtube;
+      if (patch.socialsActive.whatsapp !== undefined) updateObj['socialsActive.whatsapp'] = patch.socialsActive.whatsapp;
+    }
+
+    if (patch.whatsappOrderRedirect !== undefined) {
+      updateObj['whatsappOrderRedirect'] = patch.whatsappOrderRedirect;
+    }
+
+    await setDoc(docRef, updateObj, { merge: true });
+    await getSocialsAndContactSettingsFromFirestore();
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, path);
     throw error;
@@ -3278,13 +3345,22 @@ export async function saveSocialLinkToFirestore(
   platform: keyof SocialLinksSettings,
   url: string
 ): Promise<void> {
-  const existing = getCanonicalSocialsAndContactSync();
-  await updateSocialsAndContactSettings({
-    socials: {
-      ...existing.socials,
-      [platform]: url.trim()
-    }
-  });
+  const path = 'settings/socials_contact';
+  try {
+    const docRef = doc(db, 'settings', 'socials_contact');
+    await setDoc(
+      docRef,
+      {
+        [`socials.${platform}`]: url.trim(),
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+    await getSocialsAndContactSettingsFromFirestore();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
 }
 
 /**
@@ -3294,13 +3370,22 @@ export async function saveSocialActiveToFirestore(
   platform: keyof SocialActiveSettings,
   active: boolean
 ): Promise<void> {
-  const existing = getCanonicalSocialsAndContactSync();
-  await updateSocialsAndContactSettings({
-    socialsActive: {
-      ...existing.socialsActive,
-      [platform]: active
-    }
-  });
+  const path = 'settings/socials_contact';
+  try {
+    const docRef = doc(db, 'settings', 'socials_contact');
+    await setDoc(
+      docRef,
+      {
+        [`socialsActive.${platform}`]: active,
+        updatedAt: serverTimestamp()
+      },
+      { merge: true }
+    );
+    await getSocialsAndContactSettingsFromFirestore();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
 }
 
 /**

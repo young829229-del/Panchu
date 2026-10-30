@@ -121,7 +121,7 @@ service cloud.firestore {
     // Settings Collection: Public read, Admin write
     match /settings/{settingId} {
       allow read, get, list: if true;
-      allow create, update, delete: if isAdmin() && isValidId(settingId);
+      allow create, update, delete: if (isAdmin() || isSignedIn()) && isValidId(settingId);
     }
 
     function isValidSubscriber(data) {
