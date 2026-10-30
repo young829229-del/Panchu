@@ -21,11 +21,15 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
-  X
+  X,
+  ShoppingBag,
+  Sparkles,
+  Inbox
 } from 'lucide-react';
-import { NewsletterSubscriber } from '../../types';
+import { NewsletterSubscriber, Order } from '../../types';
 import {
   subscribeNewsletterSubscribers,
+  subscribeOrders,
   updateSubscriberStatus
 } from '../../services/firebaseService';
 
@@ -33,67 +37,180 @@ interface CustomerDataViewProps {
   initialSearchQuery?: string;
 }
 
+export interface UnifiedCustomer {
+  id: string;
+  email: string;
+  customerName?: string;
+  phone?: string;
+  status: 'active' | 'unsubscribed';
+  welcomePromoCode?: string;
+  welcomePromoCodeStatus?: 'unused' | 'redeemed' | 'expired' | 'disabled';
+  welcomePromoCodeRedeemedAt?: any;
+  welcomePromoCodeRedeemedOrderId?: string | null;
+  emailConsent: boolean;
+  consentSource: string;
+  subscribedAt?: any;
+  orderCount: number;
+  lastOrderAt?: any;
+}
+
 export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearchQuery = '' }) => {
   const [subscribers, setSubscribers] = useState<NewsletterSubscriber[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>(initialSearchQuery);
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'unsubscribed'>('all');
-  const [promoFilter, setPromoFilter] = useState<'all' | 'unused' | 'redeemed' | 'disabled'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'newsletter' | 'orders'>('all');
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
 
   // Composer Modal State
   const [isComposerOpen, setIsComposerOpen] = useState<boolean>(false);
   const [emailSubject, setEmailSubject] = useState<string>('PANCHU — Exclusive Drop & VIP Update');
   const [emailBody, setEmailBody] = useState<string>(
-    'Hello,\n\nWe are excited to share our latest oversized apparel collection with you.\n\nEnjoy early VIP access on our official store: https://panchu.store\n\nBest regards,\nPanchu Team'
+    'Hello,\n\nWe are excited to share our latest collection and exclusive VIP updates with you.\n\nExplore our latest drop on our official store: https://panchu.store\n\nBest regards,\nPanchu Team'
   );
   const [composerRecipientField, setComposerRecipientField] = useState<'bcc' | 'to'>('bcc');
   const [composerSearch, setComposerSearch] = useState<string>('');
-  const [composerFeedback, setComposerFeedback] = useState<{ type: 'info' | 'success' | 'error'; message: string } | null>(null);
+  const [composerFeedback, setComposerFeedback] = useState<{
+    type: 'info' | 'success' | 'error';
+    message: string;
+    fallbackUrl?: string;
+  } | null>(null);
   const [copiedInfo, setCopiedInfo] = useState<string | null>(null);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 15;
 
-  // Realtime subscription to newsletter subscribers in Firestore
+  // Realtime subscription to both newsletter subscribers & orders in Firestore
   useEffect(() => {
     setIsLoading(true);
-    const unsubscribe = subscribeNewsletterSubscribers((list) => {
+    let loadedSubscribers = false;
+    let loadedOrders = false;
+
+    const checkLoading = () => {
+      if (loadedSubscribers && loadedOrders) {
+        setIsLoading(false);
+      }
+    };
+
+    const unsubSubscribers = subscribeNewsletterSubscribers((list) => {
       setSubscribers(list);
-      setIsLoading(false);
+      loadedSubscribers = true;
+      checkLoading();
     });
-    return () => unsubscribe();
+
+    const unsubOrders = subscribeOrders((list) => {
+      setOrders(list);
+      loadedOrders = true;
+      checkLoading();
+    });
+
+    return () => {
+      unsubSubscribers();
+      unsubOrders();
+    };
   }, []);
 
-  // Filter subscribers based on search, status, and promo status
-  const filteredSubscribers = useMemo(() => {
-    return subscribers.filter((sub) => {
-      const matchesSearch = !searchQuery || sub.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (sub.welcomePromoCode && sub.welcomePromoCode.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Aggregated & Deduplicated Customer List from Newsletter + Orders
+  const unifiedCustomers = useMemo<UnifiedCustomer[]>(() => {
+    const customerMap = new Map<string, UnifiedCustomer>();
 
-      const matchesStatus = statusFilter === 'all' || sub.status === statusFilter;
+    // 1. Process Newsletter Subscribers
+    subscribers.forEach((sub) => {
+      const cleanEmail = sub.email ? sub.email.trim().toLowerCase() : '';
+      if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) return;
 
-      const codeStatus = sub.welcomePromoCodeStatus || 'unused';
-      const matchesPromo = promoFilter === 'all' || codeStatus === promoFilter;
-
-      return matchesSearch && matchesStatus && matchesPromo;
+      customerMap.set(cleanEmail, {
+        id: sub.id,
+        email: cleanEmail,
+        status: sub.status === 'unsubscribed' ? 'unsubscribed' : 'active',
+        welcomePromoCode: sub.welcomePromoCode,
+        welcomePromoCodeStatus: sub.welcomePromoCodeStatus,
+        welcomePromoCodeRedeemedAt: sub.welcomePromoCodeRedeemedAt,
+        welcomePromoCodeRedeemedOrderId: sub.welcomePromoCodeRedeemedOrderId,
+        emailConsent: sub.emailConsent !== false,
+        consentSource: sub.consentSource || 'Newsletter Subscriber',
+        subscribedAt: sub.subscribedAt || sub.createdAt,
+        orderCount: 0
+      });
     });
-  }, [subscribers, searchQuery, statusFilter, promoFilter]);
 
-  // Eligible subscribers for announcements (Must be active and have consent)
-  const eligibleSubscribers = useMemo(() => {
-    return subscribers.filter((sub) => sub.status === 'active' && sub.emailConsent !== false && sub.email.includes('@'));
-  }, [subscribers]);
+    // 2. Merge/Add Store Order Customers
+    orders.forEach((order) => {
+      const rawEmail = order.customerEmail || (order as any).email || '';
+      const cleanEmail = rawEmail.trim().toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) return;
+
+      const existing = customerMap.get(cleanEmail);
+      if (existing) {
+        existing.orderCount = (existing.orderCount || 0) + 1;
+        if (order.customerName && (!existing.customerName || existing.customerName === cleanEmail)) {
+          existing.customerName = order.customerName;
+        }
+        if (order.phone && !existing.phone) {
+          existing.phone = order.phone;
+        }
+        if (!existing.lastOrderAt) {
+          existing.lastOrderAt = order.createdAt;
+        }
+      } else {
+        customerMap.set(cleanEmail, {
+          id: `order_cust_${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
+          email: cleanEmail,
+          customerName: order.customerName || '',
+          phone: order.phone || '',
+          status: 'active',
+          emailConsent: true,
+          consentSource: 'Store Order Customer',
+          subscribedAt: order.createdAt,
+          lastOrderAt: order.createdAt,
+          orderCount: 1
+        });
+      }
+    });
+
+    return Array.from(customerMap.values());
+  }, [subscribers, orders]);
+
+  // Filtered customer list for Table display
+  const filteredCustomers = useMemo(() => {
+    return unifiedCustomers.filter((cust) => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        cust.email.toLowerCase().includes(q) ||
+        (cust.customerName && cust.customerName.toLowerCase().includes(q)) ||
+        (cust.welcomePromoCode && cust.welcomePromoCode.toLowerCase().includes(q));
+
+      const matchesStatus = statusFilter === 'all' || cust.status === statusFilter;
+
+      let matchesSource = true;
+      if (sourceFilter === 'newsletter') {
+        matchesSource = cust.welcomePromoCode !== undefined || cust.consentSource.includes('Newsletter');
+      } else if (sourceFilter === 'orders') {
+        matchesSource = cust.orderCount > 0;
+      }
+
+      return matchesSearch && matchesStatus && matchesSource;
+    });
+  }, [unifiedCustomers, searchQuery, statusFilter, sourceFilter]);
+
+  // Eligible customers for marketing announcements (Active status & valid email)
+  const eligibleCustomers = useMemo(() => {
+    return unifiedCustomers.filter(
+      (c) => c.status === 'active' && c.emailConsent !== false && c.email.includes('@') && c.email.includes('.')
+    );
+  }, [unifiedCustomers]);
 
   // Pagination slice
-  const totalPages = Math.ceil(filteredSubscribers.length / itemsPerPage) || 1;
-  const paginatedSubscribers = useMemo(() => {
+  const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage) || 1;
+  const paginatedCustomers = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
-    return filteredSubscribers.slice(start, start + itemsPerPage);
-  }, [filteredSubscribers, currentPage]);
+    return filteredCustomers.slice(start, start + itemsPerPage);
+  }, [filteredCustomers, currentPage]);
 
-  // Toggle individual selection
+  // Toggle individual email selection
   const handleToggleSelectEmail = (email: string) => {
     const next = new Set(selectedEmails);
     if (next.has(email)) {
@@ -104,29 +221,29 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
     setSelectedEmails(next);
   };
 
-  // Select all eligible
+  // Select all eligible recipients
   const handleSelectAllEligible = () => {
-    const allEligible = new Set(eligibleSubscribers.map((s) => s.email));
+    const allEligible = new Set(eligibleCustomers.map((c) => c.email));
     setSelectedEmails(allEligible);
   };
 
-  // Deselect all
+  // Deselect all recipients
   const handleDeselectAll = () => {
     setSelectedEmails(new Set());
   };
 
-  // Open Composer
+  // Open Email Composer
   const handleOpenComposer = () => {
-    // If no emails are currently selected, automatically select all eligible subscribers as a convenience
+    // If no emails are currently selected, automatically select all eligible customers
     if (selectedEmails.size === 0) {
-      const allEligible = new Set(eligibleSubscribers.map((s) => s.email));
+      const allEligible = new Set(eligibleCustomers.map((c) => c.email));
       setSelectedEmails(allEligible);
     }
     setComposerFeedback(null);
     setIsComposerOpen(true);
   };
 
-  // Copy helper
+  // Copy text helper
   const handleCopyText = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopiedInfo(label);
@@ -134,10 +251,10 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
   };
 
   // Toggle subscriber status in Firestore
-  const handleToggleSubscriberStatus = async (subscriber: NewsletterSubscriber) => {
-    const newStatus = subscriber.status === 'active' ? 'unsubscribed' : 'active';
+  const handleToggleSubscriberStatus = async (customer: UnifiedCustomer) => {
+    const newStatus = customer.status === 'active' ? 'unsubscribed' : 'active';
     try {
-      await updateSubscriberStatus(subscriber.id, newStatus);
+      await updateSubscriberStatus(customer.id, newStatus);
     } catch (err: any) {
       console.error('Update subscriber status error:', err);
       alert('Failed to update subscriber status: ' + (err?.message || err));
@@ -152,18 +269,14 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
         return timestamp.toDate().toLocaleString('en-US', {
           month: 'short',
           day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit'
+          year: 'numeric'
         });
       }
       if (timestamp.seconds) {
         return new Date(timestamp.seconds * 1000).toLocaleString('en-US', {
           month: 'short',
           day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit'
+          year: 'numeric'
         });
       }
       const d = new Date(timestamp);
@@ -171,9 +284,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
         return d.toLocaleString('en-US', {
           month: 'short',
           day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit'
+          year: 'numeric'
         });
       }
     } catch {
@@ -182,16 +293,62 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
     return String(timestamp);
   };
 
-  // Gmail Compose Launcher with Batching support
-  const handleLaunchGmail = (batchIndex: number = 0, batchSize: number = 50) => {
+  // ----------------------------------------------------
+  // DRAFT GENERATOR & DRAFT LAUNCH LOGIC (Gmail / Mailto)
+  // ----------------------------------------------------
+  const openEmailDraft = (
+    recipients: string[],
+    fieldMode: 'bcc' | 'to' = 'bcc',
+    subject: string = '',
+    body: string = ''
+  ): string => {
+    // Apply encodeURIComponent to all parameters passed to the Gmail compose URL
+    // to ensure line breaks, special characters, and subject lines are preserved.
+    const encSub = encodeURIComponent(subject.trim());
+    const encBody = encodeURIComponent(body.trim());
+    const encRec = encodeURIComponent(recipients.join(','));
+
+    // Official Gmail Web Compose Endpoint with explicitly declared view=cm&fs=1&tf=cm parameters
+    let url = 'https://mail.google.com/mail/u/0/?view=cm&fs=1&tf=cm';
+    if (fieldMode === 'bcc') {
+      url += `&bcc=${encRec}`;
+    } else {
+      url += `&to=${encRec}`;
+    }
+    url += `&su=${encSub}&body=${encBody}`;
+    return url;
+  };
+
+  const buildGmailComposeUrl = openEmailDraft;
+
+  const buildMailtoComposeUrl = (
+    recipients: string[],
+    fieldMode: 'bcc' | 'to',
+    subject: string,
+    body: string
+  ): string => {
+    const encSub = encodeURIComponent(subject.trim());
+    const encBody = encodeURIComponent(body.trim());
+    const encRec = encodeURIComponent(recipients.join(','));
+
+    if (fieldMode === 'bcc') {
+      return `mailto:?bcc=${encRec}&subject=${encSub}&body=${encBody}`;
+    }
+    return `mailto:${encRec}?subject=${encSub}&body=${encBody}`;
+  };
+
+  const handleLaunchDraft = (method: 'gmail' | 'mailto', batchIndex: number = 0, batchSize: number = 35) => {
     setComposerFeedback(null);
 
-    // Validate draft
-    const chosenList = (Array.from(selectedEmails) as string[]).filter((em) => em && em.includes('@'));
-    if (chosenList.length === 0) {
+    // Filter valid selected emails
+    const validSelectedList = (Array.from(selectedEmails) as string[]).filter(
+      (em) => em && em.trim().includes('@') && em.trim().includes('.')
+    );
+
+    if (validSelectedList.length === 0) {
       setComposerFeedback({
         type: 'error',
-        message: 'Please select at least one subscriber recipient before continuing.'
+        message: 'No customer recipients selected. Please select at least one customer email address.'
       });
       return;
     }
@@ -199,7 +356,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
     if (!emailSubject.trim()) {
       setComposerFeedback({
         type: 'error',
-        message: 'Please enter an announcement subject line.'
+        message: 'Please enter an email subject line.'
       });
       return;
     }
@@ -207,63 +364,48 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
     if (!emailBody.trim()) {
       setComposerFeedback({
         type: 'error',
-        message: 'Please enter your announcement message text.'
+        message: 'Please enter an announcement message text.'
       });
       return;
     }
 
-    // Determine batch slice
-    const totalBatches = Math.ceil(chosenList.length / batchSize) || 1;
+    const totalBatches = Math.ceil(validSelectedList.length / batchSize) || 1;
     const startIdx = batchIndex * batchSize;
-    const batchRecipients = chosenList.slice(startIdx, startIdx + batchSize);
-    const recipientString = batchRecipients.join(',');
+    const batchRecipients = validSelectedList.slice(startIdx, startIdx + batchSize);
 
-    const encodedSubject = encodeURIComponent(emailSubject.trim());
-    const encodedBody = encodeURIComponent(emailBody.trim());
-    const encodedRecipients = encodeURIComponent(recipientString);
+    if (method === 'gmail') {
+      const gmailUrl = openEmailDraft(batchRecipients, composerRecipientField, emailSubject, emailBody);
+      const openedWin = window.open(gmailUrl, '_blank');
 
-    // Construct Gmail web compose URL
-    let gmailUrl = 'https://mail.google.com/mail/?view=cm&fs=1';
-    if (composerRecipientField === 'bcc') {
-      gmailUrl += `&bcc=${encodedRecipients}`;
+      if (!openedWin) {
+        setComposerFeedback({
+          type: 'error',
+          message: 'Browser popup blocker blocked opening Gmail in a new tab. Click the link button below to open directly:',
+          fallbackUrl: gmailUrl
+        });
+      } else {
+        setComposerFeedback({
+          type: 'success',
+          message:
+            totalBatches > 1
+              ? `Gmail Compose draft opened for Batch ${batchIndex + 1} of ${totalBatches} (${batchRecipients.length} recipients). Review and click Send in Gmail.`
+              : `Gmail Compose draft opened with ${batchRecipients.length} recipient(s) prefilled. Review the draft and click Send in Gmail.`
+        });
+      }
     } else {
-      gmailUrl += `&to=${encodedRecipients}`;
-    }
-    gmailUrl += `&su=${encodedSubject}&body=${encodedBody}`;
-
-    // Open Gmail draft in new tab
-    const opened = window.open(gmailUrl, '_blank');
-
-    if (!opened) {
-      // Browser blocked popup - offer fallback
-      setComposerFeedback({
-        type: 'error',
-        message: 'Browser blocked opening Gmail in a new tab. Please use the fallback mailto link or copy the announcement below.'
-      });
-    } else {
+      const mailtoUrl = buildMailtoComposeUrl(batchRecipients, composerRecipientField, emailSubject, emailBody);
+      window.location.href = mailtoUrl;
       setComposerFeedback({
         type: 'success',
-        message: totalBatches > 1
-          ? `Gmail draft opened for Batch ${batchIndex + 1} of ${totalBatches} (${batchRecipients.length} recipients). Review and press Send in Gmail.`
-          : `Gmail draft opened with ${batchRecipients.length} recipients prefilled. Review the draft and press Send in Gmail to send the announcement.`
+        message: `Opened default email application with ${batchRecipients.length} recipient(s) prefilled in compose mode.`
       });
     }
-  };
-
-  // Fallback mailto construction
-  const getMailtoUrl = (batchRecipients: string[]) => {
-    const encSub = encodeURIComponent(emailSubject.trim());
-    const encBody = encodeURIComponent(emailBody.trim());
-    const encRec = encodeURIComponent(batchRecipients.join(','));
-    if (composerRecipientField === 'bcc') {
-      return `mailto:?bcc=${encRec}&subject=${encSub}&body=${encBody}`;
-    }
-    return `mailto:${encRec}?subject=${encSub}&body=${encBody}`;
   };
 
   const selectedCount = selectedEmails.size;
-  const eligibleCount = eligibleSubscribers.length;
-  const totalBatchCount = Math.ceil(selectedCount / 50) || 1;
+  const eligibleCount = eligibleCustomers.length;
+  const safeBatchSize = 35;
+  const totalBatchCount = Math.ceil(selectedCount / safeBatchSize) || 1;
 
   return (
     <div className="space-y-6 pt-2">
@@ -272,7 +414,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-xl sm:text-2xl font-bold font-sans text-stone-900">
-              Customer Data ({subscribers.length})
+              Customer Data ({unifiedCustomers.length})
             </h1>
           </div>
         </div>
@@ -284,31 +426,27 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
           className="px-4 py-2.5 rounded-2xl bg-[#ff4d4f] hover:bg-[#e04345] text-white text-xs font-semibold font-sans flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer self-start sm:self-auto shrink-0"
         >
           <Send className="w-4 h-4" />
-          <span>Send Announcement</span>
+          <span>Compose Email ({selectedCount})</span>
         </button>
       </div>
 
       {/* Quick metrics banner */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-3.5 rounded-2xl bg-white border border-stone-200/70 shadow-2xs">
-          <span className="text-[10px] font-sans text-stone-400 uppercase tracking-wider block">Total Subscribers</span>
-          <span className="text-lg font-bold font-mono text-stone-900 mt-0.5 block">{subscribers.length}</span>
+          <span className="text-[10px] font-sans text-stone-400 uppercase tracking-wider block">Total Customers</span>
+          <span className="text-lg font-bold font-mono text-stone-900 mt-0.5 block">{unifiedCustomers.length}</span>
         </div>
         <div className="p-3.5 rounded-2xl bg-white border border-stone-200/70 shadow-2xs">
           <span className="text-[10px] font-sans text-stone-400 uppercase tracking-wider block">Active & Consented</span>
           <span className="text-lg font-bold font-mono text-emerald-600 mt-0.5 block">{eligibleCount}</span>
         </div>
         <div className="p-3.5 rounded-2xl bg-white border border-stone-200/70 shadow-2xs">
-          <span className="text-[10px] font-sans text-stone-400 uppercase tracking-wider block">Unused Welcome Codes</span>
-          <span className="text-lg font-bold font-mono text-[#ff4d4f] mt-0.5 block">
-            {subscribers.filter((s) => s.welcomePromoCodeStatus === 'unused' || !s.welcomePromoCodeStatus).length}
-          </span>
+          <span className="text-[10px] font-sans text-stone-400 uppercase tracking-wider block">Selected Recipients</span>
+          <span className="text-lg font-bold font-mono text-[#ff4d4f] mt-0.5 block">{selectedCount}</span>
         </div>
         <div className="p-3.5 rounded-2xl bg-white border border-stone-200/70 shadow-2xs">
-          <span className="text-[10px] font-sans text-stone-400 uppercase tracking-wider block">Redeemed Codes</span>
-          <span className="text-lg font-bold font-mono text-blue-600 mt-0.5 block">
-            {subscribers.filter((s) => s.welcomePromoCodeStatus === 'redeemed').length}
-          </span>
+          <span className="text-[10px] font-sans text-stone-400 uppercase tracking-wider block">Store Orders Total</span>
+          <span className="text-lg font-bold font-mono text-blue-600 mt-0.5 block">{orders.length}</span>
         </div>
       </div>
 
@@ -325,7 +463,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                 setSearchQuery(e.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Search by customer email or welcome promo code..."
+              placeholder="Search by customer email, name, or welcome promo code..."
               className="w-full pl-9 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-sans text-stone-800 placeholder-stone-400 focus:outline-none focus:bg-white focus:border-[#ff4d4f]"
             />
           </div>
@@ -346,17 +484,16 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
             </select>
 
             <select
-              value={promoFilter}
+              value={sourceFilter}
               onChange={(e) => {
-                setPromoFilter(e.target.value as any);
+                setSourceFilter(e.target.value as any);
                 setCurrentPage(1);
               }}
               className="px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-sans text-stone-700 focus:outline-none focus:border-[#ff4d4f] cursor-pointer"
             >
-              <option value="all">Code: All</option>
-              <option value="unused">Code: Unused</option>
-              <option value="redeemed">Code: Redeemed</option>
-              <option value="disabled">Code: Disabled</option>
+              <option value="all">Source: All Customers</option>
+              <option value="newsletter">Source: Newsletter Subscribers</option>
+              <option value="orders">Source: Store Order Customers</option>
             </select>
           </div>
         </div>
@@ -370,7 +507,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
               className="text-[#ff4d4f] font-semibold hover:underline cursor-pointer flex items-center gap-1.5"
             >
               <CheckSquare className="w-3.5 h-3.5" />
-              <span>Select All Eligible ({eligibleCount})</span>
+              <span>Select All ({eligibleCount})</span>
             </button>
             <span className="text-stone-300">|</span>
             <button
@@ -393,26 +530,26 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                 type="button"
                 className="px-2.5 py-1 rounded-lg bg-red-50 text-[#ff4d4f] hover:bg-red-100 font-medium text-[11px] cursor-pointer transition-colors"
               >
-                Compose Announcement →
+                Open Email Composer →
               </button>
             )}
           </div>
         </div>
       </div>
 
-      {/* Main Subscribers Table */}
+      {/* Main Customers Table */}
       <div className="bg-white rounded-2xl border border-stone-200/70 shadow-2xs overflow-hidden">
         {isLoading ? (
           <div className="p-12 text-center text-stone-400 space-y-2">
             <Loader2 className="w-6 h-6 animate-spin mx-auto text-[#ff4d4f]" />
-            <p className="text-xs font-sans">Loading subscriber data from Cloud Firestore...</p>
+            <p className="text-xs font-sans">Fetching customer database from Firebase...</p>
           </div>
-        ) : filteredSubscribers.length === 0 ? (
+        ) : filteredCustomers.length === 0 ? (
           <div className="p-12 text-center text-stone-400 space-y-2">
             <Users className="w-8 h-8 mx-auto text-stone-300" />
-            <p className="text-xs font-sans font-medium text-stone-700">No subscribers found</p>
+            <p className="text-xs font-sans font-medium text-stone-700">No customers found</p>
             <p className="text-[11px] font-sans text-stone-400">
-              {searchQuery ? 'Try adjusting your search query or filter.' : 'New subscribers from the website footer will appear here automatically.'}
+              {searchQuery ? 'Try adjusting your search query or filter.' : 'Newsletter subscribers and checkout customers will appear here automatically.'}
             </p>
           </div>
         ) : (
@@ -424,23 +561,22 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                     <span className="sr-only">Select</span>
                   </th>
                   <th className="py-3 px-4">Customer Email</th>
-                  <th className="py-3 px-4">Subscribed At</th>
+                  <th className="py-3 px-4">Source</th>
+                  <th className="py-3 px-4">Joined / Order Date</th>
                   <th className="py-3 px-4">Status</th>
                   <th className="py-3 px-4">Welcome Promo Code</th>
-                  <th className="py-3 px-4">Code Status</th>
-                  <th className="py-3 px-4">Redemption Details</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {paginatedSubscribers.map((subscriber) => {
-                  const isSelected = selectedEmails.has(subscriber.email);
-                  const isEligible = subscriber.status === 'active' && subscriber.emailConsent !== false;
-                  const codeStatus = subscriber.welcomePromoCodeStatus || 'unused';
+                {paginatedCustomers.map((customer) => {
+                  const isSelected = selectedEmails.has(customer.email);
+                  const isEligible = customer.status === 'active' && customer.emailConsent !== false;
+                  const codeStatus = customer.welcomePromoCodeStatus || 'unused';
 
                   return (
                     <tr
-                      key={subscriber.id}
+                      key={customer.id}
                       className={`hover:bg-stone-50/60 transition-colors ${
                         isSelected ? 'bg-red-50/30' : ''
                       }`}
@@ -449,9 +585,9 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                       <td className="py-3.5 px-4 text-center">
                         <button
                           type="button"
-                          onClick={() => handleToggleSelectEmail(subscriber.email)}
+                          onClick={() => handleToggleSelectEmail(customer.email)}
                           disabled={!isEligible}
-                          title={!isEligible ? 'Subscriber is unsubscribed' : isSelected ? 'Deselect recipient' : 'Select recipient'}
+                          title={!isEligible ? 'Customer is unsubscribed' : isSelected ? 'Deselect recipient' : 'Select recipient'}
                           className={`cursor-pointer ${!isEligible ? 'opacity-30 cursor-not-allowed' : ''}`}
                         >
                           {isSelected ? (
@@ -462,35 +598,51 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                         </button>
                       </td>
 
-                      {/* Email address */}
+                      {/* Email address & Name */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-stone-900 font-sans">{subscriber.email}</span>
+                          <span className="font-medium text-stone-900 font-sans">{customer.email}</span>
                           <button
                             type="button"
-                            onClick={() => handleCopyText(subscriber.email, subscriber.email)}
+                            onClick={() => handleCopyText(customer.email, customer.email)}
                             className="text-stone-300 hover:text-stone-600 transition-colors"
                             title="Copy email address"
                           >
                             <Copy className="w-3 h-3" />
                           </button>
-                          {copiedInfo === subscriber.email && (
+                          {copiedInfo === customer.email && (
                             <span className="text-[10px] text-emerald-600 font-sans">Copied</span>
                           )}
                         </div>
-                        <span className="text-[10px] text-stone-400 block mt-0.5">
-                          {subscriber.consentSource || 'Website footer'}
+                        {customer.customerName && (
+                          <span className="text-[10px] text-stone-400 block mt-0.5">
+                            {customer.customerName} {customer.phone ? `• ${customer.phone}` : ''}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Customer Source */}
+                      <td className="py-3.5 px-4 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-stone-100 text-stone-700">
+                          {customer.orderCount > 0 ? (
+                            <ShoppingBag className="w-3 h-3 text-blue-600" />
+                          ) : (
+                            <Mail className="w-3 h-3 text-[#ff4d4f]" />
+                          )}
+                          <span>
+                            {customer.consentSource} {customer.orderCount > 0 ? `(${customer.orderCount} order${customer.orderCount === 1 ? '' : 's'})` : ''}
+                          </span>
                         </span>
                       </td>
 
-                      {/* Subscribed At */}
+                      {/* Date */}
                       <td className="py-3.5 px-4 text-stone-600 whitespace-nowrap">
-                        {formatDateTime(subscriber.subscribedAt || subscriber.createdAt)}
+                        {formatDateTime(customer.subscribedAt || customer.lastOrderAt)}
                       </td>
 
-                      {/* Subscription Status */}
+                      {/* Status */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        {subscriber.status === 'active' ? (
+                        {customer.status === 'active' ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">
                             <CheckCircle2 className="w-3 h-3" />
                             <span>Active</span>
@@ -503,65 +655,18 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                         )}
                       </td>
 
-                      {/* Assigned Welcome Promo Code */}
+                      {/* Welcome Promo Code */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        {subscriber.welcomePromoCode ? (
+                        {customer.welcomePromoCode ? (
                           <div className="flex items-center gap-1.5">
                             <Tag className="w-3.5 h-3.5 text-[#ff4d4f]" />
                             <span className="font-mono font-bold tracking-wider text-stone-800 text-xs">
-                              {subscriber.welcomePromoCode}
+                              {customer.welcomePromoCode}
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyText(subscriber.welcomePromoCode, subscriber.welcomePromoCode)}
-                              className="text-stone-300 hover:text-stone-600"
-                              title="Copy promo code"
-                            >
-                              <Copy className="w-3 h-3" />
-                            </button>
-                            {copiedInfo === subscriber.welcomePromoCode && (
-                              <span className="text-[10px] text-emerald-600 font-sans">Copied</span>
-                            )}
+                            <span className="text-[10px] text-stone-400">({codeStatus})</span>
                           </div>
                         ) : (
                           <span className="text-stone-400">—</span>
-                        )}
-                      </td>
-
-                      {/* Promo Code Status */}
-                      <td className="py-3.5 px-4 whitespace-nowrap">
-                        {codeStatus === 'redeemed' ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700">
-                            Redeemed
-                          </span>
-                        ) : codeStatus === 'disabled' ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-stone-100 text-stone-500">
-                            Disabled
-                          </span>
-                        ) : codeStatus === 'expired' ? (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700">
-                            Expired
-                          </span>
-                        ) : (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700">
-                            Unused (5% OFF)
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Redemption Details */}
-                      <td className="py-3.5 px-4 text-stone-500 whitespace-nowrap">
-                        {codeStatus === 'redeemed' ? (
-                          <div>
-                            <span className="font-mono text-stone-800 text-[11px] block">
-                              Order: {subscriber.welcomePromoCodeRedeemedOrderId || 'Verified'}
-                            </span>
-                            <span className="text-[10px] text-stone-400 block">
-                              {formatDateTime(subscriber.welcomePromoCodeRedeemedAt)}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-stone-400 text-[11px]">Not yet used</span>
                         )}
                       </td>
 
@@ -569,10 +674,10 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
                         <button
                           type="button"
-                          onClick={() => handleToggleSubscriberStatus(subscriber)}
+                          onClick={() => handleToggleSubscriberStatus(customer)}
                           className="text-[11px] font-medium text-stone-500 hover:text-stone-800 cursor-pointer underline"
                         >
-                          {subscriber.status === 'active' ? 'Mark Unsubscribed' : 'Reactivate'}
+                          {customer.status === 'active' ? 'Mark Unsubscribed' : 'Reactivate'}
                         </button>
                       </td>
                     </tr>
@@ -587,7 +692,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
         {totalPages > 1 && (
           <div className="p-3 bg-stone-50/50 border-t border-stone-200/60 flex items-center justify-between text-xs text-stone-600">
             <span>
-              Page <strong className="font-mono text-stone-800">{currentPage}</strong> of <strong className="font-mono text-stone-800">{totalPages}</strong> ({filteredSubscribers.length} total)
+              Page <strong className="font-mono text-stone-800">{currentPage}</strong> of <strong className="font-mono text-stone-800">{totalPages}</strong> ({filteredCustomers.length} total)
             </span>
             <div className="flex items-center gap-1">
               <button
@@ -624,10 +729,10 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                 </div>
                 <div>
                   <h2 className="text-base font-bold font-sans text-stone-900">
-                    Send Announcement through Gmail
+                    Email Marketing Composer
                   </h2>
                   <p className="text-xs text-stone-500 font-sans">
-                    Compose your announcement and prefill directly into Gmail draft with chosen subscribers.
+                    Compose email draft prefilled with selected customer recipients, subject, and message.
                   </p>
                 </div>
               </div>
@@ -646,7 +751,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
               {/* Feedback Alert */}
               {composerFeedback && (
                 <div
-                  className={`p-3.5 rounded-2xl text-xs font-sans flex items-start gap-2.5 ${
+                  className={`p-3.5 rounded-2xl text-xs font-sans flex flex-col gap-2 ${
                     composerFeedback.type === 'success'
                       ? 'bg-emerald-50 text-emerald-800 border border-emerald-200/80'
                       : composerFeedback.type === 'error'
@@ -654,16 +759,28 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                         : 'bg-blue-50 text-blue-800 border border-blue-200/80'
                   }`}
                 >
-                  {composerFeedback.type === 'success' ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  ) : composerFeedback.type === 'error' ? (
-                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                  ) : (
-                    <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                  )}
-                  <div className="flex-1">
-                    <p>{composerFeedback.message}</p>
+                  <div className="flex items-start gap-2">
+                    {composerFeedback.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    ) : composerFeedback.type === 'error' ? (
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    )}
+                    <p className="flex-1">{composerFeedback.message}</p>
                   </div>
+
+                  {composerFeedback.fallbackUrl && (
+                    <a
+                      href={composerFeedback.fallbackUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white font-medium text-xs rounded-xl self-start flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    >
+                      <span>Click Here to Open Gmail Draft</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  )}
                 </div>
               )}
 
@@ -691,7 +808,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                           : 'bg-white border border-stone-200 text-stone-600'
                       }`}
                     >
-                      BCC (Recommended for privacy)
+                      BCC (Privacy recommended)
                     </button>
                     <button
                       type="button"
@@ -715,7 +832,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                       onClick={handleSelectAllEligible}
                       className="text-[#ff4d4f] font-semibold hover:underline cursor-pointer"
                     >
-                      Select All Eligible ({eligibleCount})
+                      Select All ({eligibleCount})
                     </button>
                     <span className="text-stone-300">|</span>
                     <button
@@ -731,7 +848,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                     type="text"
                     value={composerSearch}
                     onChange={(e) => setComposerSearch(e.target.value)}
-                    placeholder="Filter selected list..."
+                    placeholder="Filter recipients..."
                     className="px-2.5 py-1 bg-white border border-stone-200 rounded-lg text-xs font-sans text-stone-700 placeholder-stone-400 focus:outline-none focus:border-[#ff4d4f]"
                   />
                 </div>
@@ -741,7 +858,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                   {selectedCount === 0 ? (
                     <span className="text-xs text-amber-600 font-sans p-1 flex items-center gap-1">
                       <AlertCircle className="w-3.5 h-3.5" />
-                      No recipients selected. Please select at least one subscriber.
+                      No recipients selected. Please select at least one customer.
                     </span>
                   ) : (
                     (Array.from(selectedEmails) as string[])
@@ -755,7 +872,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                           <button
                             type="button"
                             onClick={() => handleToggleSelectEmail(em)}
-                            className="text-stone-400 hover:text-red-500"
+                            className="text-stone-400 hover:text-red-500 font-bold"
                             title="Remove recipient"
                           >
                             ×
@@ -809,27 +926,35 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                 </div>
               </div>
 
-              {/* Batching Notice if > 50 recipients */}
-              {selectedCount > 50 && (
+              {/* Batching Notice if > 35 recipients */}
+              {selectedCount > 35 && (
                 <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-sans space-y-2">
                   <div className="flex items-center gap-2 font-semibold">
                     <Info className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>Large Recipient List ({selectedCount} recipients)</span>
                   </div>
                   <p className="text-[11px]">
-                    To respect Gmail compose URL limits, your {selectedCount} recipients are split into {totalBatchCount} batches of up to 50 recipients.
-                    Click a batch button below to launch Gmail for that specific group:
+                    To respect URL length limits, your {selectedCount} recipients are split into {totalBatchCount} batches of up to {safeBatchSize} recipients.
+                    Click a batch button below to launch Gmail or your email app for that specific group:
                   </p>
                   <div className="flex flex-wrap gap-2 pt-1">
                     {Array.from({ length: totalBatchCount }).map((_, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => handleLaunchGmail(idx, 50)}
-                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-xl text-xs transition-colors cursor-pointer"
-                      >
-                        Launch Batch {idx + 1} ({idx * 50 + 1}–{Math.min((idx + 1) * 50, selectedCount)})
-                      </button>
+                      <div key={idx} className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleLaunchDraft('gmail', idx, safeBatchSize)}
+                          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-xl text-xs transition-colors cursor-pointer"
+                        >
+                          Gmail Batch {idx + 1} ({idx * safeBatchSize + 1}–{Math.min((idx + 1) * safeBatchSize, selectedCount)})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleLaunchDraft('mailto', idx, safeBatchSize)}
+                          className="px-2 py-1.5 bg-white border border-amber-300 text-amber-900 font-medium rounded-xl text-xs hover:bg-amber-100 transition-colors cursor-pointer"
+                        >
+                          Mailto
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -839,7 +964,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
               <div className="p-3 rounded-xl bg-stone-50 border border-stone-200/60 text-[11px] text-stone-500 font-sans flex items-start gap-2">
                 <ShieldCheck className="w-4 h-4 text-stone-400 shrink-0 mt-0.5" />
                 <p>
-                  <strong>Send Now</strong> opens Gmail with your selected recipients and message prefilled. Review the draft and press Send in Gmail to send the announcement.
+                  <strong>Open Draft</strong> opens your email client directly in <strong>Compose mode</strong> with all selected recipient addresses, subject, and formatted message prefilled. Review and send from your email application.
                 </p>
               </div>
 
@@ -851,7 +976,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                   className="px-3 py-1.5 rounded-xl border border-stone-200 text-stone-600 hover:bg-stone-50 text-[11px] font-sans flex items-center gap-1.5 cursor-pointer"
                 >
                   <Copy className="w-3 h-3" />
-                  <span>Copy Selected Recipient Emails ({selectedCount})</span>
+                  <span>Copy Recipient Emails ({selectedCount})</span>
                 </button>
                 <button
                   type="button"
@@ -859,7 +984,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                   className="px-3 py-1.5 rounded-xl border border-stone-200 text-stone-600 hover:bg-stone-50 text-[11px] font-sans flex items-center gap-1.5 cursor-pointer"
                 >
                   <Copy className="w-3 h-3" />
-                  <span>Copy Announcement Text</span>
+                  <span>Copy Announcement Draft</span>
                 </button>
                 {copiedInfo && (
                   <span className="text-[11px] text-emerald-600 font-sans">
@@ -875,23 +1000,37 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
                 {selectedCount} recipient{selectedCount === 1 ? '' : 's'} ready in {composerRecipientField.toUpperCase()}
               </span>
 
-              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => setIsComposerOpen(false)}
-                  className="flex-1 sm:flex-none px-4 py-2.5 rounded-2xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold cursor-pointer transition-colors"
+                  className="px-4 py-2.5 rounded-2xl border border-stone-200 bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold cursor-pointer transition-colors"
                 >
-                  Cancel
+                  Close
                 </button>
 
+                {/* Open in Email App (Mailto) */}
                 <button
                   type="button"
-                  onClick={() => handleLaunchGmail(0, 50)}
+                  onClick={() => handleLaunchDraft('mailto', 0, safeBatchSize)}
                   disabled={selectedCount === 0 || !emailSubject.trim() || !emailBody.trim()}
-                  className="flex-1 sm:flex-none px-5 py-2.5 rounded-2xl bg-[#ff4d4f] hover:bg-[#e04345] disabled:opacity-40 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-all"
+                  className="px-4 py-2.5 rounded-2xl bg-stone-800 hover:bg-stone-900 disabled:opacity-40 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer transition-all"
+                  title="Open in native default mail app (Apple Mail, Outlook, etc.)"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  <span>Open in Mail App</span>
+                </button>
+
+                {/* Open in Gmail (Web) */}
+                <button
+                  type="button"
+                  onClick={() => handleLaunchDraft('gmail', 0, safeBatchSize)}
+                  disabled={selectedCount === 0 || !emailSubject.trim() || !emailBody.trim()}
+                  className="px-5 py-2.5 rounded-2xl bg-[#ff4d4f] hover:bg-[#e04345] disabled:opacity-40 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm cursor-pointer transition-all"
+                  title="Open prefilled draft in Gmail Web Compose"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Send Now</span>
+                  <span>Open in Gmail (Web)</span>
                 </button>
               </div>
             </div>
