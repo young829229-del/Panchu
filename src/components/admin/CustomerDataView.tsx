@@ -302,14 +302,12 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
     subject: string = '',
     body: string = ''
   ): string => {
-    // Apply encodeURIComponent to all parameters passed to the Gmail compose URL
-    // to ensure line breaks, special characters, and subject lines are preserved.
     const encSub = encodeURIComponent(subject.trim());
     const encBody = encodeURIComponent(body.trim());
     const encRec = encodeURIComponent(recipients.join(','));
 
-    // Official Gmail Web Compose Endpoint with explicitly declared view=cm&fs=1&tf=cm parameters
-    let url = 'https://mail.google.com/mail/u/0/?view=cm&fs=1&tf=cm';
+    // Official Gmail Web Compose Endpoint
+    let url = 'https://mail.google.com/mail/u/0/?view=cm&fs=1';
     if (fieldMode === 'bcc') {
       url += `&bcc=${encRec}`;
     } else {
@@ -318,8 +316,6 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
     url += `&su=${encSub}&body=${encBody}`;
     return url;
   };
-
-  const buildGmailComposeUrl = openEmailDraft;
 
   const buildMailtoComposeUrl = (
     recipients: string[],
@@ -340,7 +336,6 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
   const handleLaunchDraft = (method: 'gmail' | 'mailto', batchIndex: number = 0, batchSize: number = 35) => {
     setComposerFeedback(null);
 
-    // Filter valid selected emails
     const validSelectedList = (Array.from(selectedEmails) as string[]).filter(
       (em) => em && em.trim().includes('@') && em.trim().includes('.')
     );
@@ -348,57 +343,46 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
     if (validSelectedList.length === 0) {
       setComposerFeedback({
         type: 'error',
-        message: 'No customer recipients selected. Please select at least one customer email address.'
+        message: 'No customer recipients selected.'
       });
       return;
     }
 
-    if (!emailSubject.trim()) {
+    if (!emailSubject.trim() || !emailBody.trim()) {
       setComposerFeedback({
         type: 'error',
-        message: 'Please enter an email subject line.'
+        message: 'Please enter a subject and message.'
       });
       return;
     }
 
-    if (!emailBody.trim()) {
-      setComposerFeedback({
-        type: 'error',
-        message: 'Please enter an announcement message text.'
-      });
-      return;
-    }
-
-    const totalBatches = Math.ceil(validSelectedList.length / batchSize) || 1;
-    const startIdx = batchIndex * batchSize;
-    const batchRecipients = validSelectedList.slice(startIdx, startIdx + batchSize);
+    const batchRecipients = validSelectedList.slice(batchIndex * batchSize, batchIndex * batchSize + batchSize);
 
     if (method === 'gmail') {
-      const gmailUrl = openEmailDraft(batchRecipients, composerRecipientField, emailSubject, emailBody);
-      const openedWin = window.open(gmailUrl, '_blank');
-
-      if (!openedWin) {
-        setComposerFeedback({
-          type: 'error',
-          message: 'Browser popup blocker blocked opening Gmail in a new tab. Click the link button below to open directly:',
-          fallbackUrl: gmailUrl
-        });
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      
+      if (isAndroid) {
+        // Construct Gmail Android Intent
+        const recipientsString = batchRecipients.join(',');
+        const intentUrl = `intent://compose?to=${encodeURIComponent(recipientsString)}&subject=${encodeURIComponent(emailSubject)}&body=${encodeURIComponent(emailBody)}#Intent;package=com.google.android.gm;scheme=mailto;end;`;
+        
+        // Attempt to open the intent
+        window.location.href = intentUrl;
+        
+        // Browser fallback if app not installed or fails
+        setTimeout(() => {
+          const webUrl = openEmailDraft(batchRecipients, composerRecipientField, emailSubject, emailBody);
+          window.open(webUrl, '_blank');
+        }, 500);
       } else {
-        setComposerFeedback({
-          type: 'success',
-          message:
-            totalBatches > 1
-              ? `Gmail Compose draft opened for Batch ${batchIndex + 1} of ${totalBatches} (${batchRecipients.length} recipients). Review and click Send in Gmail.`
-              : `Gmail Compose draft opened with ${batchRecipients.length} recipient(s) prefilled. Review the draft and click Send in Gmail.`
-        });
+        const webUrl = openEmailDraft(batchRecipients, composerRecipientField, emailSubject, emailBody);
+        window.open(webUrl, '_blank');
       }
+      
+      setComposerFeedback({ type: 'success', message: 'Gmail compose draft opened.' });
     } else {
       const mailtoUrl = buildMailtoComposeUrl(batchRecipients, composerRecipientField, emailSubject, emailBody);
       window.location.href = mailtoUrl;
-      setComposerFeedback({
-        type: 'success',
-        message: `Opened default email application with ${batchRecipients.length} recipient(s) prefilled in compose mode.`
-      });
     }
   };
 
