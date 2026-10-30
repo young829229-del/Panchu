@@ -5,7 +5,6 @@ import {
   Search,
   Check,
   Copy,
-  Sliders,
   AlertCircle,
   CheckCircle2,
   XCircle,
@@ -16,23 +15,18 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  Settings2,
   Sparkles,
   ShieldCheck
 } from 'lucide-react';
-import { OneTimePromoCode, OneTimePromoSettings } from '../../types';
+import { OneTimePromoCode } from '../../types';
 import {
   subscribeOneTimePromoCodes,
-  subscribeOneTimePromoSettings,
-  saveOneTimePromoSettings,
   disableOneTimePromoCode,
-  createManualOneTimePromoCode,
-  DEFAULT_ONE_TIME_PROMO_SETTINGS
+  createManualOneTimePromoCode
 } from '../../services/firebaseService';
 
 export const OneTimePromoCodesSection: React.FC = () => {
   const [codes, setCodes] = useState<OneTimePromoCode[]>([]);
-  const [settings, setSettings] = useState<OneTimePromoSettings>(DEFAULT_ONE_TIME_PROMO_SETTINGS);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
@@ -43,12 +37,6 @@ export const OneTimePromoCodesSection: React.FC = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
   const itemsPerPage = 12;
-
-  // Settings Editor State
-  const [isEditingSettings, setIsEditingSettings] = useState<boolean>(false);
-  const [settingsFormData, setSettingsFormData] = useState<OneTimePromoSettings>(DEFAULT_ONE_TIME_PROMO_SETTINGS);
-  const [isSavingSettings, setIsSavingSettings] = useState<boolean>(false);
-  const [settingsSaveMsg, setSettingsSaveMsg] = useState<string>('');
 
   // Manual Generate Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
@@ -76,20 +64,15 @@ export const OneTimePromoCodesSection: React.FC = () => {
   // Action status message
   const [actionNotice, setActionNotice] = useState<string>('');
 
-  // Subscribe to real-time one-time promo codes and settings
+  // Subscribe to real-time one-time promo codes
   useEffect(() => {
     setIsLoading(true);
     const unsubCodes = subscribeOneTimePromoCodes((list) => {
       setCodes(list);
       setIsLoading(false);
     });
-    const unsubSettings = subscribeOneTimePromoSettings((s) => {
-      setSettings(s);
-      setSettingsFormData(s);
-    });
     return () => {
       unsubCodes();
-      unsubSettings();
     };
   }, []);
 
@@ -121,24 +104,6 @@ export const OneTimePromoCodesSection: React.FC = () => {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredCodes.slice(start, start + itemsPerPage);
   }, [filteredCodes, currentPage]);
-
-  // Handle Save Settings
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSavingSettings(true);
-    setSettingsSaveMsg('');
-    try {
-      await saveOneTimePromoSettings(settingsFormData);
-      setSettingsSaveMsg('One-time promo settings saved successfully.');
-      setIsEditingSettings(false);
-      setTimeout(() => setSettingsSaveMsg(''), 3000);
-    } catch (err: any) {
-      console.error('Save one-time promo settings error:', err);
-      alert('Failed to save settings: ' + (err?.message || err));
-    } finally {
-      setIsSavingSettings(false);
-    }
-  };
 
   // Handle Disable Code
   const handleDisableCode = async (c: OneTimePromoCode) => {
@@ -257,15 +222,6 @@ export const OneTimePromoCodesSection: React.FC = () => {
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <button
             type="button"
-            onClick={() => setIsEditingSettings(!isEditingSettings)}
-            className="px-3.5 py-2 rounded-xl bg-white border border-stone-200 hover:bg-stone-50 text-stone-700 text-xs font-medium font-sans flex items-center gap-2 shadow-2xs transition-colors cursor-pointer"
-          >
-            <Settings2 className="w-3.5 h-3.5 text-stone-500" />
-            <span>{isEditingSettings ? 'Close Settings' : 'Configure Welcome Discount'}</span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => setIsCreateModalOpen(true)}
             className="px-3.5 py-2 rounded-xl bg-[#18181b] hover:bg-black text-white text-xs font-medium font-sans flex items-center gap-2 shadow-2xs transition-colors cursor-pointer"
           >
@@ -280,144 +236,6 @@ export const OneTimePromoCodesSection: React.FC = () => {
         <div className="p-3 bg-emerald-50 border border-emerald-200/80 rounded-2xl text-xs text-emerald-800 font-sans flex items-center gap-2 animate-in fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>{actionNotice}</span>
-        </div>
-      )}
-
-      {/* Settings Configuration Area */}
-      {isEditingSettings && (
-        <div className="p-5 rounded-3xl bg-white border border-stone-200 shadow-sm space-y-4 animate-in slide-in-from-top-2 duration-150">
-          <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-            <div className="flex items-center gap-2">
-              <Sliders className="w-4 h-4 text-[#ff4d4f]" />
-              <h3 className="text-xs font-bold font-sans text-stone-900 uppercase tracking-wide">
-                Default Newsletter Welcome Discount Settings
-              </h3>
-            </div>
-            <span className="text-[11px] text-stone-400">Stored live in Firestore</span>
-          </div>
-
-          <form onSubmit={handleSaveSettings} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Program Enabled */}
-              <div>
-                <label className="text-xs font-semibold text-stone-700 font-sans block mb-1">
-                  Program Status
-                </label>
-                <select
-                  value={settingsFormData.enabled ? 'enabled' : 'disabled'}
-                  onChange={(e) => setSettingsFormData({ ...settingsFormData, enabled: e.target.value === 'enabled' })}
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-sans text-stone-900 focus:outline-none focus:border-[#ff4d4f] cursor-pointer"
-                >
-                  <option value="enabled">Enabled (Issues Code on Signup)</option>
-                  <option value="disabled">Disabled (No code issued)</option>
-                </select>
-              </div>
-
-              {/* Discount Type */}
-              <div>
-                <label className="text-xs font-semibold text-stone-700 font-sans block mb-1">
-                  Discount Type
-                </label>
-                <select
-                  value={settingsFormData.discountType}
-                  onChange={(e) => setSettingsFormData({ ...settingsFormData, discountType: e.target.value as 'percentage' | 'fixed' })}
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-sans text-stone-900 focus:outline-none focus:border-[#ff4d4f] cursor-pointer"
-                >
-                  <option value="percentage">Percentage (%)</option>
-                  <option value="fixed">Fixed NPR Amount (Rs)</option>
-                </select>
-              </div>
-
-              {/* Discount Value */}
-              <div>
-                <label className="text-xs font-semibold text-stone-700 font-sans block mb-1">
-                  {settingsFormData.discountType === 'percentage' ? 'Percentage Value (%)' : 'Amount in NPR (Rs)'}
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max={settingsFormData.discountType === 'percentage' ? 100 : 10000}
-                  required
-                  value={settingsFormData.discountValue}
-                  onChange={(e) => setSettingsFormData({ ...settingsFormData, discountValue: Number(e.target.value) })}
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono font-bold text-stone-900 focus:outline-none focus:border-[#ff4d4f]"
-                />
-              </div>
-
-              {/* Minimum Order Amount */}
-              <div>
-                <label className="text-xs font-semibold text-stone-700 font-sans block mb-1">
-                  Min Order Amount (NPR)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={settingsFormData.minOrderAmount}
-                  onChange={(e) => setSettingsFormData({ ...settingsFormData, minOrderAmount: Number(e.target.value) })}
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-[#ff4d4f]"
-                  placeholder="0 (No minimum)"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-              {/* Max discount cap for percentage */}
-              {settingsFormData.discountType === 'percentage' && (
-                <div>
-                  <label className="text-xs font-semibold text-stone-700 font-sans block mb-1">
-                    Max Discount Cap in NPR (Optional)
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={settingsFormData.maxDiscountAmount || ''}
-                    onChange={(e) => setSettingsFormData({ ...settingsFormData, maxDiscountAmount: e.target.value ? Number(e.target.value) : null })}
-                    placeholder="e.g. 500 (Leave empty for no limit)"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-[#ff4d4f]"
-                  />
-                </div>
-              )}
-
-              {/* Expiration Days */}
-              <div>
-                <label className="text-xs font-semibold text-stone-700 font-sans block mb-1">
-                  Validity Period in Days (Optional)
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={settingsFormData.expiresInDays || ''}
-                  onChange={(e) => setSettingsFormData({ ...settingsFormData, expiresInDays: e.target.value ? Number(e.target.value) : null })}
-                  placeholder="e.g. 30 (Leave empty for ongoing/no expiry)"
-                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-mono text-stone-900 focus:outline-none focus:border-[#ff4d4f]"
-                />
-              </div>
-            </div>
-
-            <div className="pt-2 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setIsEditingSettings(false)}
-                className="px-4 py-2 text-xs font-sans text-stone-600 hover:bg-stone-100 rounded-xl transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSavingSettings}
-                className="px-5 py-2.5 rounded-xl bg-stone-900 hover:bg-black text-white text-xs font-sans font-semibold flex items-center gap-2 shadow-sm transition-all cursor-pointer disabled:opacity-50"
-              >
-                {isSavingSettings ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <span>Save Welcome Discount Terms</span>
-                )}
-              </button>
-            </div>
-          </form>
         </div>
       )}
 

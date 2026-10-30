@@ -274,13 +274,7 @@ export const CustomerDataView: React.FC<CustomerDataViewProps> = ({ initialSearc
             <h1 className="text-xl sm:text-2xl font-bold font-sans text-stone-900">
               Customer Data ({subscribers.length})
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-stone-100 text-stone-700">
-              {eligibleCount} eligible for announcements
-            </span>
           </div>
-          <p className="text-xs text-stone-500 font-sans mt-0.5">
-            Realtime customer newsletter subscriptions, welcome promo codes, and direct Gmail announcement delivery.
-          </p>
         </div>
 
         {/* Clearly visible Send Announcement button in upper-right corner */}
