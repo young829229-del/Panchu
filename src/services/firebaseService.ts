@@ -597,9 +597,154 @@ export function subscribeOrders(
   }
 }
 
+const ORDER_ID_REGEX = /^PANCHU-\d{6}$/;
+
+/**
+ * Generate a candidate non-sequential 6-digit Order ID in format PANCHU-XXXXXX
+ */
+export function generateCandidateOrderId(): string {
+  let sixDigitNum: number;
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    sixDigitNum = 100000 + (arr[0] % 900000);
+  } else {
+    sixDigitNum = Math.floor(100000 + Math.random() * 900000);
+  }
+  return `PANCHU-${sixDigitNum}`;
+}
+
+/**
+ * Generate a unique Order ID verified against Firestore orderTracking registry.
+ * Retries with a new random 6-digit number on duplicate collision.
+ */
+export async function generateUniqueOrderId(maxAttempts: number = 20): Promise<string> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const candidateId = generateCandidateOrderId();
+    try {
+      const trackingSnap = await getDoc(doc(db, 'orderTracking', candidateId));
+      if (!trackingSnap.exists()) {
+        return candidateId;
+      }
+      console.warn(`Order ID collision detected for ${candidateId}, generating another...`);
+    } catch (err) {
+      // If offline or transient read issue, still return valid candidate format;
+      // createFirestoreOrder will verify atomically inside transaction.
+      console.debug('Order ID uniqueness pre-check notice:', err);
+      return candidateId;
+    }
+  }
+  throw new Error('Unable to generate a unique Order ID after multiple attempts. Please try again.');
+}
+
+export interface OrderTrackingRecord {
+  orderId: string;
+  orderStatus: OrderStatus;
+  status: OrderStatus;
+  location: string;
+  deliveryOption: string;
+  paymentMethod: string;
+  items: OrderItem[];
+  subtotal: number;
+  deliveryFee: number;
+  discountAmount: number;
+  totalAmount: number;
+  createdAt?: any;
+  updatedAt?: any;
+}
+
+/**
+ * Fetch a single order tracking record by exact Order ID (e.g. PANCHU-483921)
+ */
+export async function fetchOrderTrackingById(rawOrderId: string): Promise<OrderTrackingRecord | null> {
+  const cleanId = rawOrderId.trim().toUpperCase().replace(/^#/, '');
+  if (!cleanId || !/^[a-zA-Z0-9_\-]+$/.test(cleanId)) {
+    return null;
+  }
+
+  const path = `orderTracking/${cleanId}`;
+  try {
+    const snap = await getDoc(doc(db, 'orderTracking', cleanId));
+    if (!snap.exists()) return null;
+    const d = snap.data();
+    return {
+      orderId: d.orderId || snap.id,
+      orderStatus: (d.orderStatus || d.status || 'Pending') as OrderStatus,
+      status: (d.status || d.orderStatus || 'Pending') as OrderStatus,
+      location: d.location || '',
+      deliveryOption: d.deliveryOption || 'inside_door',
+      paymentMethod: d.paymentMethod || 'Cash on Delivery (COD)',
+      items: Array.isArray(d.items) ? d.items : [],
+      subtotal: Number(d.subtotal) || 0,
+      deliveryFee: Number(d.deliveryFee) || 0,
+      discountAmount: Number(d.discountAmount) || 0,
+      totalAmount: Number(d.totalAmount) || 0,
+      createdAt: d.createdAt,
+      updatedAt: d.updatedAt
+    };
+  } catch (error) {
+    console.warn('Order tracking lookup notice:', path, error);
+    return null;
+  }
+}
+
+/**
+ * Real-time subscription for a single Order Tracking document by Order ID
+ */
+export function subscribeOrderTracking(
+  rawOrderId: string,
+  callback: (record: OrderTrackingRecord | null, exists: boolean) => void
+): () => void {
+  const cleanId = rawOrderId.trim().toUpperCase().replace(/^#/, '');
+  if (!cleanId || !/^[a-zA-Z0-9_\-]+$/.test(cleanId)) {
+    callback(null, false);
+    return () => {};
+  }
+
+  try {
+    const trackingRef = doc(db, 'orderTracking', cleanId);
+    return onSnapshot(
+      trackingRef,
+      (snap) => {
+        if (!snap.exists()) {
+          callback(null, false);
+          return;
+        }
+        const d = snap.data();
+        callback(
+          {
+            orderId: d.orderId || snap.id,
+            orderStatus: (d.orderStatus || d.status || 'Pending') as OrderStatus,
+            status: (d.status || d.orderStatus || 'Pending') as OrderStatus,
+            location: d.location || '',
+            deliveryOption: d.deliveryOption || 'inside_door',
+            paymentMethod: d.paymentMethod || 'Cash on Delivery (COD)',
+            items: Array.isArray(d.items) ? d.items : [],
+            subtotal: Number(d.subtotal) || 0,
+            deliveryFee: Number(d.deliveryFee) || 0,
+            discountAmount: Number(d.discountAmount) || 0,
+            totalAmount: Number(d.totalAmount) || 0,
+            createdAt: d.createdAt,
+            updatedAt: d.updatedAt
+          },
+          true
+        );
+      },
+      (error) => {
+        console.warn('Order tracking snapshot notice:', error?.message || error);
+        callback(null, false);
+      }
+    );
+  } catch {
+    callback(null, false);
+    return () => {};
+  }
+}
+
 /**
  * Atomic Order Placement & Size-Specific Stock Reduction in Firestore
- * Persists complete order document to Firestore 'orders' collection.
+ * Generates & verifies a unique PANCHU-XXXXXX Order ID, handling collisions automatically.
+ * Persists complete order document to Firestore 'orders' collection and non-PII status to 'orderTracking'.
  * Important: Customer email is strictly NOT stored.
  */
 export async function createFirestoreOrder(
@@ -624,25 +769,20 @@ export async function createFirestoreOrder(
     orderStatus?: OrderStatus;
   }
 ): Promise<{ success: boolean; orderId: string; docId?: string; error?: string }> {
-  // Ensure unique orderId
-  const timestamp = Date.now();
-  const randomSuffix = Math.floor(100 + Math.random() * 900);
-  const generatedOrderId = orderInput.orderId || `#${randomSuffix}`;
-
-  // Use standard Firestore auto-id document reference for clean indexing
-  const newOrderRef = doc(collection(db, 'orders'));
-
   const resolvedAddress = (orderInput.shippingAddress || orderInput.address || '').trim();
   const resolvedSubtotal = Number(orderInput.subtotal) || 0;
   const resolvedDiscount = Number(orderInput.discountAmount) || 0;
   const resolvedDeliveryFee = Number(orderInput.deliveryFee) || 0;
-  const resolvedTotal = Number(orderInput.totalAmount !== undefined ? orderInput.totalAmount : orderInput.total) || (Math.max(0, resolvedSubtotal - resolvedDiscount) + resolvedDeliveryFee);
+  const resolvedTotal =
+    Number(orderInput.totalAmount !== undefined ? orderInput.totalAmount : orderInput.total) ||
+    Math.max(0, resolvedSubtotal - resolvedDiscount) + resolvedDeliveryFee;
+  const resolvedStatus = (orderInput.orderStatus || 'Pending') as OrderStatus;
 
   // Normalize each ordered item
   const cleanItems = (orderInput.items || []).map((item) => {
     const itemQty = Number(item.quantity) || 1;
     const itemPrice = Number(item.price) || 0;
-    const itemSubtotal = Number(item.subtotal || (itemPrice * itemQty)) || 0;
+    const itemSubtotal = Number(item.subtotal || itemPrice * itemQty) || 0;
     const itemSize = (item.size || item.selectedSize || 'M').trim();
     const itemImg = item.image || item.productImage || '';
     const itemName = item.productName || item.name || '';
@@ -659,151 +799,217 @@ export async function createFirestoreOrder(
     };
   });
 
-  // Build the complete Firestore order payload
-  // Notice: Email is deliberately excluded as per specification
-  const orderPayload: Record<string, any> = {
-    orderId: generatedOrderId,
-    userId: orderInput.userId || auth.currentUser?.uid || null,
-    customerName: (orderInput.customerName || '').trim(),
-    phone: (orderInput.phone || '').trim(),
-    items: cleanItems,
-    totalAmount: resolvedTotal,
-    total: resolvedTotal, // compatibility
-    subtotal: resolvedSubtotal,
-    promoCode: orderInput.promoCode ? String(orderInput.promoCode).trim() : null,
-    discountAmount: resolvedDiscount,
-    deliveryFee: resolvedDeliveryFee,
-    paymentMethod: (orderInput.paymentMethod || 'Cash on Delivery (COD)').trim(),
-    paymentScreenshotUrl: orderInput.paymentScreenshotUrl || null,
-    shippingAddress: resolvedAddress,
-    address: resolvedAddress, // compatibility
-    location: (orderInput.location || '').trim(),
-    deliveryOption: orderInput.deliveryOption || 'inside_door',
-    orderStatus: (orderInput.orderStatus || 'Pending') as OrderStatus,
-    status: (orderInput.orderStatus || 'Pending') as OrderStatus, // compatibility
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  };
-
   const appliedCodeStr = orderInput.promoCode ? String(orderInput.promoCode).trim().toUpperCase() : null;
+  const maxCollisionRetries = 12;
 
-  try {
-    // 1. Attempt atomic transaction with inventory update & one-time promo code redemption
-    await runTransaction(db, async (transaction) => {
-      const productDocs: { ref: any; data: any; item: typeof cleanItems[0] }[] = [];
+  for (let attempt = 0; attempt < maxCollisionRetries; attempt++) {
+    // Only use caller-supplied orderId on first attempt if it strictly matches PANCHU-XXXXXX
+    const candidateOrderId =
+      attempt === 0 && orderInput.orderId && ORDER_ID_REGEX.test(orderInput.orderId)
+        ? orderInput.orderId
+        : await generateUniqueOrderId();
 
-      for (const item of cleanItems) {
-        if (!item.productId) continue;
-        try {
-          const productRef = doc(db, 'products', item.productId);
-          const productSnap = await transaction.get(productRef);
+    const newOrderRef = doc(db, 'orders', candidateOrderId);
+    const trackingRef = doc(db, 'orderTracking', candidateOrderId);
 
-          if (productSnap.exists()) {
-            const productData = productSnap.data();
-            productDocs.push({
-              ref: productRef,
-              data: productData,
-              item
-            });
-          }
-        } catch {
-          // If individual product doc read fails, continue without blocking order
+    // Complete order payload for 'orders' collection (Admin-only reads)
+    const orderPayload: Record<string, any> = {
+      orderId: candidateOrderId,
+      userId: orderInput.userId || auth.currentUser?.uid || null,
+      customerName: (orderInput.customerName || '').trim(),
+      phone: (orderInput.phone || '').trim(),
+      items: cleanItems,
+      totalAmount: resolvedTotal,
+      total: resolvedTotal,
+      subtotal: resolvedSubtotal,
+      promoCode: orderInput.promoCode ? String(orderInput.promoCode).trim() : null,
+      discountAmount: resolvedDiscount,
+      deliveryFee: resolvedDeliveryFee,
+      paymentMethod: (orderInput.paymentMethod || 'Cash on Delivery (COD)').trim(),
+      paymentScreenshotUrl: orderInput.paymentScreenshotUrl || null,
+      shippingAddress: resolvedAddress,
+      address: resolvedAddress,
+      location: (orderInput.location || '').trim(),
+      deliveryOption: orderInput.deliveryOption || 'inside_door',
+      orderStatus: resolvedStatus,
+      status: resolvedStatus,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+
+    // Non-PII public tracking payload for 'orderTracking' collection
+    const trackingPayload: Record<string, any> = {
+      orderId: candidateOrderId,
+      orderStatus: resolvedStatus,
+      status: resolvedStatus,
+      location: (orderInput.location || '').trim(),
+      deliveryOption: orderInput.deliveryOption || 'inside_door',
+      paymentMethod: (orderInput.paymentMethod || 'Cash on Delivery (COD)').trim(),
+      items: cleanItems,
+      subtotal: resolvedSubtotal,
+      deliveryFee: resolvedDeliveryFee,
+      discountAmount: resolvedDiscount,
+      totalAmount: resolvedTotal,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+
+    try {
+      // 1. Atomic transaction: verify uniqueness + decrement stock + redeem promo + save order & tracking doc
+      await runTransaction(db, async (transaction) => {
+        const trackingSnap = await transaction.get(trackingRef);
+        if (trackingSnap.exists()) {
+          throw new Error('ORDER_ID_COLLISION');
         }
-      }
 
-      // Check if one-time promo code applies and is unused
-      let oneTimePromoRef: any = null;
-      let oneTimeSubscriberRef: any = null;
-      if (appliedCodeStr) {
-        try {
-          const otRef = doc(db, 'oneTimePromoCodes', appliedCodeStr);
-          const otSnap = await transaction.get(otRef);
-          if (otSnap.exists()) {
-            const otData = otSnap.data();
-            if (otData.status === 'unused') {
-              oneTimePromoRef = otRef;
-              if (otData.subscriberId) {
-                oneTimeSubscriberRef = doc(db, 'newsletterSubscribers', otData.subscriberId);
+        const productDocs: { ref: any; data: any; item: typeof cleanItems[0] }[] = [];
+
+        for (const item of cleanItems) {
+          if (!item.productId) continue;
+          try {
+            const productRef = doc(db, 'products', item.productId);
+            const productSnap = await transaction.get(productRef);
+
+            if (productSnap.exists()) {
+              productDocs.push({
+                ref: productRef,
+                data: productSnap.data(),
+                item
+              });
+            }
+          } catch {
+            // If individual product doc read fails, continue without blocking order
+          }
+        }
+
+        // Check if one-time promo code applies and is unused
+        let oneTimePromoRef: any = null;
+        let oneTimeSubscriberRef: any = null;
+        if (appliedCodeStr) {
+          try {
+            const otRef = doc(db, 'oneTimePromoCodes', appliedCodeStr);
+            const otSnap = await transaction.get(otRef);
+            if (otSnap.exists()) {
+              const otData = otSnap.data();
+              if (otData.status === 'unused') {
+                oneTimePromoRef = otRef;
+                if (otData.subscriberId) {
+                  oneTimeSubscriberRef = doc(db, 'newsletterSubscribers', otData.subscriberId);
+                }
               }
             }
+          } catch {
+            // Non-fatal if code is not a one-time code or read is restricted
           }
-        } catch {
-          // Non-fatal if code is not a one-time code or read is restricted
         }
-      }
 
-      // Decrement size stock for existing product docs
-      for (const { ref: pRef, data: pData, item } of productDocs) {
-        const stock = { ...(pData.stock || {}) };
-        const currentQty = typeof stock[item.size] === 'number' ? stock[item.size] : 10;
-        const newQty = Math.max(0, currentQty - item.quantity);
-        stock[item.size] = newQty;
+        // Decrement size stock for existing product docs
+        for (const { ref: pRef, data: pData, item } of productDocs) {
+          const stock = { ...(pData.stock || {}) };
+          const currentQty = typeof stock[item.size] === 'number' ? stock[item.size] : 10;
+          const newQty = Math.max(0, currentQty - item.quantity);
+          stock[item.size] = newQty;
 
-        const anyStockLeft = Object.values(stock).some((qty: any) => Number(qty) > 0);
+          const anyStockLeft = Object.values(stock).some((qty: any) => Number(qty) > 0);
 
-        transaction.update(pRef, {
-          stock,
-          inStock: anyStockLeft,
-          updatedAt: serverTimestamp()
-        });
-      }
-
-      // Redeem one-time promo code atomically if matched
-      if (oneTimePromoRef) {
-        transaction.update(oneTimePromoRef, {
-          status: 'redeemed',
-          redeemedOrderId: generatedOrderId,
-          redeemedAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
-        if (oneTimeSubscriberRef) {
-          transaction.update(oneTimeSubscriberRef, {
-            welcomePromoCodeStatus: 'redeemed',
-            welcomePromoCodeRedeemedOrderId: generatedOrderId,
-            welcomePromoCodeRedeemedAt: serverTimestamp(),
+          transaction.update(pRef, {
+            stock,
+            inStock: anyStockLeft,
             updatedAt: serverTimestamp()
           });
         }
-      }
 
-      // Set the order in Firestore 'orders' collection
-      transaction.set(newOrderRef, orderPayload);
-    });
+        // Redeem one-time promo code atomically if matched
+        if (oneTimePromoRef) {
+          transaction.update(oneTimePromoRef, {
+            status: 'redeemed',
+            redeemedOrderId: candidateOrderId,
+            redeemedAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+          if (oneTimeSubscriberRef) {
+            transaction.update(oneTimeSubscriberRef, {
+              welcomePromoCodeStatus: 'redeemed',
+              welcomePromoCodeRedeemedOrderId: candidateOrderId,
+              welcomePromoCodeRedeemedAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
 
-    return {
-      success: true,
-      orderId: generatedOrderId,
-      docId: newOrderRef.id
-    };
-  } catch (txError: any) {
-    console.warn('Transaction with stock update notice, falling back to direct write:', txError?.message || txError);
+        // Persist permanently to both orders and orderTracking collections
+        transaction.set(newOrderRef, orderPayload);
+        transaction.set(trackingRef, trackingPayload);
+      });
 
-    // 2. Direct fallback write to orders collection
-    try {
-      await setDoc(newOrderRef, orderPayload);
-      if (appliedCodeStr) {
-        markOneTimePromoCodeRedeemed(appliedCodeStr, generatedOrderId).catch((err) => {
-          console.debug('Fallback one-time promo redemption notice:', err);
-        });
-      }
       return {
         success: true,
-        orderId: generatedOrderId,
-        docId: newOrderRef.id
+        orderId: candidateOrderId,
+        docId: candidateOrderId
       };
-    } catch (writeError: any) {
-      console.error('Direct Firestore order creation failed:', writeError);
-      return {
-        success: false,
-        orderId: generatedOrderId,
-        error: writeError?.message || 'Failed to submit order to database.'
-      };
+    } catch (txError: any) {
+      if (txError?.message === 'ORDER_ID_COLLISION') {
+        console.warn(`Transaction detected Order ID collision for ${candidateOrderId}, retrying...`);
+        continue;
+      }
+
+      console.warn('Transaction with stock update notice, falling back to direct write:', txError?.message || txError);
+
+      // 2. Direct fallback write with explicit collision verification
+      try {
+        const existingCheck = await getDoc(trackingRef);
+        if (existingCheck.exists()) {
+          console.warn(`Fallback collision check caught existing ID ${candidateOrderId}, retrying...`);
+          continue;
+        }
+
+        await setDoc(newOrderRef, orderPayload);
+        await setDoc(trackingRef, trackingPayload);
+
+        if (appliedCodeStr) {
+          markOneTimePromoCodeRedeemed(appliedCodeStr, candidateOrderId).catch((err) => {
+            console.debug('Fallback one-time promo redemption notice:', err);
+          });
+        }
+        return {
+          success: true,
+          orderId: candidateOrderId,
+          docId: candidateOrderId
+        };
+      } catch (writeError: any) {
+        const msg = String(writeError?.message || '');
+        if (msg.includes('already-exists') || msg.includes('PERMISSION_DENIED')) {
+          // Could be a simultaneous collision on create-only document; check and retry
+          try {
+            const postFailSnap = await getDoc(trackingRef);
+            if (postFailSnap.exists()) {
+              console.warn(`Post-write collision check caught existing ID ${candidateOrderId}, retrying...`);
+              continue;
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        console.error('Direct Firestore order creation failed:', writeError);
+        return {
+          success: false,
+          orderId: candidateOrderId,
+          error: writeError?.message || 'Failed to submit order to database.'
+        };
+      }
     }
   }
+
+  return {
+    success: false,
+    orderId: '',
+    error: 'Could not allocate a unique Order ID after multiple retries. Please try again.'
+  };
 }
 
 /**
- * Update Order Status (Admin) in Firestore 'orders' document
+ * Update Order Status (Admin) in Firestore 'orders' document and sync 'orderTracking'
  */
 export async function updateOrderStatus(orderDocId: string, status: OrderStatus): Promise<void> {
   const path = `orders/${orderDocId}`;
@@ -814,6 +1020,39 @@ export async function updateOrderStatus(orderDocId: string, status: OrderStatus)
       status: status,
       updatedAt: serverTimestamp()
     });
+
+    // Sync public tracking document if orderId is valid for document ID
+    try {
+      const orderSnap = await getDoc(orderRef);
+      if (orderSnap.exists()) {
+        const d = orderSnap.data();
+        const trackingId = String(d.orderId || orderDocId).trim();
+        if (/^[a-zA-Z0-9_\-]+$/.test(trackingId)) {
+          const trackingRef = doc(db, 'orderTracking', trackingId);
+          await setDoc(
+            trackingRef,
+            {
+              orderId: trackingId,
+              orderStatus: status,
+              status: status,
+              location: d.location || '',
+              deliveryOption: d.deliveryOption || 'inside_door',
+              paymentMethod: d.paymentMethod || 'Cash on Delivery (COD)',
+              items: Array.isArray(d.items) ? d.items : [],
+              subtotal: Number(d.subtotal) || 0,
+              deliveryFee: Number(d.deliveryFee) || 0,
+              discountAmount: Number(d.discountAmount) || 0,
+              totalAmount: Number(d.totalAmount !== undefined ? d.totalAmount : d.total) || 0,
+              createdAt: d.createdAt || serverTimestamp(),
+              updatedAt: serverTimestamp()
+            },
+            { merge: true }
+          );
+        }
+      }
+    } catch (syncErr) {
+      console.warn('Order tracking sync notice:', syncErr);
+    }
   } catch (error) {
     handleFirestoreError(error, OperationType.UPDATE, path);
   }

@@ -336,7 +336,7 @@ export const OrderHistoryTable: React.FC<OrderHistoryTableProps> = ({
         <div className="min-w-[760px] inline-block w-full align-middle">
           
           {/* Table Header Row */}
-          <div className="grid grid-cols-[90px_1.5fr_1.3fr_1fr_1fr_1fr_60px] gap-3 px-4 py-3 text-[11px] font-sans font-medium text-stone-400 border-b border-stone-100">
+          <div className="grid grid-cols-[130px_1.5fr_1.3fr_1fr_1fr_1fr_60px] gap-3 px-4 py-3 text-[11px] font-sans font-medium text-stone-400 border-b border-stone-100">
             <button
               onClick={() => toggleSort('id')}
               className="flex items-center gap-1 text-left hover:text-stone-700 cursor-pointer"
@@ -385,7 +385,7 @@ export const OrderHistoryTable: React.FC<OrderHistoryTableProps> = ({
                 return (
                   <div
                     key={orderKey}
-                    className={`grid grid-cols-[90px_1.5fr_1.3fr_1fr_1fr_1fr_60px] gap-3 items-center px-4 py-3.5 rounded-2xl hover:bg-[#faf9f8] transition-colors relative ${
+                    className={`grid grid-cols-[130px_1.5fr_1.3fr_1fr_1fr_1fr_60px] gap-3 items-center px-4 py-3.5 rounded-2xl hover:bg-[#faf9f8] transition-colors relative ${
                       isMenuOpen ? 'bg-[#faf9f8]' : 'bg-white'
                     }`}
                   >

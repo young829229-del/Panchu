@@ -23,6 +23,7 @@ interface ProductDetailPageProps {
   onOpenPrivacy?: () => void;
   onOpenAdmin?: () => void;
   onOpenAccount?: () => void;
+  onOpenTrackOrder?: () => void;
 }
 
 export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
@@ -37,7 +38,8 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
   onOpenContact,
   onOpenPrivacy,
   onOpenAdmin,
-  onOpenAccount
+  onOpenAccount,
+  onOpenTrackOrder
 }) => {
   const isDark = theme === 'dark';
 
@@ -397,6 +399,7 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
         onOpenPrivacy={onOpenPrivacy}
         onOpenAdmin={onOpenAdmin}
         onOpenAccount={onOpenAccount}
+        onOpenTrackOrder={onOpenTrackOrder}
       />
     </div>
   );

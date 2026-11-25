@@ -11,10 +11,10 @@ export const OrderSuccessReceipt: React.FC<OrderSuccessReceiptProps> = ({
   orderData,
   onContinueShopping
 }) => {
-  // Clean order number (remove # if present, or fallback)
+  // Display exact Order ID (preserving hyphens like PANCHU-483921; only strip leading # for legacy IDs)
   const cleanOrderNumber = orderData.orderId
-    ? orderData.orderId.replace(/[^0-9a-zA-Z]/g, '') || orderData.orderId
-    : '4684785754';
+    ? orderData.orderId.replace(/^#/, '').trim() || orderData.orderId
+    : 'PANCHU-000000';
 
   // Format display amount with NPR currency
   const formattedTotal = `NPR ${orderData.totalAmount.toLocaleString()}`;

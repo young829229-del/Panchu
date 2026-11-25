@@ -16,6 +16,7 @@ interface FooterSectionProps {
   onOpenPrivacy?: () => void;
   onOpenAdmin?: () => void;
   onOpenAccount?: () => void;
+  onOpenTrackOrder?: () => void;
 }
 
 type ModalType = 'legal' | 'terms' | 'privacy' | 'returns' | 'contact' | null;
@@ -26,7 +27,8 @@ export const FooterSection: React.FC<FooterSectionProps> = ({
   onOpenContact,
   onOpenPrivacy,
   onOpenAdmin,
-  onOpenAccount
+  onOpenAccount,
+  onOpenTrackOrder
 }) => {
   const isDark = theme === 'dark';
   const [activeModal, setActiveModal] = useState<ModalType>(null);
@@ -68,6 +70,16 @@ export const FooterSection: React.FC<FooterSectionProps> = ({
     }
   };
 
+  const handleTrackOrderClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (onOpenTrackOrder) {
+      onOpenTrackOrder();
+    } else {
+      window.history.pushState(null, '', '/track');
+      window.dispatchEvent(new Event('popstate'));
+    }
+  };
+
   const closeModal = () => setActiveModal(null);
 
   return (
@@ -90,6 +102,15 @@ export const FooterSection: React.FC<FooterSectionProps> = ({
             
             {/* Legal & Policy Links - One Horizontal Line */}
             <div className="flex items-center justify-center flex-wrap sm:flex-nowrap gap-x-2.5 md:gap-x-3.5 whitespace-nowrap">
+              <button
+                onClick={handleTrackOrderClick}
+                className={`hover:text-red-600 transition-colors cursor-pointer whitespace-nowrap ${
+                  isDark ? 'text-neutral-400' : 'text-stone-600'
+                }`}
+              >
+                Track Order
+              </button>
+              <span className={isDark ? 'text-neutral-700' : 'text-stone-300'}>|</span>
               <button
                 onClick={handleTermsClick}
                 className={`hover:text-red-600 transition-colors cursor-pointer whitespace-nowrap ${

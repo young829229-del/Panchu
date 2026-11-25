@@ -27,7 +27,8 @@ import {
   validatePromoCodeAgainstFirestore,
   subscribeSocialsAndContactSettings,
   getCanonicalSocialsAndContactSync,
-  cleanWhatsAppDigits
+  cleanWhatsAppDigits,
+  generateUniqueOrderId
 } from '../services/firebaseService';
 import { OrderReceiptData, SocialsAndContactSettings } from '../types';
 import { getSavedCheckoutDetails, saveCustomerDetailsFromCheckout } from '../services/customerStorage';
@@ -257,16 +258,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
     setIsSubmitting(true);
 
     try {
-      // Generate unique order number e.g. #282
-      const randomDigits = Math.floor(100 + Math.random() * 900);
-      const orderNum = `#${randomDigits}`;
+      // Generate unique collision-checked Order ID (format: PANCHU-XXXXXX)
+      const uniqueOrderId = await generateUniqueOrderId();
 
       // Upload payment screenshot if provided and enabled
       let uploadedScreenshotUrl: string | null = null;
       if (paymentSettings.screenshotEnabled && screenshotFile) {
         setIsUploadingScreenshot(true);
         try {
-          uploadedScreenshotUrl = await uploadPaymentScreenshot(screenshotFile, orderNum.replace('#', ''));
+          uploadedScreenshotUrl = await uploadPaymentScreenshot(screenshotFile, uniqueOrderId);
         } catch (uploadErr) {
           console.warn('Screenshot upload fallback notice:', uploadErr);
         } finally {
@@ -325,7 +325,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
 
       // 1. Create order in Firestore & reduce size-specific stock atomically
       const result = await createFirestoreOrder({
-        orderId: orderNum,
+        orderId: uniqueOrderId,
         userId: auth.currentUser?.uid || null,
         customerName: formData.name.trim(),
         phone: formData.phone.trim(),
@@ -352,6 +352,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         return;
       }
 
+      // Authoritative unique Order ID committed in Firebase (e.g. PANCHU-483921)
+      const orderNum = result.orderId || uniqueOrderId;
+
       // 3. Customer details string (Without email and separate location field)
       const customerDetailsText = `• Customer Details\n\nName - ${formData.name.trim()}\nPhone - ${formData.phone.trim()}\nDelivery Region - ${deliveryLocationLabel}\nAddress - ${formData.address.trim()}`;
 
@@ -368,7 +371,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
         ? `Promo Code - ${finalPromoCode} (-NPR ${finalDiscount})\n`
         : '';
 
-      const fullMessage = `🛍️ PANCHU — NEW ORDER\n\nOrder #: ${orderNum}\n\n${customerDetailsText}\n\n• Order Details\n\n${orderItemsDetails}\n\n• Payment Details\n\nPayment Method - ${selectedPaymentMethod}${uploadedScreenshotUrl ? '\nPayment Slip - Attached with order' : ''}\n\nSubtotal - NPR ${subtotal}\n${promoText}Delivery Charge - NPR ${deliveryCharge}\nTotal - NPR ${calculatedFinalTotal}`;
+      const fullMessage = `🛍️ PANCHU — NEW ORDER\n\nOrder ID: ${orderNum}\n\n${customerDetailsText}\n\n• Order Details\n\n${orderItemsDetails}\n\n• Payment Details\n\nPayment Method - ${selectedPaymentMethod}${uploadedScreenshotUrl ? '\nPayment Slip - Attached with order' : ''}\n\nSubtotal - NPR ${subtotal}\n${promoText}Delivery Charge - NPR ${deliveryCharge}\nTotal - NPR ${calculatedFinalTotal}`;
 
       setCreatedOrderNum(orderNum);
       setCreatedOrderMessage(fullMessage);
@@ -393,7 +396,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({
       // 7. Store confirmed receipt data for premium success page & digital receipt
       const receipt: OrderReceiptData = {
         orderId: orderNum,
-        orderDocId: result.orderId || orderNum,
+        orderDocId: result.docId || result.orderId || orderNum,
         customerName: formData.name.trim(),
         phone: formData.phone.trim(),
         shippingAddress: completeShippingAddress,

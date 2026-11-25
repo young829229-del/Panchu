@@ -89,10 +89,26 @@ service cloud.firestore {
       allow delete: if isAdmin() && isValidId(bannerId);
     }
 
+    function isValidOrderTracking(data) {
+      return data.orderId is string && data.orderId.size() > 0 && data.orderId.size() <= 64 &&
+             data.orderStatus in ['Pending', 'Confirmed', 'Shipped', 'Delivered', 'Collected', 'Cancelled'] &&
+             data.status in ['Pending', 'Confirmed', 'Shipped', 'Delivered', 'Collected', 'Cancelled'] &&
+             data.items is list && data.items.size() > 0 && data.items.size() <= 100 &&
+             data.totalAmount is number && data.totalAmount >= 0;
+    }
+
     // Orders Collection: Unauthenticated / guest create, Only Authenticated Admin can read, list, update, or delete
     match /orders/{orderId} {
       allow create: if isValidId(orderId) && isValidOrder(incoming());
       allow read, get, list, update, delete: if isAdmin();
+    }
+
+    // Order Tracking Collection: Public single-doc lookup by exact Order ID (no list scraping, no PII), Admin list/update/delete
+    match /orderTracking/{orderId} {
+      allow get: if isValidId(orderId);
+      allow list: if isAdmin();
+      allow create: if isValidId(orderId) && isValidOrderTracking(incoming()) && incoming().orderId == orderId;
+      allow update, delete: if isAdmin();
     }
 
     // Users Collection: Customer profile documents

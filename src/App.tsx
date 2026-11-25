@@ -5,6 +5,7 @@ import { HeaderNavigation } from './components/HeaderNavigation';
 import { ProductPage } from './components/ProductPage';
 import { ProductDetailPage } from './components/ProductDetailPage';
 import { TermsPage } from './components/TermsPage';
+import { OrderTrackingPage } from './components/OrderTrackingPage';
 import { AdminDashboard } from './components/AdminDashboard';
 import { CustomerAccountPage } from './components/CustomerAccountPage';
 import { CartDrawer } from './components/CartDrawer';
@@ -69,6 +70,18 @@ function isAccountUrl(): boolean {
   return path === '/account' || hash === '#account' || hash.startsWith('#/account') || hash.startsWith('#account');
 }
 
+function isTrackOrderUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  const hash = window.location.hash.toLowerCase();
+  return (
+    path === '/track' ||
+    path.startsWith('/track/') ||
+    hash === '#track' ||
+    hash.startsWith('#/track')
+  );
+}
+
 export default function App() {
   const [products, setProducts] = useState<Product[]>(() => getCanonicalProductsSync());
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -76,6 +89,7 @@ export default function App() {
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(() => isAdminUrl());
   const [isTermsOpen, setIsTermsOpen] = useState<boolean>(() => isTermsUrl());
   const [isAccountOpen, setIsAccountOpen] = useState<boolean>(() => isAccountUrl());
+  const [isTrackOpen, setIsTrackOpen] = useState<boolean>(() => isTrackOrderUrl());
 
   const [activeProduct, setActiveProduct] = useState<Product | null>(() => {
     const id = getProductIdFromUrl();
@@ -260,8 +274,8 @@ export default function App() {
     const isReturningFromProduct = prevActiveProductRef.current !== null && activeProduct === null;
     prevActiveProductRef.current = activeProduct;
 
-    if (activeProduct || isTermsOpen || isAdminOpen || isAccountOpen) {
-      // Opening product detail, admin, terms, or account: start at top of page
+    if (activeProduct || isTermsOpen || isAdminOpen || isAccountOpen || isTrackOpen) {
+      // Opening product detail, admin, terms, account, or track order: start at top of page
       window.scrollTo(0, 0);
     } else if (isReturningFromProduct) {
       // Returning from product page to homepage catalog: restore exact saved position
@@ -278,7 +292,7 @@ export default function App() {
       sessionStorage.removeItem('panchu_homepage_scroll');
       window.scrollTo(0, 0);
     }
-  }, [activeProduct, isTermsOpen, isAdminOpen, isAccountOpen]);
+  }, [activeProduct, isTermsOpen, isAdminOpen, isAccountOpen, isTrackOpen]);
 
   // Synchronize URL changes on back/forward browser buttons
   useEffect(() => {
@@ -287,6 +301,7 @@ export default function App() {
         setIsAdminOpen(true);
         setIsAccountOpen(false);
         setIsTermsOpen(false);
+        setIsTrackOpen(false);
         setActiveProduct(null);
         return;
       }
@@ -296,10 +311,19 @@ export default function App() {
         setIsAccountOpen(true);
         setIsAdminOpen(false);
         setIsTermsOpen(false);
+        setIsTrackOpen(false);
         setActiveProduct(null);
         return;
       }
       setIsAccountOpen(false);
+
+      if (isTrackOrderUrl()) {
+        setIsTrackOpen(true);
+        setIsTermsOpen(false);
+        setActiveProduct(null);
+        return;
+      }
+      setIsTrackOpen(false);
 
       if (isTermsUrl()) {
         setIsTermsOpen(true);
@@ -340,17 +364,19 @@ export default function App() {
     setIsTermsOpen(false);
     setIsAdminOpen(false);
     setIsAccountOpen(false);
+    setIsTrackOpen(false);
     setActiveProduct(product);
   };
 
   // Back to catalog / homepage
   const handleBackToCatalog = () => {
-    if (window.location.pathname !== '/' || window.location.hash) {
+    if (window.location.pathname !== '/' || window.location.hash || window.location.search) {
       window.history.pushState(null, '', '/');
     }
     setIsTermsOpen(false);
     setIsAdminOpen(false);
     setIsAccountOpen(false);
+    setIsTrackOpen(false);
     setActiveProduct(null);
   };
 
@@ -362,6 +388,7 @@ export default function App() {
     setActiveProduct(null);
     setIsAdminOpen(false);
     setIsAccountOpen(false);
+    setIsTrackOpen(false);
     setIsTermsOpen(true);
   };
 
@@ -372,6 +399,7 @@ export default function App() {
     setActiveProduct(null);
     setIsTermsOpen(false);
     setIsAccountOpen(false);
+    setIsTrackOpen(false);
     setIsAdminOpen(true);
   };
 
@@ -390,12 +418,24 @@ export default function App() {
     setActiveProduct(null);
     setIsTermsOpen(false);
     setIsAdminOpen(false);
+    setIsTrackOpen(false);
     setIsAccountOpen(true);
+  };
+
+  const handleOpenTrackOrder = () => {
+    if (window.location.pathname !== '/track') {
+      window.history.pushState(null, '', '/track');
+    }
+    setActiveProduct(null);
+    setIsTermsOpen(false);
+    setIsAdminOpen(false);
+    setIsAccountOpen(false);
+    setIsTrackOpen(true);
   };
 
   // Scroll into view for catalog or return from product detail
   const handleScrollToCatalog = () => {
-    if (activeProduct || isTermsOpen || isAdminOpen || isAccountOpen) {
+    if (activeProduct || isTermsOpen || isAdminOpen || isAccountOpen || isTrackOpen) {
       handleBackToCatalog();
     } else {
       catalogRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -403,7 +443,7 @@ export default function App() {
   };
 
   const handleGoToHero = () => {
-    if (activeProduct || isTermsOpen || isAdminOpen || isAccountOpen) {
+    if (activeProduct || isTermsOpen || isAdminOpen || isAccountOpen || isTrackOpen) {
       handleBackToCatalog();
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -533,8 +573,19 @@ export default function App() {
         />
       )}
 
+      {/* Dedicated Order Tracking Page View */}
+      {!isAdminOpen && !isAccountOpen && !isTermsOpen && isTrackOpen && (
+        <OrderTrackingPage
+          onBack={handleBackToCatalog}
+          theme={theme}
+          onOpenTerms={handleOpenTerms}
+          onOpenContact={handleOpenContact}
+          onOpenPrivacy={handleOpenPrivacy}
+        />
+      )}
+
       {/* Dedicated Product Detail View */}
-      {!isAdminOpen && !isAccountOpen && !isTermsOpen && activeProduct && (
+      {!isAdminOpen && !isAccountOpen && !isTermsOpen && !isTrackOpen && activeProduct && (
         <ProductDetailPage
           product={activeProduct}
           products={products}
@@ -549,11 +600,12 @@ export default function App() {
           onOpenPrivacy={handleOpenPrivacy}
           onOpenAdmin={handleOpenAdmin}
           onOpenAccount={handleOpenAccount}
+          onOpenTrackOrder={handleOpenTrackOrder}
         />
       )}
 
       {/* Main Homepage View (preserved in DOM to avoid back button banner flash) */}
-      <div className={(activeProduct || isTermsOpen || isAdminOpen || isAccountOpen) ? 'hidden' : 'block'}>
+      <div className={(activeProduct || isTermsOpen || isAdminOpen || isAccountOpen || isTrackOpen) ? 'hidden' : 'block'}>
         {/* Hero Section Banner */}
         <div className="relative">
           <Hero
@@ -581,6 +633,7 @@ export default function App() {
             onOpenPrivacy={handleOpenPrivacy}
             onOpenAdmin={handleOpenAdmin}
             onOpenAccount={handleOpenAccount}
+            onOpenTrackOrder={handleOpenTrackOrder}
           />
         </div>
       </div>

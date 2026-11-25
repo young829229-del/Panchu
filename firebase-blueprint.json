@@ -192,6 +192,27 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["contact", "socials", "whatsappOrderRedirect"]
+    },
+    "OrderTracking": {
+      "title": "OrderTracking",
+      "description": "Public non-PII order status and unique Order ID registry for collision prevention and order tracking",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "maxLength": 64, "pattern": "^PANCHU-[0-9]{6}$" },
+        "orderStatus": { "type": "string", "enum": ["Pending", "Confirmed", "Shipped", "Delivered", "Collected", "Cancelled"] },
+        "status": { "type": "string", "enum": ["Pending", "Confirmed", "Shipped", "Delivered", "Collected", "Cancelled"] },
+        "location": { "type": "string", "maxLength": 100 },
+        "deliveryOption": { "type": "string", "maxLength": 50 },
+        "paymentMethod": { "type": "string", "maxLength": 100 },
+        "items": { "type": "array", "maxLength": 100 },
+        "subtotal": { "type": "number" },
+        "deliveryFee": { "type": "number" },
+        "discountAmount": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["orderId", "orderStatus", "status", "items", "totalAmount"]
     }
   },
   "firestore": {
@@ -210,6 +231,10 @@
     "/orders/{orderId}": {
       "schema": "Order",
       "description": "Guest and customer orders created upon checkout and viewed by admins"
+    },
+    "/orderTracking/{orderId}": {
+      "schema": "OrderTracking",
+      "description": "Unique Order ID registry and non-PII order tracking lookup documents"
     },
     "/newsletterSubscribers/{subscriberId}": {
       "schema": "NewsletterSubscriber",
