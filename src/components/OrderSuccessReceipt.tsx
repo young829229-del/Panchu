@@ -98,7 +98,7 @@ export const OrderSuccessReceipt: React.FC<OrderSuccessReceiptProps> = ({
 
             return (
               <div key={`${item.productId || idx}-${item.size}`} className="space-y-3">
-                <div className="w-32 h-20 bg-white border border-gray-200 flex items-center justify-center overflow-hidden">
+                <div className="w-32 h-20 bg-white flex items-center justify-center overflow-hidden">
                   {imgUrl ? (
                     <img
                       src={imgUrl}
