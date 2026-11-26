@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Product, YouMightLikeDesignId } from '../types';
+import { AdditionalOptionsSettings, Product } from '../types';
 import { HangerRecommendations } from './HangerRecommendations';
 import { ThreeDRotatingCarousel } from './ThreeDRotatingCarousel';
 import { SimpleSliderRecommendations } from './SimpleSliderRecommendations';
 import {
+  applyGlobalFloatingSpeedCssVar,
   getCanonicalAdditionalOptionsSync,
   subscribeAdditionalOptionsSettings
 } from '../services/firebaseService';
@@ -16,8 +17,8 @@ interface YouMightLikeRendererProps {
 }
 
 /**
- * Dynamically renders the active "You Might Like" layout selected in Admin > Additional Options.
- * Defaults safely to Design 1 (Hanger Style) and updates live whenever Firebase changes without redeployment.
+ * Dynamically renders the active "You Might Like" layout and visual effects
+ * selected in Admin > Additional Options, updating live via Firebase.
  */
 export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
   currentProduct,
@@ -25,18 +26,22 @@ export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
   onSelectProduct,
   theme = 'light'
 }) => {
-  const [activeDesign, setActiveDesign] = useState<YouMightLikeDesignId>(
-    () => getCanonicalAdditionalOptionsSync().youMightLikeDesign
+  const [options, setOptions] = useState<AdditionalOptionsSettings>(() =>
+    getCanonicalAdditionalOptionsSync()
   );
 
   useEffect(() => {
     const unsubscribe = subscribeAdditionalOptionsSettings((settings) => {
-      setActiveDesign(settings.youMightLikeDesign);
+      setOptions(settings);
     });
     return () => unsubscribe();
   }, []);
 
-  switch (activeDesign) {
+  useEffect(() => {
+    applyGlobalFloatingSpeedCssVar(options.animationSpeed);
+  }, [options.animationSpeed]);
+
+  switch (options.youMightLikeDesign) {
     case 'design-3-simple-slider':
       return (
         <SimpleSliderRecommendations
@@ -44,6 +49,10 @@ export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
           products={products}
           onSelectProduct={onSelectProduct}
           theme={theme}
+          enableShadow={options.enableShadow}
+          shadowIntensity={options.shadowIntensity}
+          enableFloatingAnimation={options.enableFloatingAnimation}
+          animationSpeed={options.animationSpeed}
         />
       );
 
@@ -54,6 +63,10 @@ export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
           products={products}
           onSelectProduct={onSelectProduct}
           theme={theme}
+          enableShadow={options.enableShadow}
+          shadowIntensity={options.shadowIntensity}
+          enableFloatingAnimation={options.enableFloatingAnimation}
+          animationSpeed={options.animationSpeed}
         />
       );
 
@@ -65,6 +78,10 @@ export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
           products={products}
           onSelectProduct={onSelectProduct}
           theme={theme}
+          enableShadow={options.enableShadow}
+          shadowIntensity={options.shadowIntensity}
+          enableFloatingAnimation={options.enableFloatingAnimation}
+          animationSpeed={options.animationSpeed}
         />
       );
   }

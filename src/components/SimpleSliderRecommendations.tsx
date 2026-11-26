@@ -6,12 +6,17 @@ import { Product } from '../types';
 import { ProductImage } from './ProductImage';
 import { PanchuLogo } from './PanchuLogo';
 import { useRecommendedProducts } from '../hooks/useRecommendedProducts';
+import { getFloatingSpeedScale } from '../services/firebaseService';
 
 interface SimpleSliderRecommendationsProps {
   currentProduct: Product;
   products?: Product[];
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
+  enableShadow?: boolean;
+  shadowIntensity?: number;
+  enableFloatingAnimation?: boolean;
+  animationSpeed?: number;
 }
 
 type TransitionPhase = 'idle' | 'entering' | 'fading-logo' | 'exiting';
@@ -26,9 +31,21 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
   currentProduct,
   products: propProducts,
   onSelectProduct,
-  theme = 'light'
+  theme = 'light',
+  enableShadow = true,
+  shadowIntensity = 50,
+  enableFloatingAnimation = false,
+  animationSpeed = 50
 }) => {
   const isDark = theme === 'dark';
+  const floatSpeedScale = getFloatingSpeedScale(animationSpeed);
+  const clampedIntensity = Math.max(0, Math.min(100, shadowIntensity)) / 100;
+  const computedBoxShadow =
+    enableShadow && clampedIntensity > 0
+      ? `0 ${Math.round(6 + clampedIntensity * 16)}px ${Math.round(10 + clampedIntensity * 38)}px ${Math.round(
+          -4 - clampedIntensity * 8
+        )}px rgba(0, 0, 0, ${(isDark ? 0.35 + clampedIntensity * 0.55 : 0.08 + clampedIntensity * 0.24).toFixed(3)})`
+      : 'none';
   const recommendedProducts = useRecommendedProducts(currentProduct, propProducts);
 
   const sliderRef = useRef<HTMLDivElement>(null);
@@ -385,7 +402,7 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
             overscrollBehaviorX: 'contain',
             touchAction: 'pan-x pan-y'
           }}
-          className={`flex flex-row flex-nowrap items-stretch gap-3.5 sm:gap-5 md:gap-6 overflow-x-auto overflow-y-hidden pb-2 px-1 sm:px-2 select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
+          className={`flex flex-row flex-nowrap items-stretch gap-3.5 sm:gap-5 md:gap-6 overflow-x-auto overflow-y-hidden pt-3 pb-6 px-1 sm:px-2 select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
             isDragging ? 'cursor-grabbing' : 'cursor-grab'
           }`}
           aria-label="Horizontal product slider"
@@ -395,6 +412,15 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
             const displayType =
               item.typeLabel ||
               (item.gender === 'female' ? "Women's" : item.gender === 'male' ? "Men's" : 'Unisex');
+            const floatDurations = [3.8, 4.3, 4.7, 4.1, 4.9];
+            const baseDuration = floatDurations[idx % floatDurations.length];
+            const floatStyle = enableFloatingAnimation
+              ? ({
+                  '--panchu-float-base-duration': `${baseDuration}s`,
+                  '--panchu-float-speed-scale': String(floatSpeedScale),
+                  animationDelay: `${-((idx * 0.85 * floatSpeedScale) % (baseDuration * floatSpeedScale)).toFixed(2)}s`
+                } as React.CSSProperties)
+              : undefined;
 
             return (
               <a
@@ -405,52 +431,58 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
                 className="group relative flex-shrink-0 w-[160px] sm:w-[214px] md:w-[244px] lg:w-[260px] flex flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 cursor-pointer"
                 aria-label={`${item.name} — Rs ${item.price.toLocaleString()}`}
               >
-                {/* Clean Flat Product Image Frame */}
                 <div
-                  className={`relative w-full aspect-square overflow-hidden border transition-colors duration-200 ${
-                    isDark
-                      ? 'bg-neutral-950 border-neutral-800 group-hover:border-neutral-600'
-                      : 'bg-white border-stone-200 group-hover:border-black'
-                  }`}
+                  className={enableFloatingAnimation ? 'panchu-floating-item w-full' : 'w-full'}
+                  style={floatStyle}
                 >
-                  <div className="w-full h-full [&_img]:pointer-events-none [&_img]:select-none">
-                    <ProductImage
-                      src={item.image}
-                      alt={item.name}
-                      priority={idx < 4}
-                      className="w-full h-full object-cover object-center"
-                    />
-                  </div>
-                </div>
-
-                {/* Clean Product Info */}
-                <div className="pt-2.5 sm:pt-3 space-y-1">
-                  <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-montserrat uppercase tracking-wider">
-                    <span className={isDark ? 'text-neutral-400' : 'text-stone-500'}>
-                      {displayType}
-                    </span>
-                    {!item.inStock && (
-                      <span className="text-red-600 font-semibold">Out of Stock</span>
-                    )}
-                  </div>
-
-                  <h3
-                    className={`text-xs sm:text-sm font-montserrat font-semibold uppercase tracking-tight line-clamp-1 transition-colors ${
+                  {/* Clean Flat Product Image Frame */}
+                  <div
+                    className={`relative w-full aspect-square overflow-hidden border transition-all duration-200 ${
                       isDark
-                        ? 'text-white group-hover:text-stone-300'
-                        : 'text-stone-900 group-hover:text-black'
+                        ? 'bg-neutral-950 border-neutral-800 group-hover:border-neutral-600'
+                        : 'bg-white border-stone-200 group-hover:border-black'
                     }`}
+                    style={{ boxShadow: computedBoxShadow }}
                   >
-                    {item.name}
-                  </h3>
+                    <div className="w-full h-full [&_img]:pointer-events-none [&_img]:select-none">
+                      <ProductImage
+                        src={item.image}
+                        alt={item.name}
+                        priority={idx < 4}
+                        className="w-full h-full object-cover object-center"
+                      />
+                    </div>
+                  </div>
 
-                  <p
-                    className={`text-xs sm:text-sm font-montserrat font-bold tabular-nums ${
-                      isDark ? 'text-stone-200' : 'text-stone-900'
-                    }`}
-                  >
-                    Rs {item.price > 0 ? item.price.toLocaleString() : item.priceDisplay || '1,850'}
-                  </p>
+                  {/* Clean Product Info */}
+                  <div className="pt-2.5 sm:pt-3 space-y-1">
+                    <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-montserrat uppercase tracking-wider">
+                      <span className={isDark ? 'text-neutral-400' : 'text-stone-500'}>
+                        {displayType}
+                      </span>
+                      {!item.inStock && (
+                        <span className="text-red-600 font-semibold">Out of Stock</span>
+                      )}
+                    </div>
+
+                    <h3
+                      className={`text-xs sm:text-sm font-montserrat font-semibold uppercase tracking-tight line-clamp-1 transition-colors ${
+                        isDark
+                          ? 'text-white group-hover:text-stone-300'
+                          : 'text-stone-900 group-hover:text-black'
+                      }`}
+                    >
+                      {item.name}
+                    </h3>
+
+                    <p
+                      className={`text-xs sm:text-sm font-montserrat font-bold tabular-nums ${
+                        isDark ? 'text-stone-200' : 'text-stone-900'
+                      }`}
+                    >
+                      Rs {item.price > 0 ? item.price.toLocaleString() : item.priceDisplay || '1,850'}
+                    </p>
+                  </div>
                 </div>
               </a>
             );

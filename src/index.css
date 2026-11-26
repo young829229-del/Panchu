@@ -12,3 +12,30 @@
   }
 }
 
+:root {
+  --panchu-float-speed-scale: 1;
+}
+
+@keyframes panchu-product-float {
+  0%, 100% {
+    transform: translate3d(0, 0px, 0);
+  }
+  50% {
+    transform: translate3d(0, -7px, 0);
+  }
+}
+
+.panchu-floating-item {
+  animation-name: panchu-product-float;
+  animation-duration: calc(var(--panchu-float-base-duration, 4.3s) * var(--panchu-float-speed-scale, 1));
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panchu-floating-item {
+    animation: none !important;
+  }
+}
+

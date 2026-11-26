@@ -6,12 +6,17 @@ import { Product } from '../types';
 import { ProductImage } from './ProductImage';
 import { PanchuLogo } from './PanchuLogo';
 import { useRecommendedProducts } from '../hooks/useRecommendedProducts';
+import { getFloatingSpeedScale } from '../services/firebaseService';
 
 interface ThreeDRotatingCarouselProps {
   currentProduct: Product;
   products?: Product[];
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
+  enableShadow?: boolean;
+  shadowIntensity?: number;
+  enableFloatingAnimation?: boolean;
+  animationSpeed?: number;
 }
 
 type TransitionPhase = 'idle' | 'entering' | 'fading-logo' | 'exiting';
@@ -43,9 +48,27 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
   currentProduct,
   products: propProducts,
   onSelectProduct,
-  theme = 'light'
+  theme = 'light',
+  enableShadow = true,
+  shadowIntensity = 50,
+  enableFloatingAnimation = false,
+  animationSpeed = 50
 }) => {
   const isDark = theme === 'dark';
+  const floatSpeedScale = getFloatingSpeedScale(animationSpeed);
+  const clampedIntensity = Math.max(0, Math.min(100, shadowIntensity)) / 100;
+  const centerBoxShadow =
+    enableShadow && clampedIntensity > 0
+      ? `0 ${Math.round(8 + clampedIntensity * 20)}px ${Math.round(14 + clampedIntensity * 44)}px ${Math.round(
+          -6 - clampedIntensity * 10
+        )}px rgba(0, 0, 0, ${(isDark ? 0.4 + clampedIntensity * 0.55 : 0.1 + clampedIntensity * 0.26).toFixed(3)})`
+      : 'none';
+  const sideBoxShadow =
+    enableShadow && clampedIntensity > 0
+      ? `0 ${Math.round(6 + clampedIntensity * 12)}px ${Math.round(10 + clampedIntensity * 26)}px ${Math.round(
+          -4 - clampedIntensity * 8
+        )}px rgba(0, 0, 0, ${(isDark ? 0.3 + clampedIntensity * 0.45 : 0.06 + clampedIntensity * 0.16).toFixed(3)})`
+      : 'none';
   const recommendedProducts = useRecommendedProducts(currentProduct, propProducts);
   const count = recommendedProducts.length;
 
@@ -169,11 +192,19 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
       // Ambient floating floor shadow underneath each card (strongest under center floating product)
       const shadowEl = shadowRefs.current.get(item.id);
       if (shadowEl) {
-        const shadowOpacity = Math.max(0, 1 - Math.min(absD, 1.5) * 0.65);
-        shadowEl.style.opacity = (shadowOpacity * (isDark ? 0.65 : 0.34)).toFixed(3);
+        if (!enableShadow || clampedIntensity <= 0) {
+          shadowEl.style.opacity = '0';
+        } else {
+          const shadowOpacity = Math.max(0, 1 - Math.min(absD, 1.5) * 0.65);
+          const intensityScale = 0.25 + clampedIntensity * 1.15;
+          shadowEl.style.opacity = Math.min(
+            0.9,
+            shadowOpacity * (isDark ? 0.55 : 0.3) * intensityScale
+          ).toFixed(3);
+        }
       }
     });
-  }, [count, recommendedProducts, viewportMode, isDark]);
+  }, [count, recommendedProducts, viewportMode, isDark, enableShadow, clampedIntensity]);
 
   // Continuous critically-damped animation loop
   const ensureAnimationLoop = useCallback(() => {
@@ -603,6 +634,15 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
                 item.typeLabel ||
                 (item.gender === 'female' ? "Women's" : item.gender === 'male' ? "Men's" : 'Unisex');
               const isCentered = idx === activeCenteredIndex;
+              const floatDurations = [3.8, 4.3, 4.7, 4.1, 4.9];
+              const baseDuration = floatDurations[idx % floatDurations.length];
+              const floatStyle = enableFloatingAnimation
+                ? ({
+                    '--panchu-float-base-duration': `${baseDuration}s`,
+                    '--panchu-float-speed-scale': String(floatSpeedScale),
+                    animationDelay: `${-((idx * 0.85 * floatSpeedScale) % (baseDuration * floatSpeedScale)).toFixed(2)}s`
+                  } as React.CSSProperties)
+                : undefined;
 
               return (
                 <a
@@ -621,74 +661,84 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
                     backfaceVisibility: 'hidden'
                   }}
                 >
-                  {/* Floating Card Surface Preserving Original Product Photography */}
+                  {/* Independent Subtle Vertical Float Wrapper (isolated from 3D carousel transform) */}
                   <div
-                    className={`relative w-full aspect-square overflow-hidden border transition-colors duration-200 ${
-                      isDark
-                        ? isCentered
-                          ? 'bg-neutral-950 border-neutral-600 shadow-[0_24px_48px_-14px_rgba(0,0,0,0.85)]'
-                          : 'bg-neutral-950 border-neutral-800 shadow-[0_14px_28px_-12px_rgba(0,0,0,0.65)]'
-                        : isCentered
-                          ? 'bg-white border-stone-300 shadow-[0_24px_48px_-14px_rgba(0,0,0,0.22)]'
-                          : 'bg-white border-stone-200 shadow-[0_14px_28px_-12px_rgba(0,0,0,0.12)]'
-                    }`}
+                    className={enableFloatingAnimation ? 'panchu-floating-item w-full' : 'w-full'}
+                    style={floatStyle}
                   >
-                    <div className="w-full h-full [&_img]:pointer-events-none [&_img]:select-none">
-                      <ProductImage
-                        src={item.image}
-                        alt={item.name}
-                        priority={idx < 4}
-                        className="w-full h-full object-cover object-center"
-                      />
+                    {/* Floating Card Surface Preserving Original Product Photography */}
+                    <div
+                      className={`relative w-full aspect-square overflow-hidden border transition-all duration-200 ${
+                        isDark
+                          ? isCentered
+                            ? 'bg-neutral-950 border-neutral-600'
+                            : 'bg-neutral-950 border-neutral-800'
+                          : isCentered
+                            ? 'bg-white border-stone-300'
+                            : 'bg-white border-stone-200'
+                      }`}
+                      style={{ boxShadow: isCentered ? centerBoxShadow : sideBoxShadow }}
+                    >
+                      <div className="w-full h-full [&_img]:pointer-events-none [&_img]:select-none">
+                        <ProductImage
+                          src={item.image}
+                          alt={item.name}
+                          priority={idx < 4}
+                          className="w-full h-full object-cover object-center"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Clean Editorial Metadata Beneath Card */}
+                    <div
+                      className={`pt-3 px-0.5 space-y-0.5 transition-opacity duration-200 ${
+                        isCentered ? 'opacity-100' : 'opacity-70'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-montserrat uppercase tracking-wider">
+                        <span className={isDark ? 'text-neutral-400' : 'text-stone-500'}>
+                          {displayType}
+                        </span>
+                        {!item.inStock && (
+                          <span className="text-red-600 font-semibold">Out of Stock</span>
+                        )}
+                      </div>
+
+                      <h3
+                        className={`text-xs sm:text-sm font-montserrat font-semibold uppercase tracking-tight line-clamp-1 ${
+                          isDark ? 'text-white' : 'text-stone-900'
+                        }`}
+                      >
+                        {item.name}
+                      </h3>
+
+                      <p
+                        className={`text-xs sm:text-sm font-montserrat font-bold tabular-nums ${
+                          isDark ? 'text-stone-200' : 'text-stone-900'
+                        }`}
+                      >
+                        Rs {item.price > 0 ? item.price.toLocaleString() : item.priceDisplay || '1,850'}
+                      </p>
                     </div>
                   </div>
 
-                  {/* Clean Editorial Metadata Beneath Card */}
-                  <div
-                    className={`pt-3 px-0.5 space-y-0.5 transition-opacity duration-200 ${
-                      isCentered ? 'opacity-100' : 'opacity-70'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 text-[10px] sm:text-[11px] font-montserrat uppercase tracking-wider">
-                      <span className={isDark ? 'text-neutral-400' : 'text-stone-500'}>
-                        {displayType}
-                      </span>
-                      {!item.inStock && (
-                        <span className="text-red-600 font-semibold">Out of Stock</span>
-                      )}
-                    </div>
-
-                    <h3
-                      className={`text-xs sm:text-sm font-montserrat font-semibold uppercase tracking-tight line-clamp-1 ${
-                        isDark ? 'text-white' : 'text-stone-900'
-                      }`}
-                    >
-                      {item.name}
-                    </h3>
-
-                    <p
-                      className={`text-xs sm:text-sm font-montserrat font-bold tabular-nums ${
-                        isDark ? 'text-stone-200' : 'text-stone-900'
-                      }`}
-                    >
-                      Rs {item.price > 0 ? item.price.toLocaleString() : item.priceDisplay || '1,850'}
-                    </p>
-                  </div>
-
-                  {/* Soft Floating Elliptical Floor Shadow */}
-                  <div
-                    ref={(el) => {
-                      if (el) shadowRefs.current.set(item.id, el);
-                      else shadowRefs.current.delete(item.id);
-                    }}
-                    aria-hidden="true"
-                    className="mx-auto mt-2.5 w-4/5 h-3 rounded-full pointer-events-none blur-md"
-                    style={{
-                      background: isDark
-                        ? 'radial-gradient(ellipse at center, rgba(0,0,0,0.95) 0%, transparent 72%)'
-                        : 'radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 72%)'
-                    }}
-                  />
+                  {/* Soft Floating Elliptical Floor Shadow (only rendered when Enable Shadow is on) */}
+                  {enableShadow && clampedIntensity > 0 && (
+                    <div
+                      ref={(el) => {
+                        if (el) shadowRefs.current.set(item.id, el);
+                        else shadowRefs.current.delete(item.id);
+                      }}
+                      aria-hidden="true"
+                      className="mx-auto mt-2.5 w-4/5 h-3 rounded-full pointer-events-none"
+                      style={{
+                        filter: `blur(${Math.round(6 + clampedIntensity * 14)}px)`,
+                        background: isDark
+                          ? 'radial-gradient(ellipse at center, rgba(0,0,0,0.95) 0%, transparent 72%)'
+                          : 'radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 72%)'
+                      }}
+                    />
+                  )}
                 </a>
               );
             })}

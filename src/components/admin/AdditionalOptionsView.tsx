@@ -1,20 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Check,
-  CheckCircle2,
   AlertCircle,
   Loader2,
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
-  Rotate3d
+  Rotate3d,
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import { YouMightLikeDesignId } from '../../types';
 import { YOU_MIGHT_LIKE_DESIGNS, YouMightLikeDesignDefinition } from '../../data/youMightLikeDesigns';
 import {
+  applyGlobalFloatingSpeedCssVar,
   getCanonicalAdditionalOptionsSync,
+  getFloatingSpeedScale,
   subscribeAdditionalOptionsSettings,
-  saveYouMightLikeDesignToFirestore
+  saveYouMightLikeDesignToFirestore,
+  saveYouMightLikeEffectsToFirestore
 } from '../../services/firebaseService';
 
 interface AdditionalOptionsViewProps {
@@ -145,20 +149,60 @@ const DesignVisualPreview: React.FC<{ designId: YouMightLikeDesignId; isSelected
 export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
   adminEmail
 }) => {
+  const initialOptions = getCanonicalAdditionalOptionsSync();
   const [selectedDesign, setSelectedDesign] = useState<YouMightLikeDesignId>(
-    () => getCanonicalAdditionalOptionsSync().youMightLikeDesign
+    () => initialOptions.youMightLikeDesign
+  );
+  const [enableShadow, setEnableShadow] = useState<boolean>(
+    () => initialOptions.enableShadow
+  );
+  const [shadowIntensity, setShadowIntensity] = useState<number>(
+    () => initialOptions.shadowIntensity
+  );
+  const [enableFloatingAnimation, setEnableFloatingAnimation] = useState<boolean>(
+    () => initialOptions.enableFloatingAnimation
+  );
+  const [animationSpeed, setAnimationSpeed] = useState<number>(
+    () => initialOptions.animationSpeed
   );
   const [savingDesignId, setSavingDesignId] = useState<YouMightLikeDesignId | null>(null);
-  const [statusMessage, setStatusMessage] = useState<{
-    type: 'success' | 'error';
-    text: string;
-  } | null>(null);
+  const [savingShadow, setSavingShadow] = useState<boolean>(false);
+  const [savingIntensity, setSavingIntensity] = useState<boolean>(false);
+  const [savingFloating, setSavingFloating] = useState<boolean>(false);
+  const [savingSpeed, setSavingSpeed] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const isDraggingSliderRef = useRef<boolean>(false);
+  const sliderSaveTimerRef = useRef<number | null>(null);
+  const lastSavedIntensityRef = useRef<number>(initialOptions.shadowIntensity);
+
+  const isDraggingSpeedSliderRef = useRef<boolean>(false);
+  const speedSliderSaveTimerRef = useRef<number | null>(null);
+  const lastSavedSpeedRef = useRef<number>(initialOptions.animationSpeed);
 
   useEffect(() => {
     const unsubscribe = subscribeAdditionalOptionsSettings((liveSettings) => {
       setSelectedDesign(liveSettings.youMightLikeDesign);
+      setEnableShadow(liveSettings.enableShadow);
+      setEnableFloatingAnimation(liveSettings.enableFloatingAnimation);
+      if (!isDraggingSliderRef.current) {
+        setShadowIntensity(liveSettings.shadowIntensity);
+        lastSavedIntensityRef.current = liveSettings.shadowIntensity;
+      }
+      if (!isDraggingSpeedSliderRef.current) {
+        setAnimationSpeed(liveSettings.animationSpeed);
+        lastSavedSpeedRef.current = liveSettings.animationSpeed;
+      }
     });
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (sliderSaveTimerRef.current !== null) {
+        window.clearTimeout(sliderSaveTimerRef.current);
+      }
+      if (speedSliderSaveTimerRef.current !== null) {
+        window.clearTimeout(speedSliderSaveTimerRef.current);
+      }
+    };
   }, []);
 
   const handleSelectDesign = async (design: YouMightLikeDesignDefinition) => {
@@ -168,23 +212,152 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
     const previousDesign = selectedDesign;
     setSelectedDesign(design.id);
     setSavingDesignId(design.id);
-    setStatusMessage(null);
+    setErrorMessage(null);
 
     try {
       await saveYouMightLikeDesignToFirestore(design.id, adminEmail);
-      setStatusMessage({
-        type: 'success',
-        text: `${design.title} is now active on the storefront and saved in Firebase.`
-      });
     } catch (err: any) {
       setSelectedDesign(previousDesign);
-      setStatusMessage({
-        type: 'error',
-        text: err?.message || 'Failed to save design selection in Firebase. Please try again.'
-      });
+      setErrorMessage(
+        err?.message || 'Failed to save design selection in Firebase. Please try again.'
+      );
     } finally {
       setSavingDesignId(null);
     }
+  };
+
+  const handleToggleShadow = async () => {
+    if (savingShadow) return;
+    const prevValue = enableShadow;
+    const nextValue = !prevValue;
+
+    setEnableShadow(nextValue);
+    setSavingShadow(true);
+    setErrorMessage(null);
+
+    try {
+      await saveYouMightLikeEffectsToFirestore({ enableShadow: nextValue }, adminEmail);
+    } catch (err: any) {
+      setEnableShadow(prevValue);
+      setErrorMessage(
+        err?.message || 'Failed to save shadow setting in Firebase. Please try again.'
+      );
+    } finally {
+      setSavingShadow(false);
+    }
+  };
+
+  const persistShadowIntensity = async (value: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(value)));
+    if (clamped === lastSavedIntensityRef.current) return;
+
+    const previousSaved = lastSavedIntensityRef.current;
+    setSavingIntensity(true);
+    setErrorMessage(null);
+
+    try {
+      await saveYouMightLikeEffectsToFirestore({ shadowIntensity: clamped }, adminEmail);
+      lastSavedIntensityRef.current = clamped;
+    } catch (err: any) {
+      setShadowIntensity(previousSaved);
+      setErrorMessage(
+        err?.message || 'Failed to save shadow intensity in Firebase. Please try again.'
+      );
+    } finally {
+      setSavingIntensity(false);
+    }
+  };
+
+  const handleShadowIntensityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextValue = Math.max(0, Math.min(100, Math.round(Number(e.target.value))));
+    isDraggingSliderRef.current = true;
+    setShadowIntensity(nextValue);
+
+    if (sliderSaveTimerRef.current !== null) {
+      window.clearTimeout(sliderSaveTimerRef.current);
+    }
+    sliderSaveTimerRef.current = window.setTimeout(() => {
+      persistShadowIntensity(nextValue);
+    }, 180);
+  };
+
+  const handleShadowIntensityCommit = () => {
+    isDraggingSliderRef.current = false;
+    if (sliderSaveTimerRef.current !== null) {
+      window.clearTimeout(sliderSaveTimerRef.current);
+      sliderSaveTimerRef.current = null;
+    }
+    persistShadowIntensity(shadowIntensity);
+  };
+
+  const handleToggleFloatingAnimation = async () => {
+    if (savingFloating) return;
+    const prevValue = enableFloatingAnimation;
+    const nextValue = !prevValue;
+
+    setEnableFloatingAnimation(nextValue);
+    setSavingFloating(true);
+    setErrorMessage(null);
+
+    try {
+      await saveYouMightLikeEffectsToFirestore(
+        { enableFloatingAnimation: nextValue },
+        adminEmail
+      );
+    } catch (err: any) {
+      setEnableFloatingAnimation(prevValue);
+      setErrorMessage(
+        err?.message ||
+          'Failed to save floating animation setting in Firebase. Please try again.'
+      );
+    } finally {
+      setSavingFloating(false);
+    }
+  };
+
+  const persistAnimationSpeed = async (value: number) => {
+    const clamped = Math.max(0, Math.min(100, Math.round(value)));
+    if (clamped === lastSavedSpeedRef.current) return;
+
+    const previousSaved = lastSavedSpeedRef.current;
+    setSavingSpeed(true);
+    setErrorMessage(null);
+
+    try {
+      await saveYouMightLikeEffectsToFirestore({ animationSpeed: clamped }, adminEmail);
+      lastSavedSpeedRef.current = clamped;
+    } catch (err: any) {
+      setAnimationSpeed(previousSaved);
+      applyGlobalFloatingSpeedCssVar(previousSaved);
+      setErrorMessage(
+        err?.message || 'Failed to save animation speed in Firebase. Please try again.'
+      );
+    } finally {
+      setSavingSpeed(false);
+    }
+  };
+
+  const handleAnimationSpeedChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextValue = Math.max(0, Math.min(100, Math.round(Number(e.target.value))));
+    isDraggingSpeedSliderRef.current = true;
+    setAnimationSpeed(nextValue);
+    applyGlobalFloatingSpeedCssVar(nextValue);
+
+    if (speedSliderSaveTimerRef.current !== null) {
+      window.clearTimeout(speedSliderSaveTimerRef.current);
+    }
+    speedSliderSaveTimerRef.current = window.setTimeout(() => {
+      persistAnimationSpeed(nextValue);
+    }, 180);
+  };
+
+  const handleAnimationSpeedCommit = () => {
+    isDraggingSpeedSliderRef.current = false;
+    if (speedSliderSaveTimerRef.current !== null) {
+      window.clearTimeout(speedSliderSaveTimerRef.current);
+      speedSliderSaveTimerRef.current = null;
+    }
+    persistAnimationSpeed(animationSpeed);
   };
 
   const activeDefinition =
@@ -210,21 +383,11 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
         </div>
       </div>
 
-      {/* Live Save Status Banner */}
-      {statusMessage && (
-        <div
-          className={`p-3.5 rounded-2xl border text-xs font-sans flex items-center gap-2.5 ${
-            statusMessage.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-700'
-          }`}
-        >
-          {statusMessage.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
-          ) : (
-            <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
-          )}
-          <span>{statusMessage.text}</span>
+      {/* Error Banner */}
+      {errorMessage && (
+        <div className="p-3.5 rounded-2xl border text-xs font-sans flex items-center gap-2.5 bg-red-50 border-red-200 text-red-700">
+          <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
+          <span>{errorMessage}</span>
         </div>
       )}
 
@@ -325,6 +488,277 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Animation & Effects Settings Subsection */}
+      <div className="p-5 rounded-2xl bg-white border border-stone-200/70 shadow-2xs space-y-4">
+        <div className="pb-3.5 border-b border-stone-100">
+          <h2 className="text-sm font-bold font-sans text-stone-900">
+            Animation &amp; Effects Settings
+          </h2>
+          <p className="text-xs text-stone-500 font-sans mt-0.5">
+            Independently control shadows and floating motion across the You Might Like section.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+          {/* Control 1: Shadow Effect (Toggle + Real-Time Intensity/Blur Slider) */}
+          <div
+            className={`rounded-2xl border p-4 space-y-4 transition-colors ${
+              enableShadow
+                ? 'border-[#ff4d4f]/50 bg-[#fffaf9]'
+                : 'border-stone-200 bg-white hover:border-stone-300'
+            }`}
+          >
+            <label
+              htmlFor="toggle-enable-shadow"
+              className="flex items-center justify-between gap-4 cursor-pointer"
+            >
+              <div className="flex items-start gap-3 min-w-0">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                    enableShadow
+                      ? 'bg-[#ff4d4f]/10 border-[#ff4d4f]/20 text-[#ff4d4f]'
+                      : 'bg-stone-50 border-stone-200 text-stone-500'
+                  }`}
+                >
+                  <Layers className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold font-sans text-stone-900">
+                      Enable Shadow
+                    </span>
+                    {savingShadow && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />
+                    )}
+                  </div>
+                  <p className="text-xs font-sans text-stone-500 mt-0.5 leading-relaxed">
+                    Display a soft, realistic shadow behind or beneath recommended products.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 shrink-0">
+                <input
+                  id="toggle-enable-shadow"
+                  type="checkbox"
+                  checked={enableShadow}
+                  disabled={savingShadow}
+                  onChange={handleToggleShadow}
+                  className="sr-only"
+                />
+                <span
+                  aria-hidden="true"
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    enableShadow ? 'bg-[#ff4d4f]' : 'bg-stone-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                      enableShadow ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </span>
+              </div>
+            </label>
+
+            {/* Real-Time Shadow Intensity & Blur Radius Slider */}
+            <div
+              className={`pt-3.5 border-t border-stone-200/70 space-y-3 transition-opacity ${
+                enableShadow ? 'opacity-100' : 'opacity-45'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <label
+                  htmlFor="slider-shadow-intensity"
+                  className="text-xs font-semibold font-sans text-stone-700 flex items-center gap-2"
+                >
+                  <span>Shadow Intensity &amp; Blur Radius</span>
+                  {savingIntensity && (
+                    <Loader2 className="w-3 h-3 animate-spin text-stone-400" />
+                  )}
+                </label>
+                <span className="text-xs font-mono font-semibold text-stone-700 tabular-nums">
+                  {shadowIntensity}% · {Math.round(10 + (shadowIntensity / 100) * 38)}px
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3.5">
+                <input
+                  id="slider-shadow-intensity"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={shadowIntensity}
+                  disabled={!enableShadow}
+                  onChange={handleShadowIntensityChange}
+                  onMouseUp={handleShadowIntensityCommit}
+                  onTouchEnd={handleShadowIntensityCommit}
+                  onBlur={handleShadowIntensityCommit}
+                  onKeyUp={handleShadowIntensityCommit}
+                  aria-label="Shadow intensity and blur radius"
+                  className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#ff4d4f] disabled:cursor-not-allowed"
+                />
+
+                {/* Live Real-Time Shadow Preview Box */}
+                <div
+                  className="w-11 h-11 rounded-lg bg-white border border-stone-200 shrink-0 flex items-center justify-center transition-all duration-75"
+                  title="Live shadow preview"
+                  style={{
+                    boxShadow:
+                      enableShadow && shadowIntensity > 0
+                        ? `0 ${Math.round(4 + (shadowIntensity / 100) * 10)}px ${Math.round(
+                            6 + (shadowIntensity / 100) * 22
+                          )}px ${Math.round(-2 - (shadowIntensity / 100) * 4)}px rgba(0, 0, 0, ${(
+                            0.1 +
+                            (shadowIntensity / 100) * 0.28
+                          ).toFixed(3)})`
+                        : 'none'
+                  }}
+                >
+                  <div className="w-5 h-5 rounded-xs bg-stone-200/80" />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] font-sans text-stone-400">
+                <span>Subtle (0%)</span>
+                <span>Balanced (50%)</span>
+                <span>Deep Blur (100%)</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Control 2: Floating Animation (Toggle + Real-Time Animation Speed Slider) */}
+          <div
+            className={`rounded-2xl border p-4 space-y-4 transition-colors ${
+              enableFloatingAnimation
+                ? 'border-[#ff4d4f]/50 bg-[#fffaf9]'
+                : 'border-stone-200 bg-white hover:border-stone-300'
+            }`}
+          >
+            <label
+              htmlFor="toggle-enable-floating"
+              className="flex items-center justify-between gap-4 cursor-pointer"
+            >
+              <div className="flex items-start gap-3 min-w-0">
+                <div
+                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                    enableFloatingAnimation
+                      ? 'bg-[#ff4d4f]/10 border-[#ff4d4f]/20 text-[#ff4d4f]'
+                      : 'bg-stone-50 border-stone-200 text-stone-500'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold font-sans text-stone-900">
+                      Enable Floating Animation
+                    </span>
+                    {savingFloating && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />
+                    )}
+                  </div>
+                  <p className="text-xs font-sans text-stone-500 mt-0.5 leading-relaxed">
+                    Gently float center, left, and right products up and down independently.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5 shrink-0">
+                <input
+                  id="toggle-enable-floating"
+                  type="checkbox"
+                  checked={enableFloatingAnimation}
+                  disabled={savingFloating}
+                  onChange={handleToggleFloatingAnimation}
+                  className="sr-only"
+                />
+                <span
+                  aria-hidden="true"
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    enableFloatingAnimation ? 'bg-[#ff4d4f]' : 'bg-stone-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                      enableFloatingAnimation ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </span>
+              </div>
+            </label>
+
+            {/* Real-Time Animation Speed Slider */}
+            <div
+              className={`pt-3.5 border-t border-stone-200/70 space-y-3 transition-opacity ${
+                enableFloatingAnimation ? 'opacity-100' : 'opacity-45'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <label
+                  htmlFor="slider-animation-speed"
+                  className="text-xs font-semibold font-sans text-stone-700 flex items-center gap-2"
+                >
+                  <span>Animation Speed</span>
+                  {savingSpeed && (
+                    <Loader2 className="w-3 h-3 animate-spin text-stone-400" />
+                  )}
+                </label>
+                <span className="text-xs font-mono font-semibold text-stone-700 tabular-nums">
+                  {animationSpeed}% · {(4.3 * getFloatingSpeedScale(animationSpeed)).toFixed(1)}s cycle
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3.5">
+                <input
+                  id="slider-animation-speed"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={animationSpeed}
+                  disabled={!enableFloatingAnimation}
+                  onChange={handleAnimationSpeedChange}
+                  onMouseUp={handleAnimationSpeedCommit}
+                  onTouchEnd={handleAnimationSpeedCommit}
+                  onBlur={handleAnimationSpeedCommit}
+                  onKeyUp={handleAnimationSpeedCommit}
+                  aria-label="Floating animation speed"
+                  className="w-full h-1.5 bg-stone-200 rounded-lg appearance-none cursor-pointer accent-[#ff4d4f] disabled:cursor-not-allowed"
+                />
+
+                {/* Live Real-Time Floating Speed Preview Box */}
+                <div
+                  className="w-11 h-11 rounded-lg bg-stone-50 border border-stone-200 shrink-0 flex items-center justify-center overflow-visible"
+                  title="Live floating speed preview"
+                >
+                  <div
+                    className={`w-5 h-5 rounded-xs border border-stone-300 bg-white shadow-2xs ${
+                      enableFloatingAnimation ? 'panchu-floating-item' : ''
+                    }`}
+                    style={
+                      enableFloatingAnimation
+                        ? ({
+                            '--panchu-float-base-duration': '4.3s',
+                            '--panchu-float-speed-scale': String(getFloatingSpeedScale(animationSpeed))
+                          } as React.CSSProperties)
+                        : undefined
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] font-sans text-stone-400">
+                <span>Slow (0%)</span>
+                <span>Balanced (50%)</span>
+                <span>Fast (100%)</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

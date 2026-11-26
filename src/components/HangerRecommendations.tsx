@@ -5,13 +5,17 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Product } from '../types';
 import { ProductImage } from './ProductImage';
 import { PanchuLogo } from './PanchuLogo';
-import { subscribeProducts } from '../services/firebaseService';
+import { getFloatingSpeedScale, subscribeProducts } from '../services/firebaseService';
 
 interface HangerRecommendationsProps {
   currentProduct: Product;
   products?: Product[];
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
+  enableShadow?: boolean;
+  shadowIntensity?: number;
+  enableFloatingAnimation?: boolean;
+  animationSpeed?: number;
 }
 
 type TransitionPhase = 'idle' | 'entering' | 'fading-logo' | 'exiting';
@@ -104,9 +108,21 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
   currentProduct,
   products: propProducts,
   onSelectProduct,
-  theme = 'light'
+  theme = 'light',
+  enableShadow = true,
+  shadowIntensity = 50,
+  enableFloatingAnimation = false,
+  animationSpeed = 50
 }) => {
   const isDark = theme === 'dark';
+  const floatSpeedScale = getFloatingSpeedScale(animationSpeed);
+  const clampedIntensity = Math.max(0, Math.min(100, shadowIntensity)) / 100;
+  const computedBoxShadow =
+    enableShadow && clampedIntensity > 0
+      ? `0 ${Math.round(6 + clampedIntensity * 16)}px ${Math.round(10 + clampedIntensity * 38)}px ${Math.round(
+          -4 - clampedIntensity * 8
+        )}px rgba(0, 0, 0, ${(isDark ? 0.35 + clampedIntensity * 0.55 : 0.08 + clampedIntensity * 0.24).toFixed(3)})`
+      : 'none';
 
   // Real-time products directly synced with Firestore 'products' collection
   const [liveFirebaseProducts, setLiveFirebaseProducts] = useState<Product[]>([]);
@@ -475,13 +491,22 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
             onMouseDown={handleRailMouseDown}
             onScroll={updateScrollButtons}
             onDragStart={(e) => e.preventDefault()}
-            className={`relative z-10 flex items-start gap-5 sm:gap-7 md:gap-8 overflow-x-auto pt-[2px] pb-3 px-4 sm:px-8 select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
+            className={`relative z-10 flex items-start gap-5 sm:gap-7 md:gap-8 overflow-x-auto pt-[6px] pb-6 px-4 sm:px-8 select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
               isDragging ? 'cursor-grabbing' : 'cursor-grab'
             }`}
           >
             {recommendedProducts.map((item, idx) => {
               const productUrl = `/product/${item.id}`;
               const displayType = item.typeLabel || (item.gender === 'female' ? "Women's" : item.gender === 'male' ? "Men's" : 'Unisex');
+              const floatDurations = [3.9, 4.4, 4.8, 4.1, 4.6];
+              const baseDuration = floatDurations[idx % floatDurations.length];
+              const floatStyle = enableFloatingAnimation
+                ? ({
+                    '--panchu-float-base-duration': `${baseDuration}s`,
+                    '--panchu-float-speed-scale': String(floatSpeedScale),
+                    animationDelay: `${-((idx * 0.9 * floatSpeedScale) % (baseDuration * floatSpeedScale)).toFixed(2)}s`
+                  } as React.CSSProperties)
+                : undefined;
 
               return (
                 <a
@@ -492,68 +517,75 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
                   className="group relative flex-shrink-0 w-[172px] sm:w-[204px] md:w-[224px] flex flex-col items-stretch text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 cursor-pointer"
                   aria-label={`${item.name} — Rs ${item.price.toLocaleString()}`}
                 >
-                  {/* Suspended Hanger + Garment Assembly with gentle natural rack sway on hover */}
-                  <div className="w-full origin-top transition-transform duration-200 ease-out group-hover:-translate-y-0.5 group-hover:rotate-[0.6deg]">
-                    {/* Hanger Hook & Contoured Shoulder */}
-                    <div className="relative z-10 w-full px-1">
-                      <GarmentHangerGraphic isDark={isDark} />
-                    </div>
+                  <div
+                    className={enableFloatingAnimation ? 'panchu-floating-item w-full' : 'w-full'}
+                    style={floatStyle}
+                  >
+                    {/* Suspended Hanger + Garment Assembly with gentle natural rack sway on hover */}
+                    <div className="w-full origin-top transition-transform duration-200 ease-out group-hover:-translate-y-0.5 group-hover:rotate-[0.6deg]">
+                      {/* Hanger Hook & Contoured Shoulder */}
+                      <div className="relative z-10 w-full px-1">
+                        <GarmentHangerGraphic isDark={isDark} />
+                      </div>
 
-                    {/* Garment Card Hanging Directly Beneath Hanger Shoulders */}
-                    <div
-                      className={`relative -mt-[5px] w-full aspect-[4/5] overflow-hidden border transition-shadow duration-200 ${
-                        isDark
-                          ? 'bg-neutral-950 border-neutral-800 shadow-[0_14px_28px_-10px_rgba(0,0,0,0.7)] group-hover:border-neutral-600 group-hover:shadow-[0_18px_32px_-10px_rgba(0,0,0,0.85)]'
-                          : 'bg-white border-stone-200 shadow-[0_12px_24px_-10px_rgba(0,0,0,0.16)] group-hover:border-stone-400 group-hover:shadow-[0_16px_28px_-10px_rgba(0,0,0,0.24)]'
-                      }`}
-                    >
-                      {/* Subtle garment shoulder shadow underneath the hanger bar */}
+                      {/* Garment Card Hanging Directly Beneath Hanger Shoulders */}
                       <div
-                        aria-hidden="true"
-                        className="absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-black/15 to-transparent z-10 pointer-events-none"
-                      />
+                        className={`relative -mt-[5px] w-full aspect-[4/5] overflow-hidden border transition-all duration-200 ${
+                          isDark
+                            ? 'bg-neutral-950 border-neutral-800 group-hover:border-neutral-600'
+                            : 'bg-white border-stone-200 group-hover:border-stone-400'
+                        }`}
+                        style={{ boxShadow: computedBoxShadow }}
+                      >
+                        {enableShadow && (
+                          <div
+                            aria-hidden="true"
+                            className="absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-black/15 to-transparent z-10 pointer-events-none"
+                          />
+                        )}
 
-                      <div className="w-full h-full [&_img]:pointer-events-none [&_img]:select-none">
-                        <ProductImage
-                          src={item.image}
-                          alt={item.name}
-                          priority={idx < 4}
-                          className="w-full h-full object-cover object-center transition-transform duration-300 ease-out group-hover:scale-[1.03]"
-                        />
+                        <div className="w-full h-full [&_img]:pointer-events-none [&_img]:select-none">
+                          <ProductImage
+                            src={item.image}
+                            alt={item.name}
+                            priority={idx < 4}
+                            className="w-full h-full object-cover object-center transition-transform duration-300 ease-out group-hover:scale-[1.03]"
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Clean Editorial Product Details Below Hanging Garment */}
-                  <div className="pt-3 px-0.5 space-y-1">
-                    <div className="flex items-center justify-between gap-2 text-[11px] font-montserrat uppercase tracking-wider">
-                      <span className={isDark ? 'text-neutral-400' : 'text-stone-500'}>
-                        {displayType}
-                      </span>
-                      {!item.inStock && (
-                        <span className="text-red-600 font-semibold">
-                          Out of Stock
+                    {/* Clean Editorial Product Details Below Hanging Garment */}
+                    <div className="pt-3 px-0.5 space-y-1">
+                      <div className="flex items-center justify-between gap-2 text-[11px] font-montserrat uppercase tracking-wider">
+                        <span className={isDark ? 'text-neutral-400' : 'text-stone-500'}>
+                          {displayType}
                         </span>
-                      )}
+                        {!item.inStock && (
+                          <span className="text-red-600 font-semibold">
+                            Out of Stock
+                          </span>
+                        )}
+                      </div>
+
+                      <h3
+                        className={`text-xs sm:text-sm font-montserrat font-semibold uppercase tracking-tight line-clamp-1 transition-colors ${
+                          isDark
+                            ? 'text-white group-hover:text-stone-300'
+                            : 'text-stone-900 group-hover:text-black'
+                        }`}
+                      >
+                        {item.name}
+                      </h3>
+
+                      <p
+                        className={`text-xs sm:text-sm font-montserrat font-bold tabular-nums ${
+                          isDark ? 'text-stone-200' : 'text-stone-900'
+                        }`}
+                      >
+                        Rs {item.price > 0 ? item.price.toLocaleString() : (item.priceDisplay || '1,850')}
+                      </p>
                     </div>
-
-                    <h3
-                      className={`text-xs sm:text-sm font-montserrat font-semibold uppercase tracking-tight line-clamp-1 transition-colors ${
-                        isDark
-                          ? 'text-white group-hover:text-stone-300'
-                          : 'text-stone-900 group-hover:text-black'
-                      }`}
-                    >
-                      {item.name}
-                    </h3>
-
-                    <p
-                      className={`text-xs sm:text-sm font-montserrat font-bold tabular-nums ${
-                        isDark ? 'text-stone-200' : 'text-stone-900'
-                      }`}
-                    >
-                      Rs {item.price > 0 ? item.price.toLocaleString() : (item.priceDisplay || '1,850')}
-                    </p>
                   </div>
                 </a>
               );

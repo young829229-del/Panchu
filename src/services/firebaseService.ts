@@ -3652,7 +3652,11 @@ export const VALID_YOU_MIGHT_LIKE_DESIGN_IDS: readonly YouMightLikeDesignId[] = 
 ];
 
 export const DEFAULT_ADDITIONAL_OPTIONS_SETTINGS: AdditionalOptionsSettings = {
-  youMightLikeDesign: 'design-1-hanger'
+  youMightLikeDesign: 'design-1-hanger',
+  enableShadow: true,
+  shadowIntensity: 50,
+  enableFloatingAnimation: false,
+  animationSpeed: 50
 };
 
 export function normalizeYouMightLikeDesignId(raw: unknown): YouMightLikeDesignId {
@@ -3662,6 +3666,53 @@ export function normalizeYouMightLikeDesignId(raw: unknown): YouMightLikeDesignI
   return 'design-1-hanger';
 }
 
+function normalizeShadowIntensity(raw: unknown): number {
+  if (typeof raw === 'number' && !Number.isNaN(raw)) {
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }
+  return 50;
+}
+
+function normalizeAnimationSpeed(raw: unknown): number {
+  if (typeof raw === 'number' && !Number.isNaN(raw)) {
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }
+  return 50;
+}
+
+/**
+ * Converts Animation Speed (0 = slowest .. 50 = balanced 1x .. 100 = fastest)
+ * into a CSS duration multiplier applied to `--panchu-float-speed-scale`.
+ */
+export function getFloatingSpeedScale(animationSpeed: number): number {
+  const clamped = normalizeAnimationSpeed(animationSpeed);
+  if (clamped <= 50) {
+    // 0 -> 2.0x slower (~8.6s), 50 -> 1.0x (~4.3s)
+    return Number((2.0 - (clamped / 50) * 1.0).toFixed(3));
+  }
+  // 50 -> 1.0x (~4.3s), 100 -> 0.35x faster (~1.5s)
+  return Number((1.0 - ((clamped - 50) / 50) * 0.65).toFixed(3));
+}
+
+export function applyGlobalFloatingSpeedCssVar(animationSpeed: number): void {
+  if (typeof document === 'undefined') return;
+  const scale = getFloatingSpeedScale(animationSpeed);
+  document.documentElement.style.setProperty('--panchu-float-speed-scale', String(scale));
+}
+
+function normalizeAdditionalOptions(raw: any): AdditionalOptionsSettings {
+  return {
+    youMightLikeDesign: normalizeYouMightLikeDesignId(raw?.youMightLikeDesign),
+    enableShadow: typeof raw?.enableShadow === 'boolean' ? raw.enableShadow : true,
+    shadowIntensity: normalizeShadowIntensity(raw?.shadowIntensity),
+    enableFloatingAnimation:
+      typeof raw?.enableFloatingAnimation === 'boolean' ? raw.enableFloatingAnimation : false,
+    animationSpeed: normalizeAnimationSpeed(raw?.animationSpeed),
+    updatedAt: raw?.updatedAt,
+    updatedBy: typeof raw?.updatedBy === 'string' ? raw.updatedBy : undefined
+  };
+}
+
 export function getCanonicalAdditionalOptionsSync(): AdditionalOptionsSettings {
   if (typeof window === 'undefined') return DEFAULT_ADDITIONAL_OPTIONS_SETTINGS;
   try {
@@ -3669,10 +3720,9 @@ export function getCanonicalAdditionalOptionsSync(): AdditionalOptionsSettings {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed && typeof parsed === 'object') {
-        return {
-          youMightLikeDesign: normalizeYouMightLikeDesignId(parsed.youMightLikeDesign),
-          updatedBy: typeof parsed.updatedBy === 'string' ? parsed.updatedBy : undefined
-        };
+        const normalized = normalizeAdditionalOptions(parsed);
+        applyGlobalFloatingSpeedCssVar(normalized.animationSpeed);
+        return normalized;
       }
     }
   } catch (e) {
@@ -3684,10 +3734,16 @@ export function getCanonicalAdditionalOptionsSync(): AdditionalOptionsSettings {
 export function setCanonicalAdditionalOptionsSync(settings: AdditionalOptionsSettings): void {
   if (typeof window === 'undefined') return;
   try {
+    const safeSpeed = normalizeAnimationSpeed(settings.animationSpeed);
+    applyGlobalFloatingSpeedCssVar(safeSpeed);
     localStorage.setItem(
       CANONICAL_ADDITIONAL_OPTIONS_KEY,
       JSON.stringify({
         youMightLikeDesign: normalizeYouMightLikeDesignId(settings.youMightLikeDesign),
+        enableShadow: Boolean(settings.enableShadow),
+        shadowIntensity: normalizeShadowIntensity(settings.shadowIntensity),
+        enableFloatingAnimation: Boolean(settings.enableFloatingAnimation),
+        animationSpeed: safeSpeed,
         updatedBy: settings.updatedBy
       })
     );
@@ -3702,12 +3758,7 @@ export async function getAdditionalOptionsFromFirestore(): Promise<AdditionalOpt
     const docRef = doc(db, 'settings', 'additional_options');
     const docSnap = await getDoc(docRef);
     if (docSnap.exists()) {
-      const data = docSnap.data();
-      const normalized: AdditionalOptionsSettings = {
-        youMightLikeDesign: normalizeYouMightLikeDesignId(data?.youMightLikeDesign),
-        updatedAt: data?.updatedAt,
-        updatedBy: typeof data?.updatedBy === 'string' ? data.updatedBy : undefined
-      };
+      const normalized = normalizeAdditionalOptions(docSnap.data());
       setCanonicalAdditionalOptionsSync(normalized);
       return normalized;
     }
@@ -3728,19 +3779,18 @@ export function subscribeAdditionalOptionsSettings(
       docRef,
       (docSnap) => {
         if (docSnap.exists()) {
-          const data = docSnap.data();
-          const cleanSettings: AdditionalOptionsSettings = {
-            youMightLikeDesign: normalizeYouMightLikeDesignId(data?.youMightLikeDesign),
-            updatedAt: data?.updatedAt,
-            updatedBy: typeof data?.updatedBy === 'string' ? data.updatedBy : undefined
-          };
+          const cleanSettings = normalizeAdditionalOptions(docSnap.data());
           setCanonicalAdditionalOptionsSync(cleanSettings);
           callback(cleanSettings);
         } else {
-          // Default to Design 1 (Hanger Style) cleanly; seed if authenticated admin
+          // Default cleanly; seed if authenticated admin
           if (auth.currentUser) {
             setDoc(docRef, {
               youMightLikeDesign: 'design-1-hanger',
+              enableShadow: true,
+              shadowIntensity: 50,
+              enableFloatingAnimation: false,
+              animationSpeed: 50,
               createdAt: serverTimestamp(),
               updatedAt: serverTimestamp()
             }).catch((err) => console.debug('Could not seed settings/additional_options:', err));
@@ -3768,6 +3818,7 @@ export async function saveYouMightLikeDesignToFirestore(
 ): Promise<AdditionalOptionsSettings> {
   const path = 'settings/additional_options';
   const safeDesignId = normalizeYouMightLikeDesignId(designId);
+  const current = getCanonicalAdditionalOptionsSync();
   try {
     const docRef = doc(db, 'settings', 'additional_options');
     const payload: Record<string, any> = {
@@ -3782,6 +3833,76 @@ export async function saveYouMightLikeDesignToFirestore(
 
     const saved: AdditionalOptionsSettings = {
       youMightLikeDesign: safeDesignId,
+      enableShadow: current.enableShadow,
+      shadowIntensity: current.shadowIntensity,
+      enableFloatingAnimation: current.enableFloatingAnimation,
+      animationSpeed: current.animationSpeed,
+      updatedBy: payload.updatedBy
+    };
+    setCanonicalAdditionalOptionsSync(saved);
+    return saved;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
+export async function saveYouMightLikeEffectsToFirestore(
+  effects: {
+    enableShadow?: boolean;
+    shadowIntensity?: number;
+    enableFloatingAnimation?: boolean;
+    animationSpeed?: number;
+  },
+  updatedBy?: string
+): Promise<AdditionalOptionsSettings> {
+  const path = 'settings/additional_options';
+  const current = getCanonicalAdditionalOptionsSync();
+  try {
+    const docRef = doc(db, 'settings', 'additional_options');
+    const payload: Record<string, any> = {
+      updatedAt: serverTimestamp()
+    };
+
+    const nextShadow =
+      typeof effects.enableShadow === 'boolean' ? effects.enableShadow : current.enableShadow;
+    const nextIntensity =
+      typeof effects.shadowIntensity === 'number'
+        ? normalizeShadowIntensity(effects.shadowIntensity)
+        : current.shadowIntensity;
+    const nextFloating =
+      typeof effects.enableFloatingAnimation === 'boolean'
+        ? effects.enableFloatingAnimation
+        : current.enableFloatingAnimation;
+    const nextSpeed =
+      typeof effects.animationSpeed === 'number'
+        ? normalizeAnimationSpeed(effects.animationSpeed)
+        : current.animationSpeed;
+
+    if (typeof effects.enableShadow === 'boolean') {
+      payload.enableShadow = effects.enableShadow;
+    }
+    if (typeof effects.shadowIntensity === 'number') {
+      payload.shadowIntensity = nextIntensity;
+    }
+    if (typeof effects.enableFloatingAnimation === 'boolean') {
+      payload.enableFloatingAnimation = effects.enableFloatingAnimation;
+    }
+    if (typeof effects.animationSpeed === 'number') {
+      payload.animationSpeed = nextSpeed;
+    }
+    if (updatedBy || auth.currentUser?.email) {
+      payload.updatedBy = (updatedBy || auth.currentUser?.email || '').slice(0, 150);
+    }
+
+    await setDoc(docRef, payload, { merge: true });
+
+    const saved: AdditionalOptionsSettings = {
+      youMightLikeDesign: current.youMightLikeDesign,
+      enableShadow: nextShadow,
+      shadowIntensity: nextIntensity,
+      enableFloatingAnimation: nextFloating,
+      animationSpeed: nextSpeed,
       updatedBy: payload.updatedBy
     };
     setCanonicalAdditionalOptionsSync(saved);

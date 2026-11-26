@@ -270,6 +270,10 @@ export type YouMightLikeDesignId =
 
 export interface AdditionalOptionsSettings {
   youMightLikeDesign: YouMightLikeDesignId;
+  enableShadow: boolean;
+  shadowIntensity: number;
+  enableFloatingAnimation: boolean;
+  animationSpeed: number;
   updatedAt?: any;
   updatedBy?: string;
 }
