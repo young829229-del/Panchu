@@ -262,3 +262,15 @@ export interface OrderReceiptData {
   createdAt?: any;
   createdOrderMessage?: string;
 }
+
+export type YouMightLikeDesignId =
+  | 'design-1-hanger'
+  | 'design-2-3d-flip'
+  | 'design-3-simple-slider';
+
+export interface AdditionalOptionsSettings {
+  youMightLikeDesign: YouMightLikeDesignId;
+  updatedAt?: any;
+  updatedBy?: string;
+}
+

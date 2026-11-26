@@ -1,9 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Product } from '../types';
-import { ALL_PRODUCTS } from '../data/products';
-import { ProductCard } from './ProductCard';
 import { ProductImage } from './ProductImage';
 import { ProductGallerySwipe } from './ProductGallerySwipe';
+import { YouMightLikeRenderer } from './YouMightLikeRenderer';
 import { FooterSection } from './FooterSection';
 import { GetDiscountSection } from './GetDiscountSection';
 import { ArrowLeft, Check, Plus, Minus, ShoppingBag } from 'lucide-react';
@@ -66,12 +65,6 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
     const valid = baseImages.filter((img): img is string => typeof img === 'string' && img.trim().length > 0);
     return valid.length > 0 ? valid : [product.image];
   }, [product]);
-
-  // Recommended Products (same category or general collection excluding current product)
-  const relatedProducts = useMemo(() => {
-    const sourceList = products && products.length > 0 ? products : ALL_PRODUCTS;
-    return sourceList.filter(p => p.id !== product.id && p.gender === product.gender).slice(0, 4);
-  }, [product, products]);
 
   const handleAddToCartClick = (e?: React.MouseEvent<HTMLButtonElement>) => {
     if (!product.inStock) return;
@@ -360,35 +353,27 @@ export const ProductDetailPage: React.FC<ProductDetailPageProps> = ({
       </section>
 
       {/* Recommended Products Section */}
-      {relatedProducts.length > 0 && (
-        <section className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${
-          isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-stone-50 border-stone-200'
-        }`}>
-          <div className="max-w-7xl mx-auto space-y-8">
-            <div className="text-center space-y-2">
-              <h2 className={`text-3xl sm:text-4xl font-bebas uppercase tracking-wider ${
-                isDark ? 'text-white' : 'text-black'
-              }`}>
-                YOU MAY ALSO LIKE
-              </h2>
-              <div className={`w-12 h-0.5 mx-auto ${isDark ? 'bg-white' : 'bg-black'}`} />
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8">
-              {relatedProducts.map((p) => (
-                <ProductCard
-                  key={`related-${p.id}`}
-                  product={p}
-                  onSelectProduct={onSelectProduct}
-                  onAddToCart={onAddToCart}
-                  onBuyNow={onBuyNow}
-                  theme={theme}
-                />
-              ))}
-            </div>
+      <section className={`w-full py-16 px-4 sm:px-6 md:px-12 border-t transition-colors duration-300 ${
+        isDark ? 'bg-neutral-900 border-neutral-800' : 'bg-stone-50 border-stone-200'
+      }`}>
+        <div className="max-w-7xl mx-auto space-y-8">
+          <div className="text-center space-y-2">
+            <h2 className={`text-3xl sm:text-4xl font-bebas uppercase tracking-wider ${
+              isDark ? 'text-white' : 'text-black'
+            }`}>
+              YOU MAY ALSO LIKE
+            </h2>
+            <div className={`w-12 h-0.5 mx-auto ${isDark ? 'bg-white' : 'bg-black'}`} />
           </div>
-        </section>
-      )}
+
+          <YouMightLikeRenderer
+            currentProduct={product}
+            products={products}
+            onSelectProduct={onSelectProduct}
+            theme={theme}
+          />
+        </div>
+      </section>
 
       {/* Get Discount & Footer */}
       <GetDiscountSection theme={theme} />

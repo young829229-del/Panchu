@@ -35,7 +35,9 @@ import {
   ContactSettings,
   SocialLinksSettings,
   SocialActiveSettings,
-  SocialsAndContactSettings
+  SocialsAndContactSettings,
+  YouMightLikeDesignId,
+  AdditionalOptionsSettings
 } from '../types';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
 import { ALL_PRODUCTS } from '../data/products';
@@ -3635,4 +3637,159 @@ export async function setWhatsAppOrderRedirectToFirestore(
 ): Promise<void> {
   await updateSocialsAndContactSettings({ whatsappOrderRedirect: enabled });
 }
+
+// ---------------------------------------------------------------------------
+// Additional Options Settings (You Might Like Design Manager)
+// Stored permanently in Firestore doc `settings/additional_options`
+// ---------------------------------------------------------------------------
+
+const CANONICAL_ADDITIONAL_OPTIONS_KEY = 'panchu_canonical_additional_options_v1';
+
+export const VALID_YOU_MIGHT_LIKE_DESIGN_IDS: readonly YouMightLikeDesignId[] = [
+  'design-1-hanger',
+  'design-2-3d-flip',
+  'design-3-simple-slider'
+];
+
+export const DEFAULT_ADDITIONAL_OPTIONS_SETTINGS: AdditionalOptionsSettings = {
+  youMightLikeDesign: 'design-1-hanger'
+};
+
+export function normalizeYouMightLikeDesignId(raw: unknown): YouMightLikeDesignId {
+  if (typeof raw === 'string' && (VALID_YOU_MIGHT_LIKE_DESIGN_IDS as readonly string[]).includes(raw)) {
+    return raw as YouMightLikeDesignId;
+  }
+  return 'design-1-hanger';
+}
+
+export function getCanonicalAdditionalOptionsSync(): AdditionalOptionsSettings {
+  if (typeof window === 'undefined') return DEFAULT_ADDITIONAL_OPTIONS_SETTINGS;
+  try {
+    const saved = localStorage.getItem(CANONICAL_ADDITIONAL_OPTIONS_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed && typeof parsed === 'object') {
+        return {
+          youMightLikeDesign: normalizeYouMightLikeDesignId(parsed.youMightLikeDesign),
+          updatedBy: typeof parsed.updatedBy === 'string' ? parsed.updatedBy : undefined
+        };
+      }
+    }
+  } catch (e) {
+    console.debug('Error reading canonical additional options cache:', e);
+  }
+  return DEFAULT_ADDITIONAL_OPTIONS_SETTINGS;
+}
+
+export function setCanonicalAdditionalOptionsSync(settings: AdditionalOptionsSettings): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(
+      CANONICAL_ADDITIONAL_OPTIONS_KEY,
+      JSON.stringify({
+        youMightLikeDesign: normalizeYouMightLikeDesignId(settings.youMightLikeDesign),
+        updatedBy: settings.updatedBy
+      })
+    );
+  } catch (e) {
+    console.debug('Error writing canonical additional options cache:', e);
+  }
+}
+
+export async function getAdditionalOptionsFromFirestore(): Promise<AdditionalOptionsSettings> {
+  const path = 'settings/additional_options';
+  try {
+    const docRef = doc(db, 'settings', 'additional_options');
+    const docSnap = await getDoc(docRef);
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      const normalized: AdditionalOptionsSettings = {
+        youMightLikeDesign: normalizeYouMightLikeDesignId(data?.youMightLikeDesign),
+        updatedAt: data?.updatedAt,
+        updatedBy: typeof data?.updatedBy === 'string' ? data.updatedBy : undefined
+      };
+      setCanonicalAdditionalOptionsSync(normalized);
+      return normalized;
+    }
+    return DEFAULT_ADDITIONAL_OPTIONS_SETTINGS;
+  } catch (error) {
+    console.warn('Error fetching additional_options from Firestore:', path, error);
+    return getCanonicalAdditionalOptionsSync();
+  }
+}
+
+export function subscribeAdditionalOptionsSettings(
+  callback: (settings: AdditionalOptionsSettings) => void
+): () => void {
+  const path = 'settings/additional_options';
+  try {
+    const docRef = doc(db, 'settings', 'additional_options');
+    const unsubscribe = onSnapshot(
+      docRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          const cleanSettings: AdditionalOptionsSettings = {
+            youMightLikeDesign: normalizeYouMightLikeDesignId(data?.youMightLikeDesign),
+            updatedAt: data?.updatedAt,
+            updatedBy: typeof data?.updatedBy === 'string' ? data.updatedBy : undefined
+          };
+          setCanonicalAdditionalOptionsSync(cleanSettings);
+          callback(cleanSettings);
+        } else {
+          // Default to Design 1 (Hanger Style) cleanly; seed if authenticated admin
+          if (auth.currentUser) {
+            setDoc(docRef, {
+              youMightLikeDesign: 'design-1-hanger',
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            }).catch((err) => console.debug('Could not seed settings/additional_options:', err));
+          }
+          const canonical = getCanonicalAdditionalOptionsSync();
+          callback(canonical);
+        }
+      },
+      (error) => {
+        console.warn('Firestore additional_options listener notice:', path, error?.message || error);
+        callback(getCanonicalAdditionalOptionsSync());
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to attach additional_options listener:', err);
+    callback(getCanonicalAdditionalOptionsSync());
+    return () => {};
+  }
+}
+
+export async function saveYouMightLikeDesignToFirestore(
+  designId: YouMightLikeDesignId,
+  updatedBy?: string
+): Promise<AdditionalOptionsSettings> {
+  const path = 'settings/additional_options';
+  const safeDesignId = normalizeYouMightLikeDesignId(designId);
+  try {
+    const docRef = doc(db, 'settings', 'additional_options');
+    const payload: Record<string, any> = {
+      youMightLikeDesign: safeDesignId,
+      updatedAt: serverTimestamp()
+    };
+    if (updatedBy || auth.currentUser?.email) {
+      payload.updatedBy = (updatedBy || auth.currentUser?.email || '').slice(0, 150);
+    }
+
+    await setDoc(docRef, payload, { merge: true });
+
+    const saved: AdditionalOptionsSettings = {
+      youMightLikeDesign: safeDesignId,
+      updatedBy: payload.updatedBy
+    };
+    setCanonicalAdditionalOptionsSync(saved);
+    return saved;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+    throw error;
+  }
+}
+
 
