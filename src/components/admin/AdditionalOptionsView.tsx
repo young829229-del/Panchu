@@ -3,15 +3,13 @@ import {
   Check,
   AlertCircle,
   Loader2,
-  SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
+  ChevronUp,
   Rotate3d,
   Sparkles,
   Layers,
-  RotateCcw,
-  LayoutGrid
+  RotateCcw
 } from 'lucide-react';
 import {
   AdditionalOptionsSettings,
@@ -161,7 +159,15 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
   const [savingDesignId, setSavingDesignId] = useState<YouMightLikeDesignId | null>(null);
   const [savingFieldKey, setSavingFieldKey] = useState<string | null>(null);
   const [resettingKey, setResettingKey] = useState<string | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const toggleAccordionSection = (sectionKey: string) => {
+    setExpandedSections((prev) => ({
+      ...prev,
+      [sectionKey]: !prev[sectionKey]
+    }));
+  };
 
   const pendingFieldKeyRef = useRef<string | null>(null);
   const debounceTimersRef = useRef<Record<string, number>>({});
@@ -469,21 +475,15 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
     YOU_MIGHT_LIKE_DESIGNS[0];
 
   return (
-    <div className="space-y-6 pt-2 pb-10">
+    <div className="space-y-5 pt-2 pb-10">
       {/* Section Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold font-sans text-stone-900">
-            Additional Options
-          </h1>
-          <p className="text-xs text-stone-500 font-sans mt-0.5">
-            Click any design card below to activate it on product detail pages and configure its independent settings.
-          </p>
-        </div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h1 className="text-xl sm:text-2xl font-bold font-sans text-stone-900">
+          Additional Options
+        </h1>
 
-        <div className="flex items-center gap-2 text-xs font-sans text-stone-600 bg-white border border-stone-200/80 rounded-xl px-3.5 py-2 self-start sm:self-auto">
-          <SlidersHorizontal className="w-3.5 h-3.5 text-[#ff4d4f] shrink-0" />
-          <span className="text-stone-400">Active Design:</span>
+        <div className="flex items-center gap-2 text-xs font-sans text-stone-600 bg-white border border-stone-200/80 rounded-xl px-3 py-1.5 self-start sm:self-auto">
+          <span className="text-stone-400">Active:</span>
           <span className="font-semibold text-stone-900">{activeDefinition.title}</span>
         </div>
       </div>
@@ -498,22 +498,14 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
 
       {/* Design Manager Container */}
       <div className="p-4 sm:p-5 rounded-2xl bg-white border border-stone-200/70 shadow-2xs space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3.5 border-b border-stone-100">
-          <div>
-            <h2 className="text-sm font-bold font-sans text-stone-900">
-              You Might Like Section — Design Manager
-            </h2>
-            <p className="text-xs text-stone-500 font-sans mt-0.5">
-              Each design stores its own independent layout, shadow, and animation settings in Firebase.
-            </p>
-          </div>
-          <span className="text-[11px] font-sans text-stone-500 whitespace-nowrap">
-            {YOU_MIGHT_LIKE_DESIGNS.length} Designs Available
-          </span>
+        <div className="pb-3 border-b border-stone-100">
+          <h2 className="text-sm font-bold font-sans text-stone-900">
+            You Might Like — Design Settings
+          </h2>
         </div>
 
-        {/* Stacked Design Cards — Clicking a card automatically selects it & opens its panel inside */}
-        <div className="space-y-4">
+        {/* Stacked Design Cards */}
+        <div className="space-y-3.5">
           {YOU_MIGHT_LIKE_DESIGNS.map((design) => {
             const isSelected = options.youMightLikeDesign === design.id;
             const isSavingThis = savingDesignId === design.id;
@@ -521,20 +513,24 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
             const isResettingShadow = resettingKey === `${design.id}:shadow`;
             const cfg = options.perDesign[design.id] || DEFAULT_DESIGN_CUSTOMIZATIONS[design.id];
 
+            const layoutKey = `${design.id}:layout`;
+            const effectsKey = `${design.id}:effects`;
+            const isLayoutExpanded = Boolean(expandedSections[layoutKey]);
+            const isEffectsExpanded = Boolean(expandedSections[effectsKey]);
+
             return (
               <div
                 key={design.id}
-                className={`rounded-2xl border p-4 sm:p-5 transition-all ${
+                className={`rounded-2xl border p-4 transition-all ${
                   isSelected
                     ? 'border-[#ff4d4f] bg-[#fffaf9] shadow-xs'
                     : 'border-stone-200 bg-white hover:border-stone-300 hover:bg-stone-50/40'
                 }`}
               >
-                {/* Clickable Design Card Header Row — Automatically Activates & Opens Panel */}
+                {/* Clickable Design Card Header Row */}
                 <div
                   role="button"
                   tabIndex={0}
-                  aria-expanded={isSelected}
                   aria-pressed={isSelected}
                   onClick={() => handleCardSelect(design)}
                   onKeyDown={(e) => {
@@ -548,113 +544,94 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
                   }`}
                 >
                   {/* Visual Preview */}
-                  <div className="w-full md:w-64 shrink-0">
+                  <div className="w-full md:w-56 shrink-0">
                     <DesignVisualPreview designId={design.id} isSelected={isSelected} />
                   </div>
 
-                  {/* Title, Option Number & Selected Indicator */}
+                  {/* Title & Selected Indicator */}
                   <div className="flex-1 flex items-center justify-between gap-4 min-w-0">
-                    <div className="space-y-1 min-w-0">
-                      <span className="text-[11px] font-sans font-medium text-stone-500 block">
-                        Option 0{design.designNumber}
-                      </span>
-                      <h3 className="text-base font-bold font-sans text-stone-900 truncate">
-                        {design.title}
-                      </h3>
-                      <p
-                        className={`text-xs font-sans font-medium ${
-                          isSelected ? 'text-[#e04345]' : 'text-stone-400'
-                        }`}
-                      >
-                        {isSavingThis
-                          ? 'Activating on storefront...'
-                          : isSelected
-                            ? 'Active on Storefront · Settings Open'
-                            : 'Click card to activate and customize'}
-                      </p>
-                    </div>
+                    <h3 className="text-sm sm:text-base font-bold font-sans text-stone-900 truncate">
+                      {design.title}
+                    </h3>
 
-                    <div className="flex items-center gap-2.5 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       {isSelected && (
-                        <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#ff4d4f]/10 text-[#e04345] text-[11px] font-semibold font-sans">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#ff4d4f]/10 text-[#e04345] text-[11px] font-semibold font-sans">
                           <Check className="w-3 h-3" />
                           Selected
                         </span>
                       )}
 
-                      <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center border transition-colors ${
-                          isSelected
-                            ? 'bg-[#ff4d4f] border-[#ff4d4f] text-white'
-                            : 'bg-white border-stone-300 text-stone-400'
-                        }`}
-                        aria-hidden="true"
-                      >
-                        {isSavingThis ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : isSelected ? (
-                          <Check className="w-3.5 h-3.5" />
-                        ) : (
-                          <ChevronDown className="w-3.5 h-3.5 -rotate-90" />
-                        )}
-                      </div>
+                      {!isSelected && (
+                        <div
+                          className="w-6 h-6 rounded-full flex items-center justify-center border bg-white border-stone-300 text-stone-400"
+                          aria-hidden="true"
+                        >
+                          {isSavingThis ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Check className="w-3 h-3 opacity-0" />
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* Per-Design Independent Customization Panel (Opens directly inside the selected design card) */}
+                {/* Collapsible Design Setting Sections (Directly inside the selected design card) */}
                 {isSelected && (
-                  <div className="mt-5 pt-5 border-t border-[#ff4d4f]/20 space-y-5">
-                    {/* 1. Design Layout Settings */}
-                    <div className="rounded-2xl border border-stone-200/80 bg-white p-4 sm:p-5 space-y-4">
-                      <div className="flex items-center gap-2.5 pb-3 border-b border-stone-100">
-                        <div className="w-8 h-8 rounded-xl bg-stone-100 text-stone-700 flex items-center justify-center shrink-0">
-                          <LayoutGrid className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold font-sans text-stone-900">
-                            {design.shortName} — Layout Settings
-                          </h4>
-                          <p className="text-[11px] font-sans text-stone-500">
-                            Customize spacing and proportions specifically for {design.shortName}.
-                          </p>
-                        </div>
-                      </div>
+                  <div className="mt-4 pt-4 border-t border-[#ff4d4f]/20 space-y-2.5">
+                    {/* Accordion 1: Layout Settings */}
+                    <div className="rounded-xl border border-stone-200/80 bg-white overflow-hidden">
+                      <button
+                        type="button"
+                        aria-expanded={isLayoutExpanded}
+                        onClick={() => toggleAccordionSection(layoutKey)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-stone-50/70 transition-colors cursor-pointer"
+                      >
+                        <span className="text-xs sm:text-sm font-bold font-sans text-stone-900">
+                          Layout Settings
+                        </span>
+                        <ChevronUp
+                          className={`w-4 h-4 text-stone-500 shrink-0 transition-transform duration-200 ${
+                            isLayoutExpanded ? 'rotate-180' : 'rotate-0'
+                          }`}
+                          aria-hidden="true"
+                        />
+                      </button>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
+                      {isLayoutExpanded && (
+                        <div className="px-4 pb-4 pt-3 border-t border-stone-100 grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                          {/* Design 1 — Hanger Style */}
+                          {design.id === 'design-1-hanger' && (
+                            <>
+                              <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
+                                <NumericSliderControl
+                                  id={`${design.id}-card-gap`}
+                                  label="Product Spacing"
+                                  unit="px"
+                                  value={cfg.cardGap}
+                                  min={8}
+                                  max={48}
+                                  step={1}
+                                  minLabel="8px"
+                                  maxLabel="48px"
+                                  saving={savingFieldKey === `${design.id}:cardGap`}
+                                  onLiveChange={(val) =>
+                                    handleLiveNumericChange(design.id, 'cardGap', val)
+                                  }
+                                  onCommit={(val) =>
+                                    handleCommitNumericChange(design.id, 'cardGap', val)
+                                  }
+                                />
+                              </div>
 
-                        {/* Design 1 — Hanger Style specific settings */}
-                        {design.id === 'design-1-hanger' && (
-                          <>
-                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
-                              <NumericSliderControl
-                                id={`${design.id}-card-gap`}
-                                label="Product Spacing"
-                                helperText="Horizontal distance between hanging garments on the rail."
-                                unit="px"
-                                value={cfg.cardGap}
-                                min={8}
-                                max={48}
-                                step={1}
-                                minLabel="Tight (8px)"
-                                maxLabel="Wide (48px)"
-                                saving={savingFieldKey === `${design.id}:cardGap`}
-                                onLiveChange={(val) =>
-                                  handleLiveNumericChange(design.id, 'cardGap', val)
-                                }
-                                onCommit={(val) =>
-                                  handleCommitNumericChange(design.id, 'cardGap', val)
-                                }
-                              />
-                            </div>
-
-                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
-                              <label
-                                htmlFor={`${design.id}-rack-sway`}
-                                className="flex items-center justify-between gap-4 cursor-pointer"
-                              >
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
+                              <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
+                                <label
+                                  htmlFor={`${design.id}-rack-sway`}
+                                  className="flex items-center justify-between gap-4 cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
                                     <span className="text-xs font-semibold font-sans text-stone-800">
                                       Enable Rack Sway on Hover
                                     </span>
@@ -662,439 +639,297 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
                                       <Loader2 className="w-3 h-3 animate-spin text-stone-400" />
                                     )}
                                   </div>
-                                  <p className="text-[11px] font-sans text-stone-500 mt-0.5">
-                                    Subtly tilts hanging garments on the metal hook when hovered.
-                                  </p>
-                                </div>
-                                <div className="shrink-0">
-                                  <input
-                                    id={`${design.id}-rack-sway`}
-                                    type="checkbox"
-                                    checked={cfg.rackSway}
-                                    disabled={savingFieldKey === `${design.id}:rackSway`}
-                                    onChange={() => handleToggleDesignBoolean(design.id, 'rackSway')}
-                                    className="sr-only"
-                                  />
-                                  <span
-                                    aria-hidden="true"
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                      cfg.rackSway ? 'bg-[#ff4d4f]' : 'bg-stone-300'
-                                    }`}
-                                  >
-                                    <span
-                                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
-                                        cfg.rackSway ? 'translate-x-6' : 'translate-x-1'
-                                      }`}
+                                  <div className="shrink-0">
+                                    <input
+                                      id={`${design.id}-rack-sway`}
+                                      type="checkbox"
+                                      checked={cfg.rackSway}
+                                      disabled={savingFieldKey === `${design.id}:rackSway`}
+                                      onChange={() =>
+                                        handleToggleDesignBoolean(design.id, 'rackSway')
+                                      }
+                                      className="sr-only"
                                     />
-                                  </span>
-                                </div>
-                              </label>
-                            </div>
-                          </>
-                        )}
-
-                        {/* Design 2 — 3D Rotating Carousel specific settings */}
-                        {design.id === 'design-2-3d-flip' && (
-                          <>
-                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
-                              <NumericSliderControl
-                                id={`${design.id}-rotation-angle`}
-                                label="3D Rotation Angle"
-                                helperText="Tilt angle of left and right side products in 3D space."
-                                unit="°"
-                                value={cfg.rotationAngle}
-                                min={10}
-                                max={55}
-                                step={1}
-                                minLabel="Subtle (10°)"
-                                maxLabel="Steep (55°)"
-                                saving={savingFieldKey === `${design.id}:rotationAngle`}
-                                onLiveChange={(val) =>
-                                  handleLiveNumericChange(design.id, 'rotationAngle', val)
-                                }
-                                onCommit={(val) =>
-                                  handleCommitNumericChange(design.id, 'rotationAngle', val)
-                                }
-                              />
-                            </div>
-
-                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
-                              <NumericSliderControl
-                                id={`${design.id}-side-scale`}
-                                label="Side Card Scale"
-                                helperText="Size ratio of flanking left/right cards relative to the center product."
-                                unit="%"
-                                value={cfg.sideScale}
-                                min={55}
-                                max={95}
-                                step={1}
-                                minLabel="Compact (55%)"
-                                maxLabel="Large (95%)"
-                                saving={savingFieldKey === `${design.id}:sideScale`}
-                                onLiveChange={(val) =>
-                                  handleLiveNumericChange(design.id, 'sideScale', val)
-                                }
-                                onCommit={(val) =>
-                                  handleCommitNumericChange(design.id, 'sideScale', val)
-                                }
-                              />
-                            </div>
-                          </>
-                        )}
-
-                        {/* Design 3 — Simple Horizontal Slider specific settings */}
-                        {design.id === 'design-3-simple-slider' && (
-                          <>
-                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
-                              <NumericSliderControl
-                                id={`${design.id}-slider-gap`}
-                                label="Card Spacing"
-                                helperText="Gap between adjacent product cards in the horizontal row."
-                                unit="px"
-                                value={cfg.cardGap}
-                                min={8}
-                                max={48}
-                                step={1}
-                                minLabel="Compact (8px)"
-                                maxLabel="Spacious (48px)"
-                                saving={savingFieldKey === `${design.id}:cardGap`}
-                                onLiveChange={(val) =>
-                                  handleLiveNumericChange(design.id, 'cardGap', val)
-                                }
-                                onCommit={(val) =>
-                                  handleCommitNumericChange(design.id, 'cardGap', val)
-                                }
-                              />
-                            </div>
-
-                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
-                              <NumericSliderControl
-                                id={`${design.id}-card-width`}
-                                label="Desktop Card Width"
-                                helperText="Width of each product card on tablet and desktop viewports."
-                                unit="px"
-                                value={cfg.cardWidth}
-                                min={140}
-                                max={320}
-                                step={2}
-                                minLabel="Narrow (140px)"
-                                maxLabel="Wide (320px)"
-                                saving={savingFieldKey === `${design.id}:cardWidth`}
-                                onLiveChange={(val) =>
-                                  handleLiveNumericChange(design.id, 'cardWidth', val)
-                                }
-                                onCommit={(val) =>
-                                  handleCommitNumericChange(design.id, 'cardWidth', val)
-                                }
-                              />
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* 2. Per-Design Animation & Effects Settings */}
-                    <div className="rounded-2xl border border-stone-200/80 bg-white p-4 sm:p-5 space-y-4">
-                      <div className="pb-3 border-b border-stone-100">
-                        <h4 className="text-sm font-bold font-sans text-stone-900">
-                          {design.shortName} — Animation &amp; Effects
-                        </h4>
-                        <p className="text-[11px] font-sans text-stone-500 mt-0.5">
-                          {design.id === 'design-2-3d-flip'
-                            ? 'Independent floating animation and image drop-shadow controls.'
-                            : `Independent floating animation controls saved for ${design.shortName}.`}
-                        </p>
-                      </div>
-
-                      <div
-                        className={`grid grid-cols-1 gap-4 items-start ${
-                          design.id === 'design-2-3d-flip' ? 'lg:grid-cols-2' : ''
-                        }`}
-                      >
-                        {/* Floating Animation Control Block (Available Across All 3 Designs) */}
-                        <div
-                          className={`rounded-2xl border p-4 space-y-4 transition-colors ${
-                            cfg.enableFloatingAnimation
-                              ? 'border-[#ff4d4f]/40 bg-[#fffaf9]'
-                              : 'border-stone-200 bg-white'
-                          }`}
-                        >
-                          <label
-                            htmlFor={`${design.id}-toggle-floating`}
-                            className="flex items-center justify-between gap-4 cursor-pointer"
-                          >
-                            <div className="flex items-start gap-3 min-w-0">
-                              <div
-                                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                                  cfg.enableFloatingAnimation
-                                    ? 'bg-[#ff4d4f]/10 border-[#ff4d4f]/20 text-[#ff4d4f]'
-                                    : 'bg-stone-50 border-stone-200 text-stone-500'
-                                }`}
-                              >
-                                <Sparkles className="w-4 h-4" />
+                                    <span
+                                      aria-hidden="true"
+                                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                        cfg.rackSway ? 'bg-[#ff4d4f]' : 'bg-stone-300'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                                          cfg.rackSway ? 'translate-x-6' : 'translate-x-1'
+                                        }`}
+                                      />
+                                    </span>
+                                  </div>
+                                </label>
                               </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-bold font-sans text-stone-900">
-                                    Floating Animation
-                                  </span>
-                                  {savingFieldKey === `${design.id}:enableFloatingAnimation` && (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />
-                                  )}
-                                </div>
-                                <p className="text-xs font-sans text-stone-500 mt-0.5 leading-relaxed">
-                                  Gently float products up and down independently.
-                                </p>
-                              </div>
-                            </div>
+                            </>
+                          )}
 
-                            <div className="shrink-0">
-                              <input
-                                id={`${design.id}-toggle-floating`}
-                                type="checkbox"
-                                checked={cfg.enableFloatingAnimation}
-                                disabled={
-                                  savingFieldKey === `${design.id}:enableFloatingAnimation`
-                                }
-                                onChange={() =>
-                                  handleToggleDesignBoolean(
-                                    design.id,
-                                    'enableFloatingAnimation'
-                                  )
-                                }
-                                className="sr-only"
-                              />
-                              <span
-                                aria-hidden="true"
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                  cfg.enableFloatingAnimation ? 'bg-[#ff4d4f]' : 'bg-stone-300'
-                                }`}
-                              >
-                                <span
-                                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
-                                    cfg.enableFloatingAnimation
-                                      ? 'translate-x-6'
-                                      : 'translate-x-1'
-                                  }`}
-                                />
-                              </span>
-                            </div>
-                          </label>
-
-                          {/* Reveal Floating Animation Controls ONLY when ON */}
-                          {cfg.enableFloatingAnimation && (
-                            <div className="pt-3.5 border-t border-stone-200/70 space-y-4">
-                              <div className="flex items-start gap-3.5">
-                                <div className="flex-1 min-w-0">
-                                  <NumericSliderControl
-                                    id={`${design.id}-animation-speed`}
-                                    label="Animation Speed"
-                                    helperText={`Cycle ~${(
-                                      4.3 * getFloatingSpeedScale(cfg.animationSpeed)
-                                    ).toFixed(1)}s`}
-                                    unit="%"
-                                    value={cfg.animationSpeed}
-                                    min={0}
-                                    max={100}
-                                    step={1}
-                                    minLabel="Slow (0%)"
-                                    maxLabel="Fast (100%)"
-                                    saving={savingFieldKey === `${design.id}:animationSpeed`}
-                                    onLiveChange={(val) =>
-                                      handleLiveNumericChange(design.id, 'animationSpeed', val)
-                                    }
-                                    onCommit={(val) =>
-                                      handleCommitNumericChange(design.id, 'animationSpeed', val)
-                                    }
-                                  />
-                                </div>
-
-                                {/* Live Floating Motion Preview Box */}
-                                <div
-                                  className="w-11 h-11 rounded-lg bg-stone-50 border border-stone-200 shrink-0 flex items-center justify-center overflow-visible mt-1"
-                                  title="Live floating motion preview"
-                                >
-                                  <div
-                                    className="w-5 h-5 rounded-xs border border-stone-300 bg-white shadow-2xs panchu-floating-item"
-                                    style={
-                                      {
-                                        '--panchu-float-base-duration': '4.3s',
-                                        '--panchu-float-speed-scale': String(
-                                          getFloatingSpeedScale(cfg.animationSpeed)
-                                        ),
-                                        '--panchu-float-amplitude': `${Math.min(
-                                          10,
-                                          Math.max(2, Math.round(cfg.floatingIntensity * 0.6))
-                                        )}px`
-                                      } as React.CSSProperties
-                                    }
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="pt-3.5 border-t border-stone-200/70">
+                          {/* Design 2 — 3D Rotating Carousel */}
+                          {design.id === 'design-2-3d-flip' && (
+                            <>
+                              <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
                                 <NumericSliderControl
-                                  id={`${design.id}-floating-intensity`}
-                                  label="Floating Intensity"
-                                  helperText="Vertical travel distance for the floating motion."
-                                  unit="px"
-                                  value={cfg.floatingIntensity}
-                                  min={1}
-                                  max={20}
+                                  id={`${design.id}-rotation-angle`}
+                                  label="3D Rotation Angle"
+                                  unit="°"
+                                  value={cfg.rotationAngle}
+                                  min={10}
+                                  max={55}
                                   step={1}
-                                  minLabel="Subtle (1px)"
-                                  maxLabel="Strong (20px)"
-                                  saving={savingFieldKey === `${design.id}:floatingIntensity`}
+                                  minLabel="10°"
+                                  maxLabel="55°"
+                                  saving={savingFieldKey === `${design.id}:rotationAngle`}
                                   onLiveChange={(val) =>
-                                    handleLiveNumericChange(design.id, 'floatingIntensity', val)
+                                    handleLiveNumericChange(design.id, 'rotationAngle', val)
                                   }
                                   onCommit={(val) =>
-                                    handleCommitNumericChange(design.id, 'floatingIntensity', val)
+                                    handleCommitNumericChange(design.id, 'rotationAngle', val)
                                   }
                                 />
                               </div>
 
-                              <div className="pt-2 flex justify-end">
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleResetFloating(e, design.id)}
-                                  disabled={isResettingFloating}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 text-xs font-semibold font-sans text-stone-700 transition-colors cursor-pointer disabled:opacity-50"
-                                >
-                                  {isResettingFloating ? (
-                                    <Loader2 className="w-3 h-3 animate-spin text-stone-500" />
-                                  ) : (
-                                    <RotateCcw className="w-3 h-3 text-stone-600" />
-                                  )}
-                                  <span>Reset</span>
-                                </button>
+                              <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
+                                <NumericSliderControl
+                                  id={`${design.id}-side-scale`}
+                                  label="Side Card Scale"
+                                  unit="%"
+                                  value={cfg.sideScale}
+                                  min={55}
+                                  max={95}
+                                  step={1}
+                                  minLabel="55%"
+                                  maxLabel="95%"
+                                  saving={savingFieldKey === `${design.id}:sideScale`}
+                                  onLiveChange={(val) =>
+                                    handleLiveNumericChange(design.id, 'sideScale', val)
+                                  }
+                                  onCommit={(val) =>
+                                    handleCommitNumericChange(design.id, 'sideScale', val)
+                                  }
+                                />
                               </div>
-                            </div>
+                            </>
+                          )}
+
+                          {/* Design 3 — Simple Horizontal Slider */}
+                          {design.id === 'design-3-simple-slider' && (
+                            <>
+                              <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
+                                <NumericSliderControl
+                                  id={`${design.id}-slider-gap`}
+                                  label="Card Spacing"
+                                  unit="px"
+                                  value={cfg.cardGap}
+                                  min={8}
+                                  max={48}
+                                  step={1}
+                                  minLabel="8px"
+                                  maxLabel="48px"
+                                  saving={savingFieldKey === `${design.id}:cardGap`}
+                                  onLiveChange={(val) =>
+                                    handleLiveNumericChange(design.id, 'cardGap', val)
+                                  }
+                                  onCommit={(val) =>
+                                    handleCommitNumericChange(design.id, 'cardGap', val)
+                                  }
+                                />
+                              </div>
+
+                              <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
+                                <NumericSliderControl
+                                  id={`${design.id}-card-width`}
+                                  label="Desktop Card Width"
+                                  unit="px"
+                                  value={cfg.cardWidth}
+                                  min={140}
+                                  max={320}
+                                  step={2}
+                                  minLabel="140px"
+                                  maxLabel="320px"
+                                  saving={savingFieldKey === `${design.id}:cardWidth`}
+                                  onLiveChange={(val) =>
+                                    handleLiveNumericChange(design.id, 'cardWidth', val)
+                                  }
+                                  onCommit={(val) =>
+                                    handleCommitNumericChange(design.id, 'cardWidth', val)
+                                  }
+                                />
+                              </div>
+                            </>
                           )}
                         </div>
+                      )}
+                    </div>
 
-                        {/* Shadow Setting Control Block (Exclusive to Design 2 — 3D Rotating Carousel) */}
-                        {design.id === 'design-2-3d-flip' && (
+                    {/* Accordion 2: Animation & Effects */}
+                    <div className="rounded-xl border border-stone-200/80 bg-white overflow-hidden">
+                      <button
+                        type="button"
+                        aria-expanded={isEffectsExpanded}
+                        onClick={() => toggleAccordionSection(effectsKey)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-stone-50/70 transition-colors cursor-pointer"
+                      >
+                        <span className="text-xs sm:text-sm font-bold font-sans text-stone-900">
+                          Animation &amp; Effects
+                        </span>
+                        <ChevronUp
+                          className={`w-4 h-4 text-stone-500 shrink-0 transition-transform duration-200 ${
+                            isEffectsExpanded ? 'rotate-180' : 'rotate-0'
+                          }`}
+                          aria-hidden="true"
+                        />
+                      </button>
+
+                      {isEffectsExpanded && (
+                        <div
+                          className={`px-4 pb-4 pt-3 border-t border-stone-100 grid grid-cols-1 gap-4 items-start ${
+                            design.id === 'design-2-3d-flip' ? 'lg:grid-cols-2' : ''
+                          }`}
+                        >
+                          {/* Floating Animation Control Block (All 3 Designs) */}
                           <div
-                            className={`rounded-2xl border p-4 space-y-4 transition-colors ${
-                              cfg.enableShadow
+                            className={`rounded-xl border p-3.5 space-y-3.5 transition-colors ${
+                              cfg.enableFloatingAnimation
                                 ? 'border-[#ff4d4f]/40 bg-[#fffaf9]'
                                 : 'border-stone-200 bg-white'
                             }`}
                           >
                             <label
-                              htmlFor={`${design.id}-toggle-shadow`}
+                              htmlFor={`${design.id}-toggle-floating`}
                               className="flex items-center justify-between gap-4 cursor-pointer"
                             >
-                              <div className="flex items-start gap-3 min-w-0">
-                                <div
-                                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                                    cfg.enableShadow
-                                      ? 'bg-[#ff4d4f]/10 border-[#ff4d4f]/20 text-[#ff4d4f]'
-                                      : 'bg-stone-50 border-stone-200 text-stone-500'
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <Sparkles
+                                  className={`w-4 h-4 shrink-0 ${
+                                    cfg.enableFloatingAnimation
+                                      ? 'text-[#ff4d4f]'
+                                      : 'text-stone-400'
                                   }`}
-                                >
-                                  <Layers className="w-4 h-4" />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-sm font-bold font-sans text-stone-900">
-                                      Shadow Setting
-                                    </span>
-                                    {savingFieldKey === `${design.id}:enableShadow` && (
-                                      <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />
-                                    )}
-                                  </div>
-                                  <p className="text-xs font-sans text-stone-500 mt-0.5 leading-relaxed">
-                                    Display a soft shadow underneath each product image.
-                                  </p>
-                                </div>
+                                />
+                                <span className="text-xs sm:text-sm font-bold font-sans text-stone-900">
+                                  Floating Animation
+                                </span>
+                                {savingFieldKey === `${design.id}:enableFloatingAnimation` && (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />
+                                )}
                               </div>
 
                               <div className="shrink-0">
                                 <input
-                                  id={`${design.id}-toggle-shadow`}
+                                  id={`${design.id}-toggle-floating`}
                                   type="checkbox"
-                                  checked={cfg.enableShadow}
-                                  disabled={savingFieldKey === `${design.id}:enableShadow`}
+                                  checked={cfg.enableFloatingAnimation}
+                                  disabled={
+                                    savingFieldKey === `${design.id}:enableFloatingAnimation`
+                                  }
                                   onChange={() =>
-                                    handleToggleDesignBoolean(design.id, 'enableShadow')
+                                    handleToggleDesignBoolean(
+                                      design.id,
+                                      'enableFloatingAnimation'
+                                    )
                                   }
                                   className="sr-only"
                                 />
                                 <span
                                   aria-hidden="true"
                                   className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                    cfg.enableShadow ? 'bg-[#ff4d4f]' : 'bg-stone-300'
+                                    cfg.enableFloatingAnimation ? 'bg-[#ff4d4f]' : 'bg-stone-300'
                                   }`}
                                 >
                                   <span
                                     className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
-                                      cfg.enableShadow ? 'translate-x-6' : 'translate-x-1'
+                                      cfg.enableFloatingAnimation
+                                        ? 'translate-x-6'
+                                        : 'translate-x-1'
                                     }`}
                                   />
                                 </span>
                               </div>
                             </label>
 
-                            {/* Reveal Shadow Customization Controls ONLY when ON */}
-                            {cfg.enableShadow && (
-                              <div className="pt-3.5 border-t border-stone-200/70 space-y-4">
-                                <div className="flex items-start gap-3.5">
+                            {/* Reveal Floating Animation Controls ONLY when ON */}
+                            {cfg.enableFloatingAnimation && (
+                              <div className="pt-3 border-t border-stone-200/70 space-y-3.5">
+                                <div className="flex items-start gap-3">
                                   <div className="flex-1 min-w-0">
                                     <NumericSliderControl
-                                      id={`${design.id}-shadow-intensity`}
-                                      label="Shadow Intensity & Blur"
-                                      helperText={`Blur ~${Math.round(
-                                        10 + (cfg.shadowIntensity / 100) * 38
-                                      )}px`}
+                                      id={`${design.id}-animation-speed`}
+                                      label="Animation Speed"
+                                      helperText={`Cycle ~${(
+                                        4.3 * getFloatingSpeedScale(cfg.animationSpeed)
+                                      ).toFixed(1)}s`}
                                       unit="%"
-                                      value={cfg.shadowIntensity}
+                                      value={cfg.animationSpeed}
                                       min={0}
                                       max={100}
                                       step={1}
-                                      minLabel="Subtle (0%)"
-                                      maxLabel="Deep Blur (100%)"
-                                      saving={savingFieldKey === `${design.id}:shadowIntensity`}
+                                      minLabel="0%"
+                                      maxLabel="100%"
+                                      saving={savingFieldKey === `${design.id}:animationSpeed`}
                                       onLiveChange={(val) =>
-                                        handleLiveNumericChange(design.id, 'shadowIntensity', val)
+                                        handleLiveNumericChange(design.id, 'animationSpeed', val)
                                       }
                                       onCommit={(val) =>
-                                        handleCommitNumericChange(design.id, 'shadowIntensity', val)
+                                        handleCommitNumericChange(design.id, 'animationSpeed', val)
                                       }
                                     />
                                   </div>
 
-                                  {/* Live Shadow Underneath Product Preview */}
                                   <div
-                                    className="w-11 h-12 rounded-lg bg-stone-50 border border-stone-200 shrink-0 flex flex-col items-center justify-center gap-1 mt-1"
-                                    title="Live shadow preview underneath product image"
+                                    className="w-10 h-10 rounded-lg bg-stone-50 border border-stone-200 shrink-0 flex items-center justify-center overflow-visible mt-1"
+                                    title="Live floating preview"
                                   >
-                                    <div className="w-5 h-5 rounded-xs bg-white border border-stone-300" />
                                     <div
-                                      className="w-6 h-1.5 rounded-full"
-                                      style={{
-                                        opacity:
-                                          cfg.shadowIntensity > 0
-                                            ? Math.min(1, 0.25 + (cfg.shadowIntensity / 100) * 0.75)
-                                            : 0,
-                                        filter: `blur(${Math.round(
-                                          1 + (cfg.shadowIntensity / 100) * 3
-                                        )}px)`,
-                                        background: 'rgba(0, 0, 0, 0.65)'
-                                      }}
+                                      className="w-4 h-4 rounded-xs border border-stone-300 bg-white shadow-2xs panchu-floating-item"
+                                      style={
+                                        {
+                                          '--panchu-float-base-duration': '4.3s',
+                                          '--panchu-float-speed-scale': String(
+                                            getFloatingSpeedScale(cfg.animationSpeed)
+                                          ),
+                                          '--panchu-float-amplitude': `${Math.min(
+                                            10,
+                                            Math.max(2, Math.round(cfg.floatingIntensity * 0.6))
+                                          )}px`
+                                        } as React.CSSProperties
+                                      }
                                     />
                                   </div>
                                 </div>
 
-                                <div className="pt-2 flex justify-end">
+                                <div className="pt-3 border-t border-stone-200/70">
+                                  <NumericSliderControl
+                                    id={`${design.id}-floating-intensity`}
+                                    label="Floating Intensity"
+                                    unit="px"
+                                    value={cfg.floatingIntensity}
+                                    min={1}
+                                    max={20}
+                                    step={1}
+                                    minLabel="1px"
+                                    maxLabel="20px"
+                                    saving={savingFieldKey === `${design.id}:floatingIntensity`}
+                                    onLiveChange={(val) =>
+                                      handleLiveNumericChange(design.id, 'floatingIntensity', val)
+                                    }
+                                    onCommit={(val) =>
+                                      handleCommitNumericChange(design.id, 'floatingIntensity', val)
+                                    }
+                                  />
+                                </div>
+
+                                <div className="pt-1 flex justify-end">
                                   <button
                                     type="button"
-                                    onClick={handleResetShadow}
-                                    disabled={isResettingShadow}
+                                    onClick={(e) => handleResetFloating(e, design.id)}
+                                    disabled={isResettingFloating}
                                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 text-xs font-semibold font-sans text-stone-700 transition-colors cursor-pointer disabled:opacity-50"
                                   >
-                                    {isResettingShadow ? (
+                                    {isResettingFloating ? (
                                       <Loader2 className="w-3 h-3 animate-spin text-stone-500" />
                                     ) : (
                                       <RotateCcw className="w-3 h-3 text-stone-600" />
@@ -1105,8 +940,141 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
                               </div>
                             )}
                           </div>
-                        )}
-                      </div>
+
+                          {/* Shadow Setting Control Block (Exclusive to Design 2) */}
+                          {design.id === 'design-2-3d-flip' && (
+                            <div
+                              className={`rounded-xl border p-3.5 space-y-3.5 transition-colors ${
+                                cfg.enableShadow
+                                  ? 'border-[#ff4d4f]/40 bg-[#fffaf9]'
+                                  : 'border-stone-200 bg-white'
+                              }`}
+                            >
+                              <label
+                                htmlFor={`${design.id}-toggle-shadow`}
+                                className="flex items-center justify-between gap-4 cursor-pointer"
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <Layers
+                                    className={`w-4 h-4 shrink-0 ${
+                                      cfg.enableShadow ? 'text-[#ff4d4f]' : 'text-stone-400'
+                                    }`}
+                                  />
+                                  <span className="text-xs sm:text-sm font-bold font-sans text-stone-900">
+                                    Shadow Setting
+                                  </span>
+                                  {savingFieldKey === `${design.id}:enableShadow` && (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />
+                                  )}
+                                </div>
+
+                                <div className="shrink-0">
+                                  <input
+                                    id={`${design.id}-toggle-shadow`}
+                                    type="checkbox"
+                                    checked={cfg.enableShadow}
+                                    disabled={savingFieldKey === `${design.id}:enableShadow`}
+                                    onChange={() =>
+                                      handleToggleDesignBoolean(design.id, 'enableShadow')
+                                    }
+                                    className="sr-only"
+                                  />
+                                  <span
+                                    aria-hidden="true"
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                      cfg.enableShadow ? 'bg-[#ff4d4f]' : 'bg-stone-300'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                                        cfg.enableShadow ? 'translate-x-6' : 'translate-x-1'
+                                      }`}
+                                    />
+                                  </span>
+                                </div>
+                              </label>
+
+                              {/* Reveal Shadow Customization Controls ONLY when ON */}
+                              {cfg.enableShadow && (
+                                <div className="pt-3 border-t border-stone-200/70 space-y-3.5">
+                                  <div className="flex items-start gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <NumericSliderControl
+                                        id={`${design.id}-shadow-intensity`}
+                                        label="Shadow Intensity & Blur"
+                                        helperText={`Blur ~${Math.round(
+                                          10 + (cfg.shadowIntensity / 100) * 38
+                                        )}px`}
+                                        unit="%"
+                                        value={cfg.shadowIntensity}
+                                        min={0}
+                                        max={100}
+                                        step={1}
+                                        minLabel="0%"
+                                        maxLabel="100%"
+                                        saving={savingFieldKey === `${design.id}:shadowIntensity`}
+                                        onLiveChange={(val) =>
+                                          handleLiveNumericChange(
+                                            design.id,
+                                            'shadowIntensity',
+                                            val
+                                          )
+                                        }
+                                        onCommit={(val) =>
+                                          handleCommitNumericChange(
+                                            design.id,
+                                            'shadowIntensity',
+                                            val
+                                          )
+                                        }
+                                      />
+                                    </div>
+
+                                    <div
+                                      className="w-10 h-11 rounded-lg bg-stone-50 border border-stone-200 shrink-0 flex flex-col items-center justify-center gap-1 mt-1"
+                                      title="Live shadow preview underneath product image"
+                                    >
+                                      <div className="w-4 h-4 rounded-xs bg-white border border-stone-300" />
+                                      <div
+                                        className="w-5 h-1.5 rounded-full"
+                                        style={{
+                                          opacity:
+                                            cfg.shadowIntensity > 0
+                                              ? Math.min(
+                                                  1,
+                                                  0.25 + (cfg.shadowIntensity / 100) * 0.75
+                                                )
+                                              : 0,
+                                          filter: `blur(${Math.round(
+                                            1 + (cfg.shadowIntensity / 100) * 3
+                                          )}px)`,
+                                          background: 'rgba(0, 0, 0, 0.65)'
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+
+                                  <div className="pt-1 flex justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={handleResetShadow}
+                                      disabled={isResettingShadow}
+                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 text-xs font-semibold font-sans text-stone-700 transition-colors cursor-pointer disabled:opacity-50"
+                                    >
+                                      {isResettingShadow ? (
+                                        <Loader2 className="w-3 h-3 animate-spin text-stone-500" />
+                                      ) : (
+                                        <RotateCcw className="w-3 h-3 text-stone-600" />
+                                      )}
+                                      <span>Reset</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
