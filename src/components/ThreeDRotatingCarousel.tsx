@@ -1,10 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { Product } from '../types';
 import { ProductImage } from './ProductImage';
-import { PanchuLogo } from './PanchuLogo';
 import { useRecommendedProducts } from '../hooks/useRecommendedProducts';
 import { getFloatingSpeedScale } from '../services/firebaseService';
 
@@ -21,8 +18,6 @@ interface ThreeDRotatingCarouselProps {
   rotationAngle?: number;
   sideScale?: number;
 }
-
-type TransitionPhase = 'idle' | 'entering' | 'fading-logo' | 'exiting';
 
 function getWrappedOffset(index: number, virtualPos: number, count: number): number {
   if (count <= 0) return 0;
@@ -467,77 +462,6 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
     ensureAnimationLoop();
   };
 
-  // Full-screen Panchu Logo click transition state (matches Design 1 & Design 3 exactly)
-  const [transitionTarget, setTransitionTarget] = useState<Product | null>(null);
-  const [transitionPhase, setTransitionPhase] = useState<TransitionPhase>('idle');
-  const timersRef = useRef<number[]>([]);
-
-  const clearTransitionTimers = useCallback(() => {
-    timersRef.current.forEach((id) => window.clearTimeout(id));
-    timersRef.current = [];
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearTransitionTimers();
-      if (typeof document !== 'undefined') {
-        document.body.style.overflow = '';
-      }
-    };
-  }, [clearTransitionTimers]);
-
-  const triggerProductTransition = (targetProduct: Product) => {
-    if (transitionPhase !== 'idle') return;
-
-    clearTransitionTimers();
-    setTransitionTarget(targetProduct);
-    setTransitionPhase('entering');
-
-    if (typeof document !== 'undefined') {
-      document.body.style.overflow = 'hidden';
-    }
-
-    const prefersReducedMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-    if (prefersReducedMotion) {
-      const tNav = window.setTimeout(() => {
-        onSelectProduct(targetProduct);
-        setTransitionPhase('exiting');
-      }, 280);
-      const tDone = window.setTimeout(() => {
-        setTransitionTarget(null);
-        setTransitionPhase('idle');
-        if (typeof document !== 'undefined') {
-          document.body.style.overflow = '';
-        }
-      }, 520);
-      timersRef.current = [tNav, tDone];
-      return;
-    }
-
-    const tFadeLogo = window.setTimeout(() => {
-      setTransitionPhase('fading-logo');
-    }, 680);
-
-    const tNavigate = window.setTimeout(() => {
-      onSelectProduct(targetProduct);
-      setTransitionPhase('exiting');
-    }, 1260);
-
-    const tFinish = window.setTimeout(() => {
-      setTransitionTarget(null);
-      setTransitionPhase('idle');
-      if (typeof document !== 'undefined') {
-        document.body.style.overflow = '';
-      }
-    }, 1580);
-
-    timersRef.current = [tFadeLogo, tNavigate, tFinish];
-  };
-
   const handleCardClick = (e: React.MouseEvent, targetProduct: Product) => {
     e.preventDefault();
     // Swallow accidental navigation click after swipe/drag
@@ -545,65 +469,17 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
       dragRef.current.movedPx = 0;
       return;
     }
-    triggerProductTransition(targetProduct);
+    onSelectProduct(targetProduct);
   };
 
   if (count === 0) {
     return null;
   }
 
-  const transitionOverlay = (
-    <AnimatePresence>
-      {transitionTarget && transitionPhase !== 'idle' && (
-        <motion.div
-          key={`panchu-3d-transition-${transitionTarget.id}`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: transitionPhase === 'exiting' ? 0 : 1 }}
-          exit={{ opacity: 0 }}
-          transition={{
-            duration: transitionPhase === 'exiting' ? 0.34 : 0.28,
-            ease: [0.16, 1, 0.3, 1]
-          }}
-          className={`fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto ${
-            isDark ? 'bg-neutral-950' : 'bg-white'
-          }`}
-          role="presentation"
-          aria-live="polite"
-          aria-label={`Opening ${transitionTarget.name}`}
-        >
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              background: isDark
-                ? 'radial-gradient(circle at center, rgba(220,38,38,0.08) 0%, transparent 55%)'
-                : 'radial-gradient(circle at center, rgba(220,38,38,0.04) 0%, transparent 55%)'
-            }}
-          />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.92 }}
-            animate={
-              transitionPhase === 'fading-logo' || transitionPhase === 'exiting'
-                ? { opacity: 0, scale: 1.03 }
-                : { opacity: 1, scale: 1 }
-            }
-            transition={{
-              duration: transitionPhase === 'fading-logo' ? 0.56 : 0.44,
-              ease: [0.16, 1, 0.3, 1]
-            }}
-            className="relative flex flex-col items-center justify-center px-6"
-          >
-            <PanchuLogo size="xl" />
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-
   const focusedProduct = recommendedProducts[activeCenteredIndex] || recommendedProducts[0];
 
   return (
-    <>
-      <div className="relative -mx-4 sm:mx-0 select-none">
+    <div className="relative -mx-4 sm:mx-0 select-none">
         {/* 3D Perspective Stage */}
         <div
           ref={stageRef}
@@ -867,8 +743,5 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
           </div>
         )}
       </div>
-
-      {typeof document !== 'undefined' ? createPortal(transitionOverlay, document.body) : transitionOverlay}
-    </>
   );
 };

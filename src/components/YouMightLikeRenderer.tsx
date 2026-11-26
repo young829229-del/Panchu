@@ -4,6 +4,10 @@ import { HangerRecommendations } from './HangerRecommendations';
 import { ThreeDRotatingCarousel } from './ThreeDRotatingCarousel';
 import { SimpleSliderRecommendations } from './SimpleSliderRecommendations';
 import {
+  PanchuLogoTransitionOverlay,
+  usePanchuLogoTransition
+} from './PanchuLogoTransition';
+import {
   applyGlobalFloatingCssVars,
   getCanonicalAdditionalOptionsSync,
   subscribeAdditionalOptionsSettings
@@ -19,6 +23,7 @@ interface YouMightLikeRendererProps {
 /**
  * Dynamically renders the active "You Might Like" layout and its own independent
  * customization settings selected in Admin > Additional Options, updating live via Firebase.
+ * Exclusively wraps clicks inside this section with the sequential Panchu logo transition.
  */
 export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
   currentProduct,
@@ -29,6 +34,17 @@ export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
   const [options, setOptions] = useState<AdditionalOptionsSettings>(() =>
     getCanonicalAdditionalOptionsSync()
   );
+
+  const {
+    transitionTarget,
+    phase,
+    prefersReducedMotion,
+    triggerTransition,
+    handleLogoAnimationComplete,
+    handleBackdropAnimationComplete
+  } = usePanchuLogoTransition({
+    onNavigate: onSelectProduct
+  });
 
   useEffect(() => {
     const unsubscribe = subscribeAdditionalOptionsSettings((settings) => {
@@ -43,53 +59,69 @@ export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
     applyGlobalFloatingCssVars(activeConfig.animationSpeed, activeConfig.floatingIntensity);
   }, [activeConfig.animationSpeed, activeConfig.floatingIntensity]);
 
-  switch (options.youMightLikeDesign) {
-    case 'design-3-simple-slider':
-      return (
-        <SimpleSliderRecommendations
-          currentProduct={currentProduct}
-          products={products}
-          onSelectProduct={onSelectProduct}
-          theme={theme}
-          enableFloatingAnimation={activeConfig.enableFloatingAnimation}
-          animationSpeed={activeConfig.animationSpeed}
-          floatingIntensity={activeConfig.floatingIntensity}
-          cardGap={activeConfig.cardGap}
-          cardWidth={activeConfig.cardWidth}
-        />
-      );
+  const renderDesign = () => {
+    switch (options.youMightLikeDesign) {
+      case 'design-3-simple-slider':
+        return (
+          <SimpleSliderRecommendations
+            currentProduct={currentProduct}
+            products={products}
+            onSelectProduct={triggerTransition}
+            theme={theme}
+            enableFloatingAnimation={activeConfig.enableFloatingAnimation}
+            animationSpeed={activeConfig.animationSpeed}
+            floatingIntensity={activeConfig.floatingIntensity}
+            cardGap={activeConfig.cardGap}
+            cardWidth={activeConfig.cardWidth}
+          />
+        );
 
-    case 'design-2-3d-flip':
-      return (
-        <ThreeDRotatingCarousel
-          currentProduct={currentProduct}
-          products={products}
-          onSelectProduct={onSelectProduct}
-          theme={theme}
-          enableShadow={activeConfig.enableShadow}
-          shadowIntensity={activeConfig.shadowIntensity}
-          enableFloatingAnimation={activeConfig.enableFloatingAnimation}
-          animationSpeed={activeConfig.animationSpeed}
-          floatingIntensity={activeConfig.floatingIntensity}
-          rotationAngle={activeConfig.rotationAngle}
-          sideScale={activeConfig.sideScale}
-        />
-      );
+      case 'design-2-3d-flip':
+        return (
+          <ThreeDRotatingCarousel
+            currentProduct={currentProduct}
+            products={products}
+            onSelectProduct={triggerTransition}
+            theme={theme}
+            enableShadow={activeConfig.enableShadow}
+            shadowIntensity={activeConfig.shadowIntensity}
+            enableFloatingAnimation={activeConfig.enableFloatingAnimation}
+            animationSpeed={activeConfig.animationSpeed}
+            floatingIntensity={activeConfig.floatingIntensity}
+            rotationAngle={activeConfig.rotationAngle}
+            sideScale={activeConfig.sideScale}
+          />
+        );
 
-    case 'design-1-hanger':
-    default:
-      return (
-        <HangerRecommendations
-          currentProduct={currentProduct}
-          products={products}
-          onSelectProduct={onSelectProduct}
-          theme={theme}
-          enableFloatingAnimation={activeConfig.enableFloatingAnimation}
-          animationSpeed={activeConfig.animationSpeed}
-          floatingIntensity={activeConfig.floatingIntensity}
-          cardGap={activeConfig.cardGap}
-          rackSway={activeConfig.rackSway}
-        />
-      );
-  }
+      case 'design-1-hanger':
+      default:
+        return (
+          <HangerRecommendations
+            currentProduct={currentProduct}
+            products={products}
+            onSelectProduct={triggerTransition}
+            theme={theme}
+            enableFloatingAnimation={activeConfig.enableFloatingAnimation}
+            animationSpeed={activeConfig.animationSpeed}
+            floatingIntensity={activeConfig.floatingIntensity}
+            cardGap={activeConfig.cardGap}
+            rackSway={activeConfig.rackSway}
+          />
+        );
+    }
+  };
+
+  return (
+    <>
+      {renderDesign()}
+      <PanchuLogoTransitionOverlay
+        targetProduct={transitionTarget}
+        phase={phase}
+        isDark={theme === 'dark'}
+        prefersReducedMotion={prefersReducedMotion}
+        onLogoAnimationComplete={handleLogoAnimationComplete}
+        onBackdropAnimationComplete={handleBackdropAnimationComplete}
+      />
+    </>
+  );
 };
