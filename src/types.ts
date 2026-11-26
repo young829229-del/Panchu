@@ -269,7 +269,6 @@ export type YouMightLikeDesignId =
   | 'design-3-simple-slider';
 
 export interface DesignCustomizationSettings {
-  maxVisibleProducts: number;
   enableShadow: boolean;
   shadowIntensity: number;
   enableFloatingAnimation: boolean;

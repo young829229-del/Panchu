@@ -12,7 +12,6 @@ interface HangerRecommendationsProps {
   products?: Product[];
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
-  maxVisibleProducts?: number;
   enableFloatingAnimation?: boolean;
   animationSpeed?: number;
   floatingIntensity?: number;
@@ -111,7 +110,6 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
   products: propProducts,
   onSelectProduct,
   theme = 'light',
-  maxVisibleProducts = 10,
   enableFloatingAnimation = false,
   animationSpeed = 50,
   floatingIntensity = 7,
@@ -175,18 +173,16 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
       filtered.push(item);
     }
 
-    // Prioritize matching gender / unisex items first on the rail while respecting maxVisibleProducts
-    return filtered
-      .sort((a, b) => {
-        const aMatch = a.gender === currentProduct.gender ? 2 : a.gender === 'unisex' ? 1 : 0;
-        const bMatch = b.gender === currentProduct.gender ? 2 : b.gender === 'unisex' ? 1 : 0;
-        if (bMatch !== aMatch) return bMatch - aMatch;
-        const aFeat = a.bestSelling || a.featured ? 1 : 0;
-        const bFeat = b.bestSelling || b.featured ? 1 : 0;
-        return bFeat - aFeat;
-      })
-      .slice(0, Math.max(2, Math.min(24, maxVisibleProducts)));
-  }, [hasFirebaseLoaded, liveFirebaseProducts, propProducts, currentProduct, maxVisibleProducts]);
+    // Prioritize matching gender / unisex items first on the rail and display all eligible products
+    return filtered.sort((a, b) => {
+      const aMatch = a.gender === currentProduct.gender ? 2 : a.gender === 'unisex' ? 1 : 0;
+      const bMatch = b.gender === currentProduct.gender ? 2 : b.gender === 'unisex' ? 1 : 0;
+      if (bMatch !== aMatch) return bMatch - aMatch;
+      const aFeat = a.bestSelling || a.featured ? 1 : 0;
+      const bFeat = b.bestSelling || b.featured ? 1 : 0;
+      return bFeat - aFeat;
+    });
+  }, [hasFirebaseLoaded, liveFirebaseProducts, propProducts, currentProduct]);
 
   // Horizontal rail scroll & desktop drag state
   const railScrollRef = useRef<HTMLDivElement>(null);

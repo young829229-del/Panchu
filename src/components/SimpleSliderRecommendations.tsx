@@ -13,7 +13,6 @@ interface SimpleSliderRecommendationsProps {
   products?: Product[];
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
-  maxVisibleProducts?: number;
   enableFloatingAnimation?: boolean;
   animationSpeed?: number;
   floatingIntensity?: number;
@@ -34,7 +33,6 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
   products: propProducts,
   onSelectProduct,
   theme = 'light',
-  maxVisibleProducts = 10,
   enableFloatingAnimation = false,
   animationSpeed = 50,
   floatingIntensity = 7,
@@ -44,8 +42,7 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
   const isDark = theme === 'dark';
   const floatSpeedScale = getFloatingSpeedScale(animationSpeed);
   const floatAmpPx = Math.max(1, Math.min(20, Math.round(floatingIntensity)));
-  const rawRecommended = useRecommendedProducts(currentProduct, propProducts);
-  const recommendedProducts = rawRecommended.slice(0, Math.max(2, Math.min(24, maxVisibleProducts)));
+  const recommendedProducts = useRecommendedProducts(currentProduct, propProducts);
   const safeGap = Math.max(8, Math.min(48, cardGap));
   const safeCardWidth = Math.max(140, Math.min(320, cardWidth));
   const mobileCardWidth = Math.max(140, Math.min(220, Math.round(safeCardWidth * 0.7)));

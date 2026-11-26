@@ -13,7 +13,6 @@ interface ThreeDRotatingCarouselProps {
   products?: Product[];
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
-  maxVisibleProducts?: number;
   enableShadow?: boolean;
   shadowIntensity?: number;
   enableFloatingAnimation?: boolean;
@@ -53,7 +52,6 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
   products: propProducts,
   onSelectProduct,
   theme = 'light',
-  maxVisibleProducts = 10,
   enableShadow = true,
   shadowIntensity = 55,
   enableFloatingAnimation = false,
@@ -80,8 +78,7 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
           -4 - clampedIntensity * 8
         )}px rgba(0, 0, 0, ${(isDark ? 0.3 + clampedIntensity * 0.45 : 0.06 + clampedIntensity * 0.16).toFixed(3)})`
       : 'none';
-  const rawRecommended = useRecommendedProducts(currentProduct, propProducts);
-  const recommendedProducts = rawRecommended.slice(0, Math.max(2, Math.min(24, maxVisibleProducts)));
+  const recommendedProducts = useRecommendedProducts(currentProduct, propProducts);
   const count = recommendedProducts.length;
 
   const stageRef = useRef<HTMLDivElement>(null);

@@ -3655,7 +3655,6 @@ export const VALID_YOU_MIGHT_LIKE_DESIGN_IDS: readonly YouMightLikeDesignId[] = 
 
 export const DEFAULT_DESIGN_CUSTOMIZATIONS: PerDesignSettingsMap = {
   'design-1-hanger': {
-    maxVisibleProducts: 10,
     enableShadow: false,
     shadowIntensity: 0,
     enableFloatingAnimation: false,
@@ -3668,7 +3667,6 @@ export const DEFAULT_DESIGN_CUSTOMIZATIONS: PerDesignSettingsMap = {
     cardWidth: 214
   },
   'design-2-3d-flip': {
-    maxVisibleProducts: 10,
     enableShadow: true,
     shadowIntensity: 55,
     enableFloatingAnimation: false,
@@ -3681,7 +3679,6 @@ export const DEFAULT_DESIGN_CUSTOMIZATIONS: PerDesignSettingsMap = {
     cardWidth: 236
   },
   'design-3-simple-slider': {
-    maxVisibleProducts: 10,
     enableShadow: false,
     shadowIntensity: 0,
     enableFloatingAnimation: false,
@@ -3734,7 +3731,6 @@ function normalizeDesignCustomization(
 ): DesignCustomizationSettings {
   const defaults = DEFAULT_DESIGN_CUSTOMIZATIONS[designId];
   return {
-    maxVisibleProducts: clampNumber(raw?.maxVisibleProducts, 2, 24, defaults.maxVisibleProducts),
     enableShadow:
       typeof raw?.enableShadow === 'boolean'
         ? raw.enableShadow

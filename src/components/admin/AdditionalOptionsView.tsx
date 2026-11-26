@@ -616,33 +616,12 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
                             {design.shortName} — Layout Settings
                           </h4>
                           <p className="text-[11px] font-sans text-stone-500">
-                            Customize product count and proportions specifically for {design.shortName}.
+                            Customize spacing and proportions specifically for {design.shortName}.
                           </p>
                         </div>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 items-start">
-                        {/* Shared per-design: Number of visible products */}
-                        <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
-                          <NumericSliderControl
-                            id={`${design.id}-max-visible`}
-                            label="Visible Products"
-                            helperText="Maximum number of recommended products shown in this design."
-                            value={cfg.maxVisibleProducts}
-                            min={2}
-                            max={24}
-                            step={1}
-                            minLabel="2 items"
-                            maxLabel="24 items"
-                            saving={savingFieldKey === `${design.id}:maxVisibleProducts`}
-                            onLiveChange={(val) =>
-                              handleLiveNumericChange(design.id, 'maxVisibleProducts', val)
-                            }
-                            onCommit={(val) =>
-                              handleCommitNumericChange(design.id, 'maxVisibleProducts', val)
-                            }
-                          />
-                        </div>
 
                         {/* Design 1 — Hanger Style specific settings */}
                         {design.id === 'design-1-hanger' && (
@@ -669,7 +648,7 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
                               />
                             </div>
 
-                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5 md:col-span-2">
+                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
                               <label
                                 htmlFor={`${design.id}-rack-sway`}
                                 className="flex items-center justify-between gap-4 cursor-pointer"
@@ -739,7 +718,7 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
                               />
                             </div>
 
-                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5 md:col-span-2">
+                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
                               <NumericSliderControl
                                 id={`${design.id}-side-scale`}
                                 label="Side Card Scale"
@@ -788,7 +767,7 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
                               />
                             </div>
 
-                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5 md:col-span-2">
+                            <div className="rounded-xl border border-stone-200/70 bg-stone-50/50 p-3.5">
                               <NumericSliderControl
                                 id={`${design.id}-card-width`}
                                 label="Desktop Card Width"
