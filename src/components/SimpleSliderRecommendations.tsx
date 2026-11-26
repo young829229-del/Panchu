@@ -14,8 +14,6 @@ interface SimpleSliderRecommendationsProps {
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
   maxVisibleProducts?: number;
-  enableShadow?: boolean;
-  shadowIntensity?: number;
   enableFloatingAnimation?: boolean;
   animationSpeed?: number;
   floatingIntensity?: number;
@@ -37,8 +35,6 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
   onSelectProduct,
   theme = 'light',
   maxVisibleProducts = 10,
-  enableShadow = true,
-  shadowIntensity = 45,
   enableFloatingAnimation = false,
   animationSpeed = 50,
   floatingIntensity = 7,
@@ -48,13 +44,6 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
   const isDark = theme === 'dark';
   const floatSpeedScale = getFloatingSpeedScale(animationSpeed);
   const floatAmpPx = Math.max(1, Math.min(20, Math.round(floatingIntensity)));
-  const clampedIntensity = Math.max(0, Math.min(100, shadowIntensity)) / 100;
-  const computedBoxShadow =
-    enableShadow && clampedIntensity > 0
-      ? `0 ${Math.round(6 + clampedIntensity * 16)}px ${Math.round(10 + clampedIntensity * 38)}px ${Math.round(
-          -4 - clampedIntensity * 8
-        )}px rgba(0, 0, 0, ${(isDark ? 0.35 + clampedIntensity * 0.55 : 0.08 + clampedIntensity * 0.24).toFixed(3)})`
-      : 'none';
   const rawRecommended = useRecommendedProducts(currentProduct, propProducts);
   const recommendedProducts = rawRecommended.slice(0, Math.max(2, Math.min(24, maxVisibleProducts)));
   const safeGap = Math.max(8, Math.min(48, cardGap));
@@ -460,7 +449,6 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
                         ? 'bg-neutral-950 border-neutral-800 group-hover:border-neutral-600'
                         : 'bg-white border-stone-200 group-hover:border-black'
                     }`}
-                    style={{ boxShadow: computedBoxShadow }}
                   >
                     <div className="w-full h-full [&_img]:pointer-events-none [&_img]:select-none">
                       <ProductImage

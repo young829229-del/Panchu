@@ -683,31 +683,51 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
                     style={floatStyle}
                   >
                     {/* Floating Card Surface Preserving Original Product Photography */}
-                    <div
-                      className={`relative w-full aspect-square overflow-hidden border transition-all duration-200 ${
-                        isDark
-                          ? isCentered
-                            ? 'bg-neutral-950 border-neutral-600'
-                            : 'bg-neutral-950 border-neutral-800'
-                          : isCentered
-                            ? 'bg-white border-stone-300'
-                            : 'bg-white border-stone-200'
-                      }`}
-                      style={{ boxShadow: isCentered ? centerBoxShadow : sideBoxShadow }}
-                    >
-                      <div className="w-full h-full [&_img]:pointer-events-none [&_img]:select-none">
-                        <ProductImage
-                          src={item.image}
-                          alt={item.name}
-                          priority={idx < 4}
-                          className="w-full h-full object-cover object-center"
-                        />
+                    <div className="relative w-full">
+                      <div
+                        className={`relative z-10 w-full aspect-square overflow-hidden border transition-all duration-200 ${
+                          isDark
+                            ? isCentered
+                              ? 'bg-neutral-950 border-neutral-600'
+                              : 'bg-neutral-950 border-neutral-800'
+                            : isCentered
+                              ? 'bg-white border-stone-300'
+                              : 'bg-white border-stone-200'
+                        }`}
+                        style={{ boxShadow: isCentered ? centerBoxShadow : sideBoxShadow }}
+                      >
+                        <div className="w-full h-full [&_img]:pointer-events-none [&_img]:select-none">
+                          <ProductImage
+                            src={item.image}
+                            alt={item.name}
+                            priority={idx < 4}
+                            className="w-full h-full object-cover object-center"
+                          />
+                        </div>
                       </div>
+
+                      {/* Soft Floating Shadow Directly Underneath the Product Image */}
+                      {enableShadow && clampedIntensity > 0 && (
+                        <div
+                          ref={(el) => {
+                            if (el) shadowRefs.current.set(item.id, el);
+                            else shadowRefs.current.delete(item.id);
+                          }}
+                          aria-hidden="true"
+                          className="mx-auto mt-2 w-[84%] h-3.5 rounded-full pointer-events-none"
+                          style={{
+                            filter: `blur(${Math.round(5 + clampedIntensity * 14)}px)`,
+                            background: isDark
+                              ? 'radial-gradient(ellipse at center, rgba(0,0,0,0.95) 0%, transparent 72%)'
+                              : 'radial-gradient(ellipse at center, rgba(0,0,0,0.52) 0%, transparent 72%)'
+                          }}
+                        />
+                      )}
                     </div>
 
                     {/* Clean Editorial Metadata Beneath Card */}
                     <div
-                      className={`pt-3 px-0.5 space-y-0.5 transition-opacity duration-200 ${
+                      className={`pt-2.5 px-0.5 space-y-0.5 transition-opacity duration-200 ${
                         isCentered ? 'opacity-100' : 'opacity-70'
                       }`}
                     >
@@ -737,24 +757,6 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
                       </p>
                     </div>
                   </div>
-
-                  {/* Soft Floating Elliptical Floor Shadow (only rendered when Enable Shadow is on) */}
-                  {enableShadow && clampedIntensity > 0 && (
-                    <div
-                      ref={(el) => {
-                        if (el) shadowRefs.current.set(item.id, el);
-                        else shadowRefs.current.delete(item.id);
-                      }}
-                      aria-hidden="true"
-                      className="mx-auto mt-2.5 w-4/5 h-3 rounded-full pointer-events-none"
-                      style={{
-                        filter: `blur(${Math.round(6 + clampedIntensity * 14)}px)`,
-                        background: isDark
-                          ? 'radial-gradient(ellipse at center, rgba(0,0,0,0.95) 0%, transparent 72%)'
-                          : 'radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 72%)'
-                      }}
-                    />
-                  )}
                 </a>
               );
             })}

@@ -13,8 +13,6 @@ interface HangerRecommendationsProps {
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
   maxVisibleProducts?: number;
-  enableShadow?: boolean;
-  shadowIntensity?: number;
   enableFloatingAnimation?: boolean;
   animationSpeed?: number;
   floatingIntensity?: number;
@@ -114,8 +112,6 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
   onSelectProduct,
   theme = 'light',
   maxVisibleProducts = 10,
-  enableShadow = true,
-  shadowIntensity = 50,
   enableFloatingAnimation = false,
   animationSpeed = 50,
   floatingIntensity = 7,
@@ -125,13 +121,6 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
   const isDark = theme === 'dark';
   const floatSpeedScale = getFloatingSpeedScale(animationSpeed);
   const floatAmpPx = Math.max(1, Math.min(20, Math.round(floatingIntensity)));
-  const clampedIntensity = Math.max(0, Math.min(100, shadowIntensity)) / 100;
-  const computedBoxShadow =
-    enableShadow && clampedIntensity > 0
-      ? `0 ${Math.round(6 + clampedIntensity * 16)}px ${Math.round(10 + clampedIntensity * 38)}px ${Math.round(
-          -4 - clampedIntensity * 8
-        )}px rgba(0, 0, 0, ${(isDark ? 0.35 + clampedIntensity * 0.55 : 0.08 + clampedIntensity * 0.24).toFixed(3)})`
-      : 'none';
 
   // Real-time products directly synced with Firestore 'products' collection
   const [liveFirebaseProducts, setLiveFirebaseProducts] = useState<Product[]>([]);
@@ -547,19 +536,16 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
 
                       {/* Garment Card Hanging Directly Beneath Hanger Shoulders */}
                       <div
-                        className={`relative -mt-[5px] w-full aspect-[4/5] overflow-hidden border transition-all duration-200 ${
+                        className={`relative -mt-[5px] w-full aspect-[4/5] overflow-hidden border shadow-sm transition-all duration-200 ${
                           isDark
                             ? 'bg-neutral-950 border-neutral-800 group-hover:border-neutral-600'
                             : 'bg-white border-stone-200 group-hover:border-stone-400'
                         }`}
-                        style={{ boxShadow: computedBoxShadow }}
                       >
-                        {enableShadow && (
-                          <div
-                            aria-hidden="true"
-                            className="absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-black/15 to-transparent z-10 pointer-events-none"
-                          />
-                        )}
+                        <div
+                          aria-hidden="true"
+                          className="absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-black/15 to-transparent z-10 pointer-events-none"
+                        />
 
                         <div className="w-full h-full [&_img]:pointer-events-none [&_img]:select-none">
                           <ProductImage

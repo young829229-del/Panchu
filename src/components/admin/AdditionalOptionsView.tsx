@@ -27,7 +27,8 @@ import {
   subscribeAdditionalOptionsSettings,
   saveYouMightLikeDesignToFirestore,
   saveDesignCustomizationToFirestore,
-  resetDesignCustomizationInFirestore
+  resetDesignFloatingInFirestore,
+  resetDesignShadowInFirestore
 } from '../../services/firebaseService';
 import { NumericSliderControl } from './NumericSliderControl';
 
@@ -159,7 +160,7 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
   );
   const [savingDesignId, setSavingDesignId] = useState<YouMightLikeDesignId | null>(null);
   const [savingFieldKey, setSavingFieldKey] = useState<string | null>(null);
-  const [resettingDesignId, setResettingDesignId] = useState<YouMightLikeDesignId | null>(null);
+  const [resettingKey, setResettingKey] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const pendingFieldKeyRef = useRef<string | null>(null);
@@ -301,7 +302,7 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
     field: 'enableShadow' | 'enableFloatingAnimation' | 'rackSway'
   ) => {
     const fullKey = `${designId}:${field}`;
-    if (savingFieldKey === fullKey || resettingDesignId === designId) return;
+    if (savingFieldKey === fullKey || resettingKey?.startsWith(`${designId}:`)) return;
 
     const currentValue = options.perDesign[designId][field];
     const nextValue = !currentValue;
@@ -357,55 +358,109 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
     persistDesignPatch(designId, String(field), { [field]: finalValue });
   };
 
-  const handleResetDesignSettings = async (
+  const handleResetFloating = async (
     e: React.MouseEvent,
     designId: YouMightLikeDesignId
   ) => {
     e.stopPropagation();
-    if (resettingDesignId === designId) return;
+    const key = `${designId}:floating`;
+    if (resettingKey === key) return;
 
     clearTimersForDesign(designId);
 
     const previousOptions = options;
-    const defaults = { ...DEFAULT_DESIGN_CUSTOMIZATIONS[designId] };
+    const defaults = DEFAULT_DESIGN_CUSTOMIZATIONS[designId];
 
     setOptions((prev) => {
+      const updatedCfg: DesignCustomizationSettings = {
+        ...prev.perDesign[designId],
+        enableFloatingAnimation: defaults.enableFloatingAnimation,
+        animationSpeed: defaults.animationSpeed,
+        floatingIntensity: defaults.floatingIntensity
+      };
       const isActive = prev.youMightLikeDesign === designId;
       if (isActive) {
-        applyGlobalFloatingCssVars(defaults.animationSpeed, defaults.floatingIntensity);
+        applyGlobalFloatingCssVars(updatedCfg.animationSpeed, updatedCfg.floatingIntensity);
       }
       return {
         ...prev,
         perDesign: {
           ...prev.perDesign,
-          [designId]: defaults
+          [designId]: updatedCfg
         },
         ...(isActive
           ? {
-              enableShadow: defaults.enableShadow,
-              shadowIntensity: defaults.shadowIntensity,
-              enableFloatingAnimation: defaults.enableFloatingAnimation,
-              animationSpeed: defaults.animationSpeed
+              enableFloatingAnimation: updatedCfg.enableFloatingAnimation,
+              animationSpeed: updatedCfg.animationSpeed
             }
           : {})
       };
     });
 
-    setResettingDesignId(designId);
+    setResettingKey(key);
     setErrorMessage(null);
 
     try {
-      const saved = await resetDesignCustomizationInFirestore(designId, adminEmail);
+      const saved = await resetDesignFloatingInFirestore(designId, adminEmail);
       setOptions(saved);
     } catch (err: any) {
       setOptions(previousOptions);
       const prevActive = previousOptions.perDesign[previousOptions.youMightLikeDesign];
       applyGlobalFloatingCssVars(prevActive.animationSpeed, prevActive.floatingIntensity);
       setErrorMessage(
-        err?.message || 'Failed to reset design settings in Firebase. Please try again.'
+        err?.message || 'Failed to reset floating animation settings in Firebase. Please try again.'
       );
     } finally {
-      setResettingDesignId(null);
+      setResettingKey(null);
+    }
+  };
+
+  const handleResetShadow = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const designId: YouMightLikeDesignId = 'design-2-3d-flip';
+    const key = `${designId}:shadow`;
+    if (resettingKey === key) return;
+
+    clearTimersForDesign(designId);
+
+    const previousOptions = options;
+    const defaults = DEFAULT_DESIGN_CUSTOMIZATIONS[designId];
+
+    setOptions((prev) => {
+      const updatedCfg: DesignCustomizationSettings = {
+        ...prev.perDesign[designId],
+        enableShadow: defaults.enableShadow,
+        shadowIntensity: defaults.shadowIntensity
+      };
+      const isActive = prev.youMightLikeDesign === designId;
+      return {
+        ...prev,
+        perDesign: {
+          ...prev.perDesign,
+          [designId]: updatedCfg
+        },
+        ...(isActive
+          ? {
+              enableShadow: updatedCfg.enableShadow,
+              shadowIntensity: updatedCfg.shadowIntensity
+            }
+          : {})
+      };
+    });
+
+    setResettingKey(key);
+    setErrorMessage(null);
+
+    try {
+      const saved = await resetDesignShadowInFirestore(adminEmail);
+      setOptions(saved);
+    } catch (err: any) {
+      setOptions(previousOptions);
+      setErrorMessage(
+        err?.message || 'Failed to reset shadow settings in Firebase. Please try again.'
+      );
+    } finally {
+      setResettingKey(null);
     }
   };
 
@@ -462,7 +517,8 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
           {YOU_MIGHT_LIKE_DESIGNS.map((design) => {
             const isSelected = options.youMightLikeDesign === design.id;
             const isSavingThis = savingDesignId === design.id;
-            const isResettingThis = resettingDesignId === design.id;
+            const isResettingFloating = resettingKey === `${design.id}:floating`;
+            const isResettingShadow = resettingKey === `${design.id}:shadow`;
             const cfg = options.perDesign[design.id] || DEFAULT_DESIGN_CUSTOMIZATIONS[design.id];
 
             return (
@@ -760,145 +816,23 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
 
                     {/* 2. Per-Design Animation & Effects Settings */}
                     <div className="rounded-2xl border border-stone-200/80 bg-white p-4 sm:p-5 space-y-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-stone-100">
-                        <div>
-                          <h4 className="text-sm font-bold font-sans text-stone-900">
-                            {design.shortName} — Animation &amp; Effects
-                          </h4>
-                          <p className="text-[11px] font-sans text-stone-500 mt-0.5">
-                            Independent shadow and floating motion controls saved only for {design.shortName}.
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={(e) => handleResetDesignSettings(e, design.id)}
-                          disabled={isResettingThis}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-xs font-semibold font-sans text-stone-700 transition-colors cursor-pointer disabled:opacity-50 self-start sm:self-auto"
-                        >
-                          {isResettingThis ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-500" />
-                          ) : (
-                            <RotateCcw className="w-3.5 h-3.5 text-stone-600" />
-                          )}
-                          <span>Reset Settings</span>
-                        </button>
+                      <div className="pb-3 border-b border-stone-100">
+                        <h4 className="text-sm font-bold font-sans text-stone-900">
+                          {design.shortName} — Animation &amp; Effects
+                        </h4>
+                        <p className="text-[11px] font-sans text-stone-500 mt-0.5">
+                          {design.id === 'design-2-3d-flip'
+                            ? 'Independent floating animation and image drop-shadow controls.'
+                            : `Independent floating animation controls saved for ${design.shortName}.`}
+                        </p>
                       </div>
 
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                        {/* Shadow Control Block */}
-                        <div
-                          className={`rounded-2xl border p-4 space-y-4 transition-colors ${
-                            cfg.enableShadow
-                              ? 'border-[#ff4d4f]/40 bg-[#fffaf9]'
-                              : 'border-stone-200 bg-white'
-                          }`}
-                        >
-                          <label
-                            htmlFor={`${design.id}-toggle-shadow`}
-                            className="flex items-center justify-between gap-4 cursor-pointer"
-                          >
-                            <div className="flex items-start gap-3 min-w-0">
-                              <div
-                                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                                  cfg.enableShadow
-                                    ? 'bg-[#ff4d4f]/10 border-[#ff4d4f]/20 text-[#ff4d4f]'
-                                    : 'bg-stone-50 border-stone-200 text-stone-500'
-                                }`}
-                              >
-                                <Layers className="w-4 h-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-sm font-bold font-sans text-stone-900">
-                                    Enable Shadow
-                                  </span>
-                                  {savingFieldKey === `${design.id}:enableShadow` && (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />
-                                  )}
-                                </div>
-                                <p className="text-xs font-sans text-stone-500 mt-0.5 leading-relaxed">
-                                  Display a soft, realistic shadow behind or beneath products.
-                                </p>
-                              </div>
-                            </div>
-
-                            <div className="shrink-0">
-                              <input
-                                id={`${design.id}-toggle-shadow`}
-                                type="checkbox"
-                                checked={cfg.enableShadow}
-                                disabled={savingFieldKey === `${design.id}:enableShadow`}
-                                onChange={() =>
-                                  handleToggleDesignBoolean(design.id, 'enableShadow')
-                                }
-                                className="sr-only"
-                              />
-                              <span
-                                aria-hidden="true"
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                                  cfg.enableShadow ? 'bg-[#ff4d4f]' : 'bg-stone-300'
-                                }`}
-                              >
-                                <span
-                                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
-                                    cfg.enableShadow ? 'translate-x-6' : 'translate-x-1'
-                                  }`}
-                                />
-                              </span>
-                            </div>
-                          </label>
-
-                          <div className="pt-3.5 border-t border-stone-200/70 flex items-start gap-3.5">
-                            <div className="flex-1 min-w-0">
-                              <NumericSliderControl
-                                id={`${design.id}-shadow-intensity`}
-                                label="Shadow Intensity & Blur"
-                                helperText={`Blur ~${Math.round(10 + (cfg.shadowIntensity / 100) * 38)}px`}
-                                unit="%"
-                                value={cfg.shadowIntensity}
-                                min={0}
-                                max={100}
-                                step={1}
-                                disabled={!cfg.enableShadow}
-                                minLabel="Subtle (0%)"
-                                maxLabel="Deep Blur (100%)"
-                                saving={savingFieldKey === `${design.id}:shadowIntensity`}
-                                onLiveChange={(val) =>
-                                  handleLiveNumericChange(design.id, 'shadowIntensity', val)
-                                }
-                                onCommit={(val) =>
-                                  handleCommitNumericChange(design.id, 'shadowIntensity', val)
-                                }
-                              />
-                            </div>
-
-                            {/* Live Shadow Preview Box */}
-                            <div
-                              className="w-11 h-11 rounded-lg bg-white border border-stone-200 shrink-0 flex items-center justify-center transition-all duration-75 mt-1"
-                              title="Live shadow preview"
-                              style={{
-                                boxShadow:
-                                  cfg.enableShadow && cfg.shadowIntensity > 0
-                                    ? `0 ${Math.round(
-                                        4 + (cfg.shadowIntensity / 100) * 10
-                                      )}px ${Math.round(
-                                        6 + (cfg.shadowIntensity / 100) * 22
-                                      )}px ${Math.round(
-                                        -2 - (cfg.shadowIntensity / 100) * 4
-                                      )}px rgba(0, 0, 0, ${(
-                                        0.1 +
-                                        (cfg.shadowIntensity / 100) * 0.28
-                                      ).toFixed(3)})`
-                                    : 'none'
-                              }}
-                            >
-                              <div className="w-5 h-5 rounded-xs bg-stone-200/80" />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Floating Animation Control Block */}
+                      <div
+                        className={`grid grid-cols-1 gap-4 items-start ${
+                          design.id === 'design-2-3d-flip' ? 'lg:grid-cols-2' : ''
+                        }`}
+                      >
+                        {/* Floating Animation Control Block (Available Across All 3 Designs) */}
                         <div
                           className={`rounded-2xl border p-4 space-y-4 transition-colors ${
                             cfg.enableFloatingAnimation
@@ -923,7 +857,7 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2">
                                   <span className="text-sm font-bold font-sans text-stone-900">
-                                    Enable Floating Animation
+                                    Floating Animation
                                   </span>
                                   {savingFieldKey === `${design.id}:enableFloatingAnimation` && (
                                     <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />
@@ -968,86 +902,231 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
                             </div>
                           </label>
 
-                          {/* Animation Speed + Live Preview */}
-                          <div className="pt-3.5 border-t border-stone-200/70 space-y-4">
-                            <div className="flex items-start gap-3.5">
-                              <div className="flex-1 min-w-0">
+                          {/* Reveal Floating Animation Controls ONLY when ON */}
+                          {cfg.enableFloatingAnimation && (
+                            <div className="pt-3.5 border-t border-stone-200/70 space-y-4">
+                              <div className="flex items-start gap-3.5">
+                                <div className="flex-1 min-w-0">
+                                  <NumericSliderControl
+                                    id={`${design.id}-animation-speed`}
+                                    label="Animation Speed"
+                                    helperText={`Cycle ~${(
+                                      4.3 * getFloatingSpeedScale(cfg.animationSpeed)
+                                    ).toFixed(1)}s`}
+                                    unit="%"
+                                    value={cfg.animationSpeed}
+                                    min={0}
+                                    max={100}
+                                    step={1}
+                                    minLabel="Slow (0%)"
+                                    maxLabel="Fast (100%)"
+                                    saving={savingFieldKey === `${design.id}:animationSpeed`}
+                                    onLiveChange={(val) =>
+                                      handleLiveNumericChange(design.id, 'animationSpeed', val)
+                                    }
+                                    onCommit={(val) =>
+                                      handleCommitNumericChange(design.id, 'animationSpeed', val)
+                                    }
+                                  />
+                                </div>
+
+                                {/* Live Floating Motion Preview Box */}
+                                <div
+                                  className="w-11 h-11 rounded-lg bg-stone-50 border border-stone-200 shrink-0 flex items-center justify-center overflow-visible mt-1"
+                                  title="Live floating motion preview"
+                                >
+                                  <div
+                                    className="w-5 h-5 rounded-xs border border-stone-300 bg-white shadow-2xs panchu-floating-item"
+                                    style={
+                                      {
+                                        '--panchu-float-base-duration': '4.3s',
+                                        '--panchu-float-speed-scale': String(
+                                          getFloatingSpeedScale(cfg.animationSpeed)
+                                        ),
+                                        '--panchu-float-amplitude': `${Math.min(
+                                          10,
+                                          Math.max(2, Math.round(cfg.floatingIntensity * 0.6))
+                                        )}px`
+                                      } as React.CSSProperties
+                                    }
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="pt-3.5 border-t border-stone-200/70">
                                 <NumericSliderControl
-                                  id={`${design.id}-animation-speed`}
-                                  label="Animation Speed"
-                                  helperText={`Cycle ~${(
-                                    4.3 * getFloatingSpeedScale(cfg.animationSpeed)
-                                  ).toFixed(1)}s`}
-                                  unit="%"
-                                  value={cfg.animationSpeed}
-                                  min={0}
-                                  max={100}
+                                  id={`${design.id}-floating-intensity`}
+                                  label="Floating Intensity"
+                                  helperText="Vertical travel distance for the floating motion."
+                                  unit="px"
+                                  value={cfg.floatingIntensity}
+                                  min={1}
+                                  max={20}
                                   step={1}
-                                  disabled={!cfg.enableFloatingAnimation}
-                                  minLabel="Slow (0%)"
-                                  maxLabel="Fast (100%)"
-                                  saving={savingFieldKey === `${design.id}:animationSpeed`}
+                                  minLabel="Subtle (1px)"
+                                  maxLabel="Strong (20px)"
+                                  saving={savingFieldKey === `${design.id}:floatingIntensity`}
                                   onLiveChange={(val) =>
-                                    handleLiveNumericChange(design.id, 'animationSpeed', val)
+                                    handleLiveNumericChange(design.id, 'floatingIntensity', val)
                                   }
                                   onCommit={(val) =>
-                                    handleCommitNumericChange(design.id, 'animationSpeed', val)
+                                    handleCommitNumericChange(design.id, 'floatingIntensity', val)
                                   }
                                 />
                               </div>
 
-                              {/* Live Floating Speed + Amplitude Preview Box */}
-                              <div
-                                className="w-11 h-11 rounded-lg bg-stone-50 border border-stone-200 shrink-0 flex items-center justify-center overflow-visible mt-1"
-                                title="Live floating motion preview"
-                              >
-                                <div
-                                  className={`w-5 h-5 rounded-xs border border-stone-300 bg-white shadow-2xs ${
-                                    cfg.enableFloatingAnimation ? 'panchu-floating-item' : ''
-                                  }`}
-                                  style={
-                                    cfg.enableFloatingAnimation
-                                      ? ({
-                                          '--panchu-float-base-duration': '4.3s',
-                                          '--panchu-float-speed-scale': String(
-                                            getFloatingSpeedScale(cfg.animationSpeed)
-                                          ),
-                                          '--panchu-float-amplitude': `${Math.min(
-                                            10,
-                                            Math.max(2, Math.round(cfg.floatingIntensity * 0.6))
-                                          )}px`
-                                        } as React.CSSProperties)
-                                      : undefined
-                                  }
-                                />
+                              <div className="pt-2 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleResetFloating(e, design.id)}
+                                  disabled={isResettingFloating}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 text-xs font-semibold font-sans text-stone-700 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                  {isResettingFloating ? (
+                                    <Loader2 className="w-3 h-3 animate-spin text-stone-500" />
+                                  ) : (
+                                    <RotateCcw className="w-3 h-3 text-stone-600" />
+                                  )}
+                                  <span>Reset</span>
+                                </button>
                               </div>
                             </div>
-
-                            {/* Floating Animation Intensity (Vertical Distance) */}
-                            <div className="pt-3.5 border-t border-stone-200/70">
-                              <NumericSliderControl
-                                id={`${design.id}-floating-intensity`}
-                                label="Floating Animation Intensity"
-                                helperText="Vertical travel distance for the floating bobbing motion."
-                                unit="px"
-                                value={cfg.floatingIntensity}
-                                min={1}
-                                max={20}
-                                step={1}
-                                disabled={!cfg.enableFloatingAnimation}
-                                minLabel="Subtle (1px)"
-                                maxLabel="Strong (20px)"
-                                saving={savingFieldKey === `${design.id}:floatingIntensity`}
-                                onLiveChange={(val) =>
-                                  handleLiveNumericChange(design.id, 'floatingIntensity', val)
-                                }
-                                onCommit={(val) =>
-                                  handleCommitNumericChange(design.id, 'floatingIntensity', val)
-                                }
-                              />
-                            </div>
-                          </div>
+                          )}
                         </div>
+
+                        {/* Shadow Setting Control Block (Exclusive to Design 2 — 3D Rotating Carousel) */}
+                        {design.id === 'design-2-3d-flip' && (
+                          <div
+                            className={`rounded-2xl border p-4 space-y-4 transition-colors ${
+                              cfg.enableShadow
+                                ? 'border-[#ff4d4f]/40 bg-[#fffaf9]'
+                                : 'border-stone-200 bg-white'
+                            }`}
+                          >
+                            <label
+                              htmlFor={`${design.id}-toggle-shadow`}
+                              className="flex items-center justify-between gap-4 cursor-pointer"
+                            >
+                              <div className="flex items-start gap-3 min-w-0">
+                                <div
+                                  className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                                    cfg.enableShadow
+                                      ? 'bg-[#ff4d4f]/10 border-[#ff4d4f]/20 text-[#ff4d4f]'
+                                      : 'bg-stone-50 border-stone-200 text-stone-500'
+                                  }`}
+                                >
+                                  <Layers className="w-4 h-4" />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-bold font-sans text-stone-900">
+                                      Shadow Setting
+                                    </span>
+                                    {savingFieldKey === `${design.id}:enableShadow` && (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin text-stone-400" />
+                                    )}
+                                  </div>
+                                  <p className="text-xs font-sans text-stone-500 mt-0.5 leading-relaxed">
+                                    Display a soft shadow underneath each product image.
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="shrink-0">
+                                <input
+                                  id={`${design.id}-toggle-shadow`}
+                                  type="checkbox"
+                                  checked={cfg.enableShadow}
+                                  disabled={savingFieldKey === `${design.id}:enableShadow`}
+                                  onChange={() =>
+                                    handleToggleDesignBoolean(design.id, 'enableShadow')
+                                  }
+                                  className="sr-only"
+                                />
+                                <span
+                                  aria-hidden="true"
+                                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                    cfg.enableShadow ? 'bg-[#ff4d4f]' : 'bg-stone-300'
+                                  }`}
+                                >
+                                  <span
+                                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                                      cfg.enableShadow ? 'translate-x-6' : 'translate-x-1'
+                                    }`}
+                                  />
+                                </span>
+                              </div>
+                            </label>
+
+                            {/* Reveal Shadow Customization Controls ONLY when ON */}
+                            {cfg.enableShadow && (
+                              <div className="pt-3.5 border-t border-stone-200/70 space-y-4">
+                                <div className="flex items-start gap-3.5">
+                                  <div className="flex-1 min-w-0">
+                                    <NumericSliderControl
+                                      id={`${design.id}-shadow-intensity`}
+                                      label="Shadow Intensity & Blur"
+                                      helperText={`Blur ~${Math.round(
+                                        10 + (cfg.shadowIntensity / 100) * 38
+                                      )}px`}
+                                      unit="%"
+                                      value={cfg.shadowIntensity}
+                                      min={0}
+                                      max={100}
+                                      step={1}
+                                      minLabel="Subtle (0%)"
+                                      maxLabel="Deep Blur (100%)"
+                                      saving={savingFieldKey === `${design.id}:shadowIntensity`}
+                                      onLiveChange={(val) =>
+                                        handleLiveNumericChange(design.id, 'shadowIntensity', val)
+                                      }
+                                      onCommit={(val) =>
+                                        handleCommitNumericChange(design.id, 'shadowIntensity', val)
+                                      }
+                                    />
+                                  </div>
+
+                                  {/* Live Shadow Underneath Product Preview */}
+                                  <div
+                                    className="w-11 h-12 rounded-lg bg-stone-50 border border-stone-200 shrink-0 flex flex-col items-center justify-center gap-1 mt-1"
+                                    title="Live shadow preview underneath product image"
+                                  >
+                                    <div className="w-5 h-5 rounded-xs bg-white border border-stone-300" />
+                                    <div
+                                      className="w-6 h-1.5 rounded-full"
+                                      style={{
+                                        opacity:
+                                          cfg.shadowIntensity > 0
+                                            ? Math.min(1, 0.25 + (cfg.shadowIntensity / 100) * 0.75)
+                                            : 0,
+                                        filter: `blur(${Math.round(
+                                          1 + (cfg.shadowIntensity / 100) * 3
+                                        )}px)`,
+                                        background: 'rgba(0, 0, 0, 0.65)'
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="pt-2 flex justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={handleResetShadow}
+                                    disabled={isResettingShadow}
+                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 bg-white hover:bg-stone-50 text-xs font-semibold font-sans text-stone-700 transition-colors cursor-pointer disabled:opacity-50"
+                                  >
+                                    {isResettingShadow ? (
+                                      <Loader2 className="w-3 h-3 animate-spin text-stone-500" />
+                                    ) : (
+                                      <RotateCcw className="w-3 h-3 text-stone-600" />
+                                    )}
+                                    <span>Reset</span>
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

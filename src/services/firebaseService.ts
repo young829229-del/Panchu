@@ -3656,8 +3656,8 @@ export const VALID_YOU_MIGHT_LIKE_DESIGN_IDS: readonly YouMightLikeDesignId[] = 
 export const DEFAULT_DESIGN_CUSTOMIZATIONS: PerDesignSettingsMap = {
   'design-1-hanger': {
     maxVisibleProducts: 10,
-    enableShadow: true,
-    shadowIntensity: 50,
+    enableShadow: false,
+    shadowIntensity: 0,
     enableFloatingAnimation: false,
     animationSpeed: 50,
     floatingIntensity: 7,
@@ -3682,8 +3682,8 @@ export const DEFAULT_DESIGN_CUSTOMIZATIONS: PerDesignSettingsMap = {
   },
   'design-3-simple-slider': {
     maxVisibleProducts: 10,
-    enableShadow: true,
-    shadowIntensity: 45,
+    enableShadow: false,
+    shadowIntensity: 0,
     enableFloatingAnimation: false,
     animationSpeed: 50,
     floatingIntensity: 7,
@@ -4039,6 +4039,37 @@ export async function resetDesignCustomizationInFirestore(
   return saveDesignCustomizationToFirestore(
     safeDesignId,
     { ...DEFAULT_DESIGN_CUSTOMIZATIONS[safeDesignId] },
+    updatedBy
+  );
+}
+
+export async function resetDesignFloatingInFirestore(
+  designId: YouMightLikeDesignId,
+  updatedBy?: string
+): Promise<AdditionalOptionsSettings> {
+  const safeDesignId = normalizeYouMightLikeDesignId(designId);
+  const defaults = DEFAULT_DESIGN_CUSTOMIZATIONS[safeDesignId];
+  return saveDesignCustomizationToFirestore(
+    safeDesignId,
+    {
+      enableFloatingAnimation: defaults.enableFloatingAnimation,
+      animationSpeed: defaults.animationSpeed,
+      floatingIntensity: defaults.floatingIntensity
+    },
+    updatedBy
+  );
+}
+
+export async function resetDesignShadowInFirestore(
+  updatedBy?: string
+): Promise<AdditionalOptionsSettings> {
+  const defaults = DEFAULT_DESIGN_CUSTOMIZATIONS['design-2-3d-flip'];
+  return saveDesignCustomizationToFirestore(
+    'design-2-3d-flip',
+    {
+      enableShadow: defaults.enableShadow,
+      shadowIntensity: defaults.shadowIntensity
+    },
     updatedBy
   );
 }
