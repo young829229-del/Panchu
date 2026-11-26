@@ -109,10 +109,6 @@ const DesignVisualPreview: React.FC<{ designId: YouMightLikeDesignId; isSelected
             <div className="w-3/4 h-1.5 bg-stone-300 rounded-full mt-2" />
           </div>
         </div>
-
-        <span className="text-[10px] font-sans text-stone-500 font-medium">
-          3D rotating floating carousel
-        </span>
       </div>
     );
   }
@@ -268,7 +264,7 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-0.5">
                       <span className="text-[11px] font-sans text-stone-500 block">
-                        Option 0{design.designNumber} · {design.statusLabel}
+                        Option 0{design.designNumber}
                       </span>
                       <h3 className="text-sm font-bold font-sans text-stone-900">
                         {design.title}
@@ -289,11 +285,6 @@ export const AdditionalOptionsView: React.FC<AdditionalOptionsViewProps> = ({
 
                   {/* Visual Preview */}
                   <DesignVisualPreview designId={design.id} isSelected={isSelected} />
-
-                  {/* Description */}
-                  <p className="text-xs font-sans text-stone-600 leading-relaxed">
-                    {design.description}
-                  </p>
                 </div>
 
                 {/* Selection Control */}
