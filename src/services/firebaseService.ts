@@ -37,6 +37,8 @@ import {
   SocialActiveSettings,
   SocialsAndContactSettings,
   YouMightLikeDesignId,
+  DesignCustomizationSettings,
+  PerDesignSettingsMap,
   AdditionalOptionsSettings
 } from '../types';
 import { optimizeImageForDurableStore } from '../utils/imageOptimizer';
@@ -3643,7 +3645,7 @@ export async function setWhatsAppOrderRedirectToFirestore(
 // Stored permanently in Firestore doc `settings/additional_options`
 // ---------------------------------------------------------------------------
 
-const CANONICAL_ADDITIONAL_OPTIONS_KEY = 'panchu_canonical_additional_options_v1';
+const CANONICAL_ADDITIONAL_OPTIONS_KEY = 'panchu_canonical_additional_options_v2';
 
 export const VALID_YOU_MIGHT_LIKE_DESIGN_IDS: readonly YouMightLikeDesignId[] = [
   'design-1-hanger',
@@ -3651,8 +3653,55 @@ export const VALID_YOU_MIGHT_LIKE_DESIGN_IDS: readonly YouMightLikeDesignId[] = 
   'design-3-simple-slider'
 ];
 
+export const DEFAULT_DESIGN_CUSTOMIZATIONS: PerDesignSettingsMap = {
+  'design-1-hanger': {
+    maxVisibleProducts: 10,
+    enableShadow: true,
+    shadowIntensity: 50,
+    enableFloatingAnimation: false,
+    animationSpeed: 50,
+    floatingIntensity: 7,
+    cardGap: 28,
+    rackSway: true,
+    rotationAngle: 42,
+    sideScale: 79,
+    cardWidth: 214
+  },
+  'design-2-3d-flip': {
+    maxVisibleProducts: 10,
+    enableShadow: true,
+    shadowIntensity: 55,
+    enableFloatingAnimation: false,
+    animationSpeed: 50,
+    floatingIntensity: 7,
+    cardGap: 24,
+    rackSway: false,
+    rotationAngle: 42,
+    sideScale: 79,
+    cardWidth: 236
+  },
+  'design-3-simple-slider': {
+    maxVisibleProducts: 10,
+    enableShadow: true,
+    shadowIntensity: 45,
+    enableFloatingAnimation: false,
+    animationSpeed: 50,
+    floatingIntensity: 7,
+    cardGap: 20,
+    rackSway: false,
+    rotationAngle: 42,
+    sideScale: 79,
+    cardWidth: 244
+  }
+};
+
 export const DEFAULT_ADDITIONAL_OPTIONS_SETTINGS: AdditionalOptionsSettings = {
   youMightLikeDesign: 'design-1-hanger',
+  perDesign: {
+    'design-1-hanger': { ...DEFAULT_DESIGN_CUSTOMIZATIONS['design-1-hanger'] },
+    'design-2-3d-flip': { ...DEFAULT_DESIGN_CUSTOMIZATIONS['design-2-3d-flip'] },
+    'design-3-simple-slider': { ...DEFAULT_DESIGN_CUSTOMIZATIONS['design-3-simple-slider'] }
+  },
   enableShadow: true,
   shadowIntensity: 50,
   enableFloatingAnimation: false,
@@ -3666,18 +3715,57 @@ export function normalizeYouMightLikeDesignId(raw: unknown): YouMightLikeDesignI
   return 'design-1-hanger';
 }
 
-function normalizeShadowIntensity(raw: unknown): number {
+function clampNumber(raw: unknown, min: number, max: number, fallback: number): number {
   if (typeof raw === 'number' && !Number.isNaN(raw)) {
-    return Math.max(0, Math.min(100, Math.round(raw)));
+    return Math.max(min, Math.min(max, Math.round(raw)));
   }
-  return 50;
+  return fallback;
 }
 
-function normalizeAnimationSpeed(raw: unknown): number {
-  if (typeof raw === 'number' && !Number.isNaN(raw)) {
-    return Math.max(0, Math.min(100, Math.round(raw)));
+function normalizeDesignCustomization(
+  designId: YouMightLikeDesignId,
+  raw: any,
+  legacyFallback?: {
+    enableShadow?: unknown;
+    shadowIntensity?: unknown;
+    enableFloatingAnimation?: unknown;
+    animationSpeed?: unknown;
   }
-  return 50;
+): DesignCustomizationSettings {
+  const defaults = DEFAULT_DESIGN_CUSTOMIZATIONS[designId];
+  return {
+    maxVisibleProducts: clampNumber(raw?.maxVisibleProducts, 2, 24, defaults.maxVisibleProducts),
+    enableShadow:
+      typeof raw?.enableShadow === 'boolean'
+        ? raw.enableShadow
+        : typeof legacyFallback?.enableShadow === 'boolean'
+          ? legacyFallback.enableShadow
+          : defaults.enableShadow,
+    shadowIntensity: clampNumber(
+      raw?.shadowIntensity ?? legacyFallback?.shadowIntensity,
+      0,
+      100,
+      defaults.shadowIntensity
+    ),
+    enableFloatingAnimation:
+      typeof raw?.enableFloatingAnimation === 'boolean'
+        ? raw.enableFloatingAnimation
+        : typeof legacyFallback?.enableFloatingAnimation === 'boolean'
+          ? legacyFallback.enableFloatingAnimation
+          : defaults.enableFloatingAnimation,
+    animationSpeed: clampNumber(
+      raw?.animationSpeed ?? legacyFallback?.animationSpeed,
+      0,
+      100,
+      defaults.animationSpeed
+    ),
+    floatingIntensity: clampNumber(raw?.floatingIntensity, 1, 20, defaults.floatingIntensity),
+    cardGap: clampNumber(raw?.cardGap, 8, 48, defaults.cardGap),
+    rackSway: typeof raw?.rackSway === 'boolean' ? raw.rackSway : defaults.rackSway,
+    rotationAngle: clampNumber(raw?.rotationAngle, 10, 55, defaults.rotationAngle),
+    sideScale: clampNumber(raw?.sideScale, 55, 95, defaults.sideScale),
+    cardWidth: clampNumber(raw?.cardWidth, 140, 320, defaults.cardWidth)
+  };
 }
 
 /**
@@ -3685,29 +3773,58 @@ function normalizeAnimationSpeed(raw: unknown): number {
  * into a CSS duration multiplier applied to `--panchu-float-speed-scale`.
  */
 export function getFloatingSpeedScale(animationSpeed: number): number {
-  const clamped = normalizeAnimationSpeed(animationSpeed);
+  const clamped = clampNumber(animationSpeed, 0, 100, 50);
   if (clamped <= 50) {
-    // 0 -> 2.0x slower (~8.6s), 50 -> 1.0x (~4.3s)
     return Number((2.0 - (clamped / 50) * 1.0).toFixed(3));
   }
-  // 50 -> 1.0x (~4.3s), 100 -> 0.35x faster (~1.5s)
   return Number((1.0 - ((clamped - 50) / 50) * 0.65).toFixed(3));
 }
 
-export function applyGlobalFloatingSpeedCssVar(animationSpeed: number): void {
+export function applyGlobalFloatingCssVars(
+  animationSpeed: number,
+  floatingIntensity = 7
+): void {
   if (typeof document === 'undefined') return;
   const scale = getFloatingSpeedScale(animationSpeed);
+  const amp = clampNumber(floatingIntensity, 1, 20, 7);
   document.documentElement.style.setProperty('--panchu-float-speed-scale', String(scale));
+  document.documentElement.style.setProperty('--panchu-float-amplitude', `${amp}px`);
 }
 
 function normalizeAdditionalOptions(raw: any): AdditionalOptionsSettings {
+  const activeDesignId = normalizeYouMightLikeDesignId(raw?.youMightLikeDesign);
+  const rawPerDesign = raw?.perDesign && typeof raw.perDesign === 'object' ? raw.perDesign : {};
+
+  // Migrate legacy top-level flags cleanly only for the active design if perDesign lacks an entry
+  const perDesign: PerDesignSettingsMap = {
+    'design-1-hanger': normalizeDesignCustomization(
+      'design-1-hanger',
+      rawPerDesign['design-1-hanger'],
+      !rawPerDesign['design-1-hanger'] && activeDesignId === 'design-1-hanger' ? raw : undefined
+    ),
+    'design-2-3d-flip': normalizeDesignCustomization(
+      'design-2-3d-flip',
+      rawPerDesign['design-2-3d-flip'],
+      !rawPerDesign['design-2-3d-flip'] && activeDesignId === 'design-2-3d-flip' ? raw : undefined
+    ),
+    'design-3-simple-slider': normalizeDesignCustomization(
+      'design-3-simple-slider',
+      rawPerDesign['design-3-simple-slider'],
+      !rawPerDesign['design-3-simple-slider'] && activeDesignId === 'design-3-simple-slider'
+        ? raw
+        : undefined
+    )
+  };
+
+  const activeConfig = perDesign[activeDesignId];
+
   return {
-    youMightLikeDesign: normalizeYouMightLikeDesignId(raw?.youMightLikeDesign),
-    enableShadow: typeof raw?.enableShadow === 'boolean' ? raw.enableShadow : true,
-    shadowIntensity: normalizeShadowIntensity(raw?.shadowIntensity),
-    enableFloatingAnimation:
-      typeof raw?.enableFloatingAnimation === 'boolean' ? raw.enableFloatingAnimation : false,
-    animationSpeed: normalizeAnimationSpeed(raw?.animationSpeed),
+    youMightLikeDesign: activeDesignId,
+    perDesign,
+    enableShadow: activeConfig.enableShadow,
+    shadowIntensity: activeConfig.shadowIntensity,
+    enableFloatingAnimation: activeConfig.enableFloatingAnimation,
+    animationSpeed: activeConfig.animationSpeed,
     updatedAt: raw?.updatedAt,
     updatedBy: typeof raw?.updatedBy === 'string' ? raw.updatedBy : undefined
   };
@@ -3721,7 +3838,8 @@ export function getCanonicalAdditionalOptionsSync(): AdditionalOptionsSettings {
       const parsed = JSON.parse(saved);
       if (parsed && typeof parsed === 'object') {
         const normalized = normalizeAdditionalOptions(parsed);
-        applyGlobalFloatingSpeedCssVar(normalized.animationSpeed);
+        const activeCfg = normalized.perDesign[normalized.youMightLikeDesign];
+        applyGlobalFloatingCssVars(activeCfg.animationSpeed, activeCfg.floatingIntensity);
         return normalized;
       }
     }
@@ -3734,17 +3852,19 @@ export function getCanonicalAdditionalOptionsSync(): AdditionalOptionsSettings {
 export function setCanonicalAdditionalOptionsSync(settings: AdditionalOptionsSettings): void {
   if (typeof window === 'undefined') return;
   try {
-    const safeSpeed = normalizeAnimationSpeed(settings.animationSpeed);
-    applyGlobalFloatingSpeedCssVar(safeSpeed);
+    const normalized = normalizeAdditionalOptions(settings);
+    const activeCfg = normalized.perDesign[normalized.youMightLikeDesign];
+    applyGlobalFloatingCssVars(activeCfg.animationSpeed, activeCfg.floatingIntensity);
     localStorage.setItem(
       CANONICAL_ADDITIONAL_OPTIONS_KEY,
       JSON.stringify({
-        youMightLikeDesign: normalizeYouMightLikeDesignId(settings.youMightLikeDesign),
-        enableShadow: Boolean(settings.enableShadow),
-        shadowIntensity: normalizeShadowIntensity(settings.shadowIntensity),
-        enableFloatingAnimation: Boolean(settings.enableFloatingAnimation),
-        animationSpeed: safeSpeed,
-        updatedBy: settings.updatedBy
+        youMightLikeDesign: normalized.youMightLikeDesign,
+        perDesign: normalized.perDesign,
+        enableShadow: activeCfg.enableShadow,
+        shadowIntensity: activeCfg.shadowIntensity,
+        enableFloatingAnimation: activeCfg.enableFloatingAnimation,
+        animationSpeed: activeCfg.animationSpeed,
+        updatedBy: normalized.updatedBy
       })
     );
   } catch (e) {
@@ -3783,10 +3903,10 @@ export function subscribeAdditionalOptionsSettings(
           setCanonicalAdditionalOptionsSync(cleanSettings);
           callback(cleanSettings);
         } else {
-          // Default cleanly; seed if authenticated admin
           if (auth.currentUser) {
             setDoc(docRef, {
               youMightLikeDesign: 'design-1-hanger',
+              perDesign: DEFAULT_ADDITIONAL_OPTIONS_SETTINGS.perDesign,
               enableShadow: true,
               shadowIntensity: 50,
               enableFloatingAnimation: false,
@@ -3795,8 +3915,7 @@ export function subscribeAdditionalOptionsSettings(
               updatedAt: serverTimestamp()
             }).catch((err) => console.debug('Could not seed settings/additional_options:', err));
           }
-          const canonical = getCanonicalAdditionalOptionsSync();
-          callback(canonical);
+          callback(getCanonicalAdditionalOptionsSync());
         }
       },
       (error) => {
@@ -3819,10 +3938,15 @@ export async function saveYouMightLikeDesignToFirestore(
   const path = 'settings/additional_options';
   const safeDesignId = normalizeYouMightLikeDesignId(designId);
   const current = getCanonicalAdditionalOptionsSync();
+  const activeCfg = current.perDesign[safeDesignId];
   try {
     const docRef = doc(db, 'settings', 'additional_options');
     const payload: Record<string, any> = {
       youMightLikeDesign: safeDesignId,
+      enableShadow: activeCfg.enableShadow,
+      shadowIntensity: activeCfg.shadowIntensity,
+      enableFloatingAnimation: activeCfg.enableFloatingAnimation,
+      animationSpeed: activeCfg.animationSpeed,
       updatedAt: serverTimestamp()
     };
     if (updatedBy || auth.currentUser?.email) {
@@ -3832,11 +3956,12 @@ export async function saveYouMightLikeDesignToFirestore(
     await setDoc(docRef, payload, { merge: true });
 
     const saved: AdditionalOptionsSettings = {
+      ...current,
       youMightLikeDesign: safeDesignId,
-      enableShadow: current.enableShadow,
-      shadowIntensity: current.shadowIntensity,
-      enableFloatingAnimation: current.enableFloatingAnimation,
-      animationSpeed: current.animationSpeed,
+      enableShadow: activeCfg.enableShadow,
+      shadowIntensity: activeCfg.shadowIntensity,
+      enableFloatingAnimation: activeCfg.enableFloatingAnimation,
+      animationSpeed: activeCfg.animationSpeed,
       updatedBy: payload.updatedBy
     };
     setCanonicalAdditionalOptionsSync(saved);
@@ -3847,62 +3972,55 @@ export async function saveYouMightLikeDesignToFirestore(
   }
 }
 
-export async function saveYouMightLikeEffectsToFirestore(
-  effects: {
-    enableShadow?: boolean;
-    shadowIntensity?: number;
-    enableFloatingAnimation?: boolean;
-    animationSpeed?: number;
-  },
+export async function saveDesignCustomizationToFirestore(
+  designId: YouMightLikeDesignId,
+  partial: Partial<DesignCustomizationSettings>,
   updatedBy?: string
 ): Promise<AdditionalOptionsSettings> {
   const path = 'settings/additional_options';
+  const safeDesignId = normalizeYouMightLikeDesignId(designId);
   const current = getCanonicalAdditionalOptionsSync();
+  const mergedForDesign = normalizeDesignCustomization(safeDesignId, {
+    ...current.perDesign[safeDesignId],
+    ...partial
+  });
+
+  const nextPerDesign: PerDesignSettingsMap = {
+    ...current.perDesign,
+    [safeDesignId]: mergedForDesign
+  };
+
   try {
     const docRef = doc(db, 'settings', 'additional_options');
+    const isActive = current.youMightLikeDesign === safeDesignId;
     const payload: Record<string, any> = {
+      perDesign: {
+        [safeDesignId]: mergedForDesign
+      },
       updatedAt: serverTimestamp()
     };
 
-    const nextShadow =
-      typeof effects.enableShadow === 'boolean' ? effects.enableShadow : current.enableShadow;
-    const nextIntensity =
-      typeof effects.shadowIntensity === 'number'
-        ? normalizeShadowIntensity(effects.shadowIntensity)
-        : current.shadowIntensity;
-    const nextFloating =
-      typeof effects.enableFloatingAnimation === 'boolean'
-        ? effects.enableFloatingAnimation
-        : current.enableFloatingAnimation;
-    const nextSpeed =
-      typeof effects.animationSpeed === 'number'
-        ? normalizeAnimationSpeed(effects.animationSpeed)
-        : current.animationSpeed;
+    if (isActive) {
+      payload.enableShadow = mergedForDesign.enableShadow;
+      payload.shadowIntensity = mergedForDesign.shadowIntensity;
+      payload.enableFloatingAnimation = mergedForDesign.enableFloatingAnimation;
+      payload.animationSpeed = mergedForDesign.animationSpeed;
+    }
 
-    if (typeof effects.enableShadow === 'boolean') {
-      payload.enableShadow = effects.enableShadow;
-    }
-    if (typeof effects.shadowIntensity === 'number') {
-      payload.shadowIntensity = nextIntensity;
-    }
-    if (typeof effects.enableFloatingAnimation === 'boolean') {
-      payload.enableFloatingAnimation = effects.enableFloatingAnimation;
-    }
-    if (typeof effects.animationSpeed === 'number') {
-      payload.animationSpeed = nextSpeed;
-    }
     if (updatedBy || auth.currentUser?.email) {
       payload.updatedBy = (updatedBy || auth.currentUser?.email || '').slice(0, 150);
     }
 
     await setDoc(docRef, payload, { merge: true });
 
+    const activeCfg = nextPerDesign[current.youMightLikeDesign];
     const saved: AdditionalOptionsSettings = {
       youMightLikeDesign: current.youMightLikeDesign,
-      enableShadow: nextShadow,
-      shadowIntensity: nextIntensity,
-      enableFloatingAnimation: nextFloating,
-      animationSpeed: nextSpeed,
+      perDesign: nextPerDesign,
+      enableShadow: activeCfg.enableShadow,
+      shadowIntensity: activeCfg.shadowIntensity,
+      enableFloatingAnimation: activeCfg.enableFloatingAnimation,
+      animationSpeed: activeCfg.animationSpeed,
       updatedBy: payload.updatedBy
     };
     setCanonicalAdditionalOptionsSync(saved);
@@ -3911,6 +4029,18 @@ export async function saveYouMightLikeEffectsToFirestore(
     handleFirestoreError(error, OperationType.WRITE, path);
     throw error;
   }
+}
+
+export async function resetDesignCustomizationInFirestore(
+  designId: YouMightLikeDesignId,
+  updatedBy?: string
+): Promise<AdditionalOptionsSettings> {
+  const safeDesignId = normalizeYouMightLikeDesignId(designId);
+  return saveDesignCustomizationToFirestore(
+    safeDesignId,
+    { ...DEFAULT_DESIGN_CUSTOMIZATIONS[safeDesignId] },
+    updatedBy
+  );
 }
 
 

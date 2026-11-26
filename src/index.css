@@ -14,6 +14,7 @@
 
 :root {
   --panchu-float-speed-scale: 1;
+  --panchu-float-amplitude: 7px;
 }
 
 @keyframes panchu-product-float {
@@ -21,7 +22,7 @@
     transform: translate3d(0, 0px, 0);
   }
   50% {
-    transform: translate3d(0, -7px, 0);
+    transform: translate3d(0, calc(var(--panchu-float-amplitude, 7px) * -1), 0);
   }
 }
 

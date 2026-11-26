@@ -268,8 +268,28 @@ export type YouMightLikeDesignId =
   | 'design-2-3d-flip'
   | 'design-3-simple-slider';
 
+export interface DesignCustomizationSettings {
+  maxVisibleProducts: number;
+  enableShadow: boolean;
+  shadowIntensity: number;
+  enableFloatingAnimation: boolean;
+  animationSpeed: number;
+  floatingIntensity: number;
+  // Design 1 — Hanger Style specific
+  cardGap: number;
+  rackSway: boolean;
+  // Design 2 — 3D Rotating Carousel specific
+  rotationAngle: number;
+  sideScale: number;
+  // Design 3 — Horizontal Slider specific
+  cardWidth: number;
+}
+
+export type PerDesignSettingsMap = Record<YouMightLikeDesignId, DesignCustomizationSettings>;
+
 export interface AdditionalOptionsSettings {
   youMightLikeDesign: YouMightLikeDesignId;
+  perDesign: PerDesignSettingsMap;
   enableShadow: boolean;
   shadowIntensity: number;
   enableFloatingAnimation: boolean;

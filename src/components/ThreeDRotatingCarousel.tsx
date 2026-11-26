@@ -13,10 +13,14 @@ interface ThreeDRotatingCarouselProps {
   products?: Product[];
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
+  maxVisibleProducts?: number;
   enableShadow?: boolean;
   shadowIntensity?: number;
   enableFloatingAnimation?: boolean;
   animationSpeed?: number;
+  floatingIntensity?: number;
+  rotationAngle?: number;
+  sideScale?: number;
 }
 
 type TransitionPhase = 'idle' | 'entering' | 'fading-logo' | 'exiting';
@@ -49,13 +53,20 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
   products: propProducts,
   onSelectProduct,
   theme = 'light',
+  maxVisibleProducts = 10,
   enableShadow = true,
-  shadowIntensity = 50,
+  shadowIntensity = 55,
   enableFloatingAnimation = false,
-  animationSpeed = 50
+  animationSpeed = 50,
+  floatingIntensity = 7,
+  rotationAngle = 42,
+  sideScale = 79
 }) => {
   const isDark = theme === 'dark';
   const floatSpeedScale = getFloatingSpeedScale(animationSpeed);
+  const floatAmpPx = Math.max(1, Math.min(20, Math.round(floatingIntensity)));
+  const maxTiltDeg = Math.max(10, Math.min(55, rotationAngle));
+  const clampedSideScale = Math.max(55, Math.min(95, sideScale)) / 100;
   const clampedIntensity = Math.max(0, Math.min(100, shadowIntensity)) / 100;
   const centerBoxShadow =
     enableShadow && clampedIntensity > 0
@@ -69,7 +80,8 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
           -4 - clampedIntensity * 8
         )}px rgba(0, 0, 0, ${(isDark ? 0.3 + clampedIntensity * 0.45 : 0.06 + clampedIntensity * 0.16).toFixed(3)})`
       : 'none';
-  const recommendedProducts = useRecommendedProducts(currentProduct, propProducts);
+  const rawRecommended = useRecommendedProducts(currentProduct, propProducts);
+  const recommendedProducts = rawRecommended.slice(0, Math.max(2, Math.min(24, maxVisibleProducts)));
   const count = recommendedProducts.length;
 
   const stageRef = useRef<HTMLDivElement>(null);
@@ -165,10 +177,13 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
       const translateZ = 75 - Math.min(absD, 2.4) * 135;
 
       // 3D Y-axis rotation wrapping outward around a cylindrical drum
-      const rawRotateY = dragReducedMotion ? 0 : Math.max(-42, Math.min(42, d * 26));
+      const rawRotateY = dragReducedMotion
+        ? 0
+        : Math.max(-maxTiltDeg, Math.min(maxTiltDeg, d * (maxTiltDeg * 0.62)));
 
-      // Scale prominence
-      const scale = Math.max(0.56, 1 - Math.min(absD, 2.2) * 0.21);
+      // Scale prominence configured dynamically by sideScale
+      const scaleStep = 1 - clampedSideScale;
+      const scale = Math.max(0.45, 1 - Math.min(absD, 2.2) * scaleStep);
 
       // Opacity & visibility culling for distant items behind the arc
       const visibleCutoff = count >= 5 ? 2.15 : 1.75;
@@ -204,7 +219,7 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
         }
       }
     });
-  }, [count, recommendedProducts, viewportMode, isDark, enableShadow, clampedIntensity]);
+  }, [count, recommendedProducts, viewportMode, isDark, enableShadow, clampedIntensity, maxTiltDeg, clampedSideScale]);
 
   // Continuous critically-damped animation loop
   const ensureAnimationLoop = useCallback(() => {
@@ -640,6 +655,7 @@ export const ThreeDRotatingCarousel: React.FC<ThreeDRotatingCarouselProps> = ({
                 ? ({
                     '--panchu-float-base-duration': `${baseDuration}s`,
                     '--panchu-float-speed-scale': String(floatSpeedScale),
+                    '--panchu-float-amplitude': `${floatAmpPx}px`,
                     animationDelay: `${-((idx * 0.85 * floatSpeedScale) % (baseDuration * floatSpeedScale)).toFixed(2)}s`
                   } as React.CSSProperties)
                 : undefined;

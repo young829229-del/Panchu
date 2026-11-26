@@ -4,7 +4,7 @@ import { HangerRecommendations } from './HangerRecommendations';
 import { ThreeDRotatingCarousel } from './ThreeDRotatingCarousel';
 import { SimpleSliderRecommendations } from './SimpleSliderRecommendations';
 import {
-  applyGlobalFloatingSpeedCssVar,
+  applyGlobalFloatingCssVars,
   getCanonicalAdditionalOptionsSync,
   subscribeAdditionalOptionsSettings
 } from '../services/firebaseService';
@@ -17,8 +17,8 @@ interface YouMightLikeRendererProps {
 }
 
 /**
- * Dynamically renders the active "You Might Like" layout and visual effects
- * selected in Admin > Additional Options, updating live via Firebase.
+ * Dynamically renders the active "You Might Like" layout and its own independent
+ * customization settings selected in Admin > Additional Options, updating live via Firebase.
  */
 export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
   currentProduct,
@@ -37,9 +37,11 @@ export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
     return () => unsubscribe();
   }, []);
 
+  const activeConfig = options.perDesign[options.youMightLikeDesign];
+
   useEffect(() => {
-    applyGlobalFloatingSpeedCssVar(options.animationSpeed);
-  }, [options.animationSpeed]);
+    applyGlobalFloatingCssVars(activeConfig.animationSpeed, activeConfig.floatingIntensity);
+  }, [activeConfig.animationSpeed, activeConfig.floatingIntensity]);
 
   switch (options.youMightLikeDesign) {
     case 'design-3-simple-slider':
@@ -49,10 +51,14 @@ export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
           products={products}
           onSelectProduct={onSelectProduct}
           theme={theme}
-          enableShadow={options.enableShadow}
-          shadowIntensity={options.shadowIntensity}
-          enableFloatingAnimation={options.enableFloatingAnimation}
-          animationSpeed={options.animationSpeed}
+          maxVisibleProducts={activeConfig.maxVisibleProducts}
+          enableShadow={activeConfig.enableShadow}
+          shadowIntensity={activeConfig.shadowIntensity}
+          enableFloatingAnimation={activeConfig.enableFloatingAnimation}
+          animationSpeed={activeConfig.animationSpeed}
+          floatingIntensity={activeConfig.floatingIntensity}
+          cardGap={activeConfig.cardGap}
+          cardWidth={activeConfig.cardWidth}
         />
       );
 
@@ -63,10 +69,14 @@ export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
           products={products}
           onSelectProduct={onSelectProduct}
           theme={theme}
-          enableShadow={options.enableShadow}
-          shadowIntensity={options.shadowIntensity}
-          enableFloatingAnimation={options.enableFloatingAnimation}
-          animationSpeed={options.animationSpeed}
+          maxVisibleProducts={activeConfig.maxVisibleProducts}
+          enableShadow={activeConfig.enableShadow}
+          shadowIntensity={activeConfig.shadowIntensity}
+          enableFloatingAnimation={activeConfig.enableFloatingAnimation}
+          animationSpeed={activeConfig.animationSpeed}
+          floatingIntensity={activeConfig.floatingIntensity}
+          rotationAngle={activeConfig.rotationAngle}
+          sideScale={activeConfig.sideScale}
         />
       );
 
@@ -78,10 +88,14 @@ export const YouMightLikeRenderer: React.FC<YouMightLikeRendererProps> = ({
           products={products}
           onSelectProduct={onSelectProduct}
           theme={theme}
-          enableShadow={options.enableShadow}
-          shadowIntensity={options.shadowIntensity}
-          enableFloatingAnimation={options.enableFloatingAnimation}
-          animationSpeed={options.animationSpeed}
+          maxVisibleProducts={activeConfig.maxVisibleProducts}
+          enableShadow={activeConfig.enableShadow}
+          shadowIntensity={activeConfig.shadowIntensity}
+          enableFloatingAnimation={activeConfig.enableFloatingAnimation}
+          animationSpeed={activeConfig.animationSpeed}
+          floatingIntensity={activeConfig.floatingIntensity}
+          cardGap={activeConfig.cardGap}
+          rackSway={activeConfig.rackSway}
         />
       );
   }

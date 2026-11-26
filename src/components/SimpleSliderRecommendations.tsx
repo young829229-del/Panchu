@@ -13,10 +13,14 @@ interface SimpleSliderRecommendationsProps {
   products?: Product[];
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
+  maxVisibleProducts?: number;
   enableShadow?: boolean;
   shadowIntensity?: number;
   enableFloatingAnimation?: boolean;
   animationSpeed?: number;
+  floatingIntensity?: number;
+  cardGap?: number;
+  cardWidth?: number;
 }
 
 type TransitionPhase = 'idle' | 'entering' | 'fading-logo' | 'exiting';
@@ -32,13 +36,18 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
   products: propProducts,
   onSelectProduct,
   theme = 'light',
+  maxVisibleProducts = 10,
   enableShadow = true,
-  shadowIntensity = 50,
+  shadowIntensity = 45,
   enableFloatingAnimation = false,
-  animationSpeed = 50
+  animationSpeed = 50,
+  floatingIntensity = 7,
+  cardGap = 20,
+  cardWidth = 244
 }) => {
   const isDark = theme === 'dark';
   const floatSpeedScale = getFloatingSpeedScale(animationSpeed);
+  const floatAmpPx = Math.max(1, Math.min(20, Math.round(floatingIntensity)));
   const clampedIntensity = Math.max(0, Math.min(100, shadowIntensity)) / 100;
   const computedBoxShadow =
     enableShadow && clampedIntensity > 0
@@ -46,7 +55,11 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
           -4 - clampedIntensity * 8
         )}px rgba(0, 0, 0, ${(isDark ? 0.35 + clampedIntensity * 0.55 : 0.08 + clampedIntensity * 0.24).toFixed(3)})`
       : 'none';
-  const recommendedProducts = useRecommendedProducts(currentProduct, propProducts);
+  const rawRecommended = useRecommendedProducts(currentProduct, propProducts);
+  const recommendedProducts = rawRecommended.slice(0, Math.max(2, Math.min(24, maxVisibleProducts)));
+  const safeGap = Math.max(8, Math.min(48, cardGap));
+  const safeCardWidth = Math.max(140, Math.min(320, cardWidth));
+  const mobileCardWidth = Math.max(140, Math.min(220, Math.round(safeCardWidth * 0.7)));
 
   const sliderRef = useRef<HTMLDivElement>(null);
   const momentumRafRef = useRef<number | null>(null);
@@ -400,9 +413,10 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
           style={{
             WebkitOverflowScrolling: 'touch',
             overscrollBehaviorX: 'contain',
-            touchAction: 'pan-x pan-y'
+            touchAction: 'pan-x pan-y',
+            gap: `${safeGap}px`
           }}
-          className={`flex flex-row flex-nowrap items-stretch gap-3.5 sm:gap-5 md:gap-6 overflow-x-auto overflow-y-hidden pt-3 pb-6 px-1 sm:px-2 select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
+          className={`flex flex-row flex-nowrap items-stretch overflow-x-auto overflow-y-hidden pt-3 pb-6 px-1 sm:px-2 select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
             isDragging ? 'cursor-grabbing' : 'cursor-grab'
           }`}
           aria-label="Horizontal product slider"
@@ -418,6 +432,7 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
               ? ({
                   '--panchu-float-base-duration': `${baseDuration}s`,
                   '--panchu-float-speed-scale': String(floatSpeedScale),
+                  '--panchu-float-amplitude': `${floatAmpPx}px`,
                   animationDelay: `${-((idx * 0.85 * floatSpeedScale) % (baseDuration * floatSpeedScale)).toFixed(2)}s`
                 } as React.CSSProperties)
               : undefined;
@@ -428,7 +443,10 @@ export const SimpleSliderRecommendations: React.FC<SimpleSliderRecommendationsPr
                 href={productUrl}
                 draggable={false}
                 onClick={(e) => handleCardClick(e, item)}
-                className="group relative flex-shrink-0 w-[160px] sm:w-[214px] md:w-[244px] lg:w-[260px] flex flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 cursor-pointer"
+                style={{
+                  width: `clamp(${mobileCardWidth}px, 43vw, ${safeCardWidth}px)`
+                }}
+                className="group relative flex-shrink-0 flex flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 cursor-pointer"
                 aria-label={`${item.name} — Rs ${item.price.toLocaleString()}`}
               >
                 <div

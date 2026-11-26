@@ -12,10 +12,14 @@ interface HangerRecommendationsProps {
   products?: Product[];
   onSelectProduct: (product: Product) => void;
   theme?: 'light' | 'dark';
+  maxVisibleProducts?: number;
   enableShadow?: boolean;
   shadowIntensity?: number;
   enableFloatingAnimation?: boolean;
   animationSpeed?: number;
+  floatingIntensity?: number;
+  cardGap?: number;
+  rackSway?: boolean;
 }
 
 type TransitionPhase = 'idle' | 'entering' | 'fading-logo' | 'exiting';
@@ -109,13 +113,18 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
   products: propProducts,
   onSelectProduct,
   theme = 'light',
+  maxVisibleProducts = 10,
   enableShadow = true,
   shadowIntensity = 50,
   enableFloatingAnimation = false,
-  animationSpeed = 50
+  animationSpeed = 50,
+  floatingIntensity = 7,
+  cardGap = 28,
+  rackSway = true
 }) => {
   const isDark = theme === 'dark';
   const floatSpeedScale = getFloatingSpeedScale(animationSpeed);
+  const floatAmpPx = Math.max(1, Math.min(20, Math.round(floatingIntensity)));
   const clampedIntensity = Math.max(0, Math.min(100, shadowIntensity)) / 100;
   const computedBoxShadow =
     enableShadow && clampedIntensity > 0
@@ -177,16 +186,18 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
       filtered.push(item);
     }
 
-    // Prioritize matching gender / unisex items first on the rail while keeping full catalog accessible
-    return filtered.sort((a, b) => {
-      const aMatch = a.gender === currentProduct.gender ? 2 : a.gender === 'unisex' ? 1 : 0;
-      const bMatch = b.gender === currentProduct.gender ? 2 : b.gender === 'unisex' ? 1 : 0;
-      if (bMatch !== aMatch) return bMatch - aMatch;
-      const aFeat = a.bestSelling || a.featured ? 1 : 0;
-      const bFeat = b.bestSelling || b.featured ? 1 : 0;
-      return bFeat - aFeat;
-    });
-  }, [hasFirebaseLoaded, liveFirebaseProducts, propProducts, currentProduct]);
+    // Prioritize matching gender / unisex items first on the rail while respecting maxVisibleProducts
+    return filtered
+      .sort((a, b) => {
+        const aMatch = a.gender === currentProduct.gender ? 2 : a.gender === 'unisex' ? 1 : 0;
+        const bMatch = b.gender === currentProduct.gender ? 2 : b.gender === 'unisex' ? 1 : 0;
+        if (bMatch !== aMatch) return bMatch - aMatch;
+        const aFeat = a.bestSelling || a.featured ? 1 : 0;
+        const bFeat = b.bestSelling || b.featured ? 1 : 0;
+        return bFeat - aFeat;
+      })
+      .slice(0, Math.max(2, Math.min(24, maxVisibleProducts)));
+  }, [hasFirebaseLoaded, liveFirebaseProducts, propProducts, currentProduct, maxVisibleProducts]);
 
   // Horizontal rail scroll & desktop drag state
   const railScrollRef = useRef<HTMLDivElement>(null);
@@ -491,7 +502,8 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
             onMouseDown={handleRailMouseDown}
             onScroll={updateScrollButtons}
             onDragStart={(e) => e.preventDefault()}
-            className={`relative z-10 flex items-start gap-5 sm:gap-7 md:gap-8 overflow-x-auto pt-[6px] pb-6 px-4 sm:px-8 select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
+            style={{ gap: `${Math.max(8, Math.min(48, cardGap))}px` }}
+            className={`relative z-10 flex items-start overflow-x-auto pt-[6px] pb-6 px-4 sm:px-8 select-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
               isDragging ? 'cursor-grabbing' : 'cursor-grab'
             }`}
           >
@@ -504,6 +516,7 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
                 ? ({
                     '--panchu-float-base-duration': `${baseDuration}s`,
                     '--panchu-float-speed-scale': String(floatSpeedScale),
+                    '--panchu-float-amplitude': `${floatAmpPx}px`,
                     animationDelay: `${-((idx * 0.9 * floatSpeedScale) % (baseDuration * floatSpeedScale)).toFixed(2)}s`
                   } as React.CSSProperties)
                 : undefined;
@@ -521,8 +534,12 @@ export const HangerRecommendations: React.FC<HangerRecommendationsProps> = ({
                     className={enableFloatingAnimation ? 'panchu-floating-item w-full' : 'w-full'}
                     style={floatStyle}
                   >
-                    {/* Suspended Hanger + Garment Assembly with gentle natural rack sway on hover */}
-                    <div className="w-full origin-top transition-transform duration-200 ease-out group-hover:-translate-y-0.5 group-hover:rotate-[0.6deg]">
+                    {/* Suspended Hanger + Garment Assembly with optional subtle rack sway on hover */}
+                    <div
+                      className={`w-full origin-top transition-transform duration-200 ease-out ${
+                        rackSway ? 'group-hover:-translate-y-0.5 group-hover:rotate-[0.6deg]' : ''
+                      }`}
+                    >
                       {/* Hanger Hook & Contoured Shoulder */}
                       <div className="relative z-10 w-full px-1">
                         <GarmentHangerGraphic isDark={isDark} />
